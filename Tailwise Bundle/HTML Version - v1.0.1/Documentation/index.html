@@ -1,0 +1,1992 @@
+<!DOCTYPE html>
+<!--
+Template Name: Tailwise HTML Admin Template
+Author: Left4code
+Website: http://www.left4code.com/
+Contact: muhammadrizki@left4code.com
+Purchase: https://themeforest.net/user/left4code/portfolio
+Renew Support: https://themeforest.net/user/left4code/portfolio
+License: You must have a valid license purchased only from themeforest(the above link) in order to legally use the theme for your project.
+-->
+<html lang="en">
+  <!-- BEGIN: Head -->
+  <head>
+    <meta charset="utf-8" />
+    <link href="dist/images/logo.svg" rel="shortcut icon" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Tailwise admin is super flexible, powerful, clean & modern responsive tailwind admin template with unlimited possibilities."
+    />
+    <meta
+      name="keywords"
+      content="admin template, Tailwise admin template, dashboard template, flat admin template, responsive admin template, web app"
+    />
+    <meta name="author" content="LEFT4CODE" />
+    <title>Tailwise Documentation</title>
+    <!-- BEGIN: CSS Assets-->
+    <link rel="stylesheet" href="dist/css/app.css" />
+    <!-- END: CSS Assets-->
+  </head>
+  <!-- END: Head -->
+  <body>
+    <div class="fixed z-20 w-full shadow-md bg-theme-1">
+      <div class="container flex items-center h-16">
+        <a href="" class="flex items-center flex-1">
+          <div
+            class="py-2 ml-4 text-base font-medium text-white border-r logo border-theme-3"
+          >
+            Tailwise <span class="font-light">Documentation</span>
+          </div>
+        </a>
+        <div class="flex-1">
+          <div
+            class="relative bg-white border rounded-lg search border-theme-2"
+          >
+            <div class="flex search__input">
+              <div class="flex items-center pl-3">
+                <i data-feather="search" class="w-5 h-5 text-gray-600"></i>
+              </div>
+              <input
+                type="text"
+                id="search"
+                class="w-full px-3 placeholder-gray-600 rounded-lg outline-none appearance-none"
+                placeholder="Quick search for anything"
+                autocomplete="off"
+              />
+            </div>
+            <div
+              class="absolute top-0 w-full bg-white rounded-md shadow-md search-result"
+            >
+              <a href="" class="hidden block px-5 py-3 search-result__item">
+                <div class="font-bold search-result__item__title">
+                  Source & Compiled Version
+                </div>
+                <div class="mt-1 text-xs search-result__item__description">
+                  Recommend using the Source version to start
+                </div>
+              </a>
+            </div>
+          </div>
+        </div>
+        <div class="flex justify-end flex-1">
+          <a
+            class="flex items-center mr-5 text-white"
+            href="https://tailwise-html.vercel.app/"
+            target="blank"
+            >Demo <i data-feather="external-link" class="w-4 h-4 ml-2"></i
+          ></a>
+          <a class="flex items-center mr-5 text-white" href="" target="blank"
+            >Purchase <i data-feather="external-link" class="w-4 h-4 ml-2"></i
+          ></a>
+          <a
+            class="flex items-center text-white menu"
+            href="https://themeforest.net/user/left4code#contact"
+            >Getting Support
+            <i data-feather="external-link" class="w-4 h-4 ml-2"></i
+          ></a>
+        </div>
+      </div>
+    </div>
+    <div class="container relative z-10 flex min-h-screen pt-16">
+      <div class="fixed pt-10 pb-24 bg-gray-100 side-menu">
+        <div class="pl-5 mb-2 font-bold text-theme-1">Getting Started</div>
+        <a href="?p=introduction" class="menu">Introduction</a>
+        <a href="?p=requirements" class="menu">Requirements</a>
+        <a href="?p=installing-dependencies" class="menu"
+          >Installing Dependencies</a
+        >
+        <a href="?p=customizing-colors" class="menu">Customizing Colors</a>
+        <a href="?p=build-tools" class="menu">Build Tools</a>
+        <div class="pl-5 mt-8 mb-2 font-bold text-theme-1">
+          Customizing Javascript
+        </div>
+        <a href="?p=javascript-structure" class="menu">Javascript Structure</a>
+        <div class="pl-5 mt-8 mb-2 font-bold text-theme-1">Customizing CSS</div>
+        <a href="?p=css-structure" class="menu">CSS Structure</a>
+        <div class="pl-5 mt-8 mb-2 font-bold text-theme-1">
+          Built In Components
+        </div>
+        <a href="?p=accordion" class="menu">Accordion</a>
+        <a href="?p=alert" class="menu">Alert</a>
+        <a href="?p=dropdown" class="menu">Dropdown</a>
+        <a href="?p=modal-and-slideover" class="menu">Modal & Slideover</a>
+        <a href="?p=svg-loading-icon" class="menu">SVG Loading Icon</a>
+        <a href="?p=tab" class="menu">Tab</a>
+        <div class="pl-5 mt-8 mb-2 font-bold text-theme-1">
+          Production Build
+        </div>
+        <a href="?p=configure-purge-css" class="menu">Configure Purge CSS</a>
+        <a href="?p=running-production-build" class="menu"
+          >Running Production Build</a
+        >
+        <div class="pl-5 mt-8 mb-2 font-bold text-theme-1">Attributions</div>
+        <a href="?p=third-party-libraries" class="menu"
+          >Third-Party Libraries</a
+        >
+        <a href="?p=getting-support" class="menu">Getting Support</a>
+      </div>
+      <div class="relative flex-1 min-w-0 bg-white content">
+        <div id="introduction" class="content-section">
+          <h1 class="text-xl font-bold">Introduction</h1>
+          <h2 class="mt-2 text-base text-gray-600">
+            Introducing Tailwise TailwindCSS Admin Dashboard Template
+          </h2>
+          <div class="content-section__box">
+            <div class="mt-6">
+              <p class="mb-5">
+                Tailwise is a responsive and fully featured Admin Template
+                powered by the utility-first CSS framework TailwindCSS 3+. If
+                you’re a developer looking for an admin dashboard with
+                ready-made Tailwind components, developer-friendly, and highly
+                customizable Tailwise is one of the best on the market. Even if
+                you are not familiar with the framework, template’s UI
+                components can be easily customized without leaving the HTML
+                code.
+              </p>
+              <p class="mb-5">
+                Tailwise is a unique, modern, and flexible Admin dashboard
+                template that can be used to build Backend Applications,
+                Information system, CRM, or even to start a new simple project
+                and learning to use TailwindCSS. We encourage you to have a good
+                look at live preview and discover all the themes and included
+                features!
+              </p>
+              <p class="mb-5">
+                Thanks for purchasing Tailwise, Left4code Team.
+              </p>
+              <h1 class="mt-10 text-xl font-bold">Features</h1>
+              <h2 class="mt-2 text-base text-gray-600">
+                Build your dashboard application quickly with Tailwise
+              </h2>
+              <div class="grid w-full grid-cols-12 gap-5 mt-8">
+                <div class="col-span-6 cursor-pointer sm:col-span-3">
+                  <div
+                    class="flex flex-col items-center p-5 bg-gray-100 border border-gray-200 rounded-md"
+                  >
+                    <i data-feather="airplay" class="mr-3"></i>
+                    <div class="mt-3 font-medium">Responsive Design</div>
+                  </div>
+                </div>
+                <div class="col-span-6 cursor-pointer sm:col-span-3">
+                  <div
+                    class="flex flex-col items-center p-5 bg-gray-100 border border-gray-200 rounded-md"
+                  >
+                    <i data-feather="tool" class="mr-3"></i>
+                    <div class="mt-3 font-medium">Built-in Compiler</div>
+                  </div>
+                </div>
+                <div class="col-span-6 cursor-pointer sm:col-span-3">
+                  <div
+                    class="flex flex-col items-center p-5 bg-gray-100 border border-gray-200 rounded-md"
+                  >
+                    <i data-feather="sidebar" class="mr-3"></i>
+                    <div class="mt-3 font-medium">Functional Dashboard</div>
+                  </div>
+                </div>
+                <div class="col-span-6 cursor-pointer sm:col-span-3">
+                  <div
+                    class="flex flex-col items-center p-5 bg-gray-100 border border-gray-200 rounded-md"
+                  >
+                    <i data-feather="package" class="mr-3"></i>
+                    <div class="mt-3 font-medium">Apps Preview</div>
+                  </div>
+                </div>
+                <div class="col-span-6 cursor-pointer sm:col-span-3">
+                  <div
+                    class="flex flex-col items-center p-5 bg-gray-100 border border-gray-200 rounded-md"
+                  >
+                    <i data-feather="users" class="mr-3"></i>
+                    <div class="mt-3 font-medium">Users Preview</div>
+                  </div>
+                </div>
+                <div class="col-span-6 cursor-pointer sm:col-span-3">
+                  <div
+                    class="flex flex-col items-center p-5 bg-gray-100 border border-gray-200 rounded-md"
+                  >
+                    <i data-feather="inbox" class="mr-3"></i>
+                    <div class="mt-3 font-medium">Easy to Customize</div>
+                  </div>
+                </div>
+                <div class="col-span-6 cursor-pointer sm:col-span-3">
+                  <div
+                    class="flex flex-col items-center p-5 bg-gray-100 border border-gray-200 rounded-md"
+                  >
+                    <i data-feather="file-text" class="mr-3"></i>
+                    <div class="mt-3 font-medium">Useful Pages</div>
+                  </div>
+                </div>
+                <div class="col-span-6 cursor-pointer sm:col-span-3">
+                  <div
+                    class="flex flex-col items-center p-5 bg-gray-100 border border-gray-200 rounded-md"
+                  >
+                    <i data-feather="fast-forward" class="mr-3"></i>
+                    <div class="mt-3 font-medium">Fast Performance</div>
+                  </div>
+                </div>
+                <div class="col-span-6 cursor-pointer sm:col-span-3">
+                  <div
+                    class="flex flex-col items-center p-5 bg-gray-100 border border-gray-200 rounded-md"
+                  >
+                    <i data-feather="box" class="mr-3"></i>
+                    <div class="mt-3 font-medium">Utility Based</div>
+                  </div>
+                </div>
+                <div class="col-span-6 cursor-pointer sm:col-span-3">
+                  <div
+                    class="flex flex-col items-center p-5 bg-gray-100 border border-gray-200 rounded-md"
+                  >
+                    <i data-feather="code" class="mr-3"></i>
+                    <div class="mt-3 font-medium">Clean Code & Structure</div>
+                  </div>
+                </div>
+                <div class="col-span-6 cursor-pointer sm:col-span-3">
+                  <div
+                    class="flex flex-col items-center p-5 bg-gray-100 border border-gray-200 rounded-md"
+                  >
+                    <i data-feather="bold" class="mr-3"></i>
+                    <div class="mt-3 font-medium">PostCSS Support</div>
+                  </div>
+                </div>
+                <div class="col-span-6 cursor-pointer sm:col-span-3">
+                  <div
+                    class="flex flex-col items-center p-5 bg-gray-100 border border-gray-200 rounded-md"
+                  >
+                    <i data-feather="clock" class="mr-3"></i>
+                    <div class="mt-3 font-medium">Free Lifetime Updates</div>
+                  </div>
+                </div>
+              </div>
+              <h1 class="mt-10 text-xl font-bold">Browser Support</h1>
+              <h2 class="mt-2 text-base text-gray-600">
+                Extensive browser support
+              </h2>
+              <div class="grid w-full grid-cols-12 gap-5 mt-8">
+                <div class="col-span-6 cursor-pointer sm:col-span-3">
+                  <div
+                    class="flex flex-col items-center p-5 bg-gray-100 border border-gray-200 rounded-md"
+                  >
+                    <img
+                      class="w-10"
+                      alt="Browser"
+                      src="dist/images/chrome.png"
+                    />
+                    <div class="mt-3 font-medium">Chrome</div>
+                  </div>
+                </div>
+                <div class="col-span-6 cursor-pointer sm:col-span-3">
+                  <div
+                    class="flex flex-col items-center p-5 bg-gray-100 border border-gray-200 rounded-md"
+                  >
+                    <img
+                      class="w-10"
+                      alt="Browser"
+                      src="dist/images/edge.png"
+                    />
+                    <div class="mt-3 font-medium">Edge</div>
+                  </div>
+                </div>
+                <div class="col-span-6 cursor-pointer sm:col-span-3">
+                  <div
+                    class="flex flex-col items-center p-5 bg-gray-100 border border-gray-200 rounded-md"
+                  >
+                    <img
+                      class="w-10"
+                      alt="Browser"
+                      src="dist/images/mozilla.png"
+                    />
+                    <div class="mt-3 font-medium">Mozilla</div>
+                  </div>
+                </div>
+                <div class="col-span-6 cursor-pointer sm:col-span-3">
+                  <div
+                    class="flex flex-col items-center p-5 bg-gray-100 border border-gray-200 rounded-md"
+                  >
+                    <img
+                      class="w-10"
+                      alt="Browser"
+                      src="dist/images/opera.png"
+                    />
+                    <div class="mt-3 font-medium">Opera</div>
+                  </div>
+                </div>
+                <div class="col-span-6 cursor-pointer sm:col-span-3">
+                  <div
+                    class="flex flex-col items-center p-5 bg-gray-100 border border-gray-200 rounded-md"
+                  >
+                    <img
+                      class="w-10"
+                      alt="Browser"
+                      src="dist/images/safari.png"
+                    />
+                    <div class="mt-3 font-medium">Safari</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div id="requirements" class="content-section">
+          <h1 class="text-xl font-bold">Requirements</h1>
+          <h2 class="mt-2 text-base text-gray-600">
+            Minimum requirements to start using the template
+          </h2>
+          <div class="content-section__box">
+            <div class="mt-6">
+              <p class="mb-3">Please install the following requirements:</p>
+              <p class="mb-1">
+                <span class="font-bold">Nodejs</span> (TailwindCSS requires
+                nodejs version 12.13.0 or higher).
+              </p>
+              <a
+                class="block mb-5 text-theme-1"
+                target="blank"
+                href="https://nodejs.org/en/"
+                >https://nodejs.org/en/</a
+              >
+              <p class="mb-1">
+                <span class="font-bold">Yarn</span> (Package manager)
+              </p>
+              <a
+                class="block mb-5 text-theme-1"
+                target="blank"
+                href="https://classic.yarnpkg.com/en/docs/install"
+                >https://classic.yarnpkg.com/en/docs/install</a
+              >
+              <p class="mb-1">
+                <span class="font-bold">PNPM</span>
+                <span class="text-red-500">Optional*</span> (If you don't want
+                to use Yarn)
+              </p>
+              <a
+                class="block mb-5 text-theme-1"
+                target="blank"
+                href="https://pnpm.io/installation"
+                >https://pnpm.io/installation</a
+              >
+            </div>
+          </div>
+        </div>
+        <div id="installing-dependencies" class="content-section">
+          <h1 class="text-xl font-bold">Installing Dependencies</h1>
+          <h2 class="mt-2 text-base text-gray-600">
+            A few steps to install the project dependencies
+          </h2>
+          <div class="content-section__box">
+            <div class="mt-6">
+              <p class="mb-3">
+                Dependencies are packages or third-party libraries used in the
+                templates, including compiler to compile JS and CSS assets. If
+                you already have met the minimum requirements, follow the steps
+                below to install the project dependencies and run the compiler:
+              </p>
+              <ul class="mb-3 list-decimal">
+                <li>
+                  Access your console, then navigate to the project's root
+                  directory.
+                </li>
+                <li>
+                  Run <span class="font-bold">yarn install</span> to start
+                  installing dependencies.
+                </li>
+                <li>
+                  After the installation is complete, run
+                  <span class="font-bold">yarn run dev</span> to run the
+                  compiler.
+                </li>
+              </ul>
+              <p class="mb-3">
+                As long as the compiler is running any code modifications will
+                be monitored and you don't need to run the compiler again.
+              </p>
+            </div>
+          </div>
+        </div>
+        <div id="customizing-colors" class="content-section">
+          <h1 class="text-xl font-bold">Customizing Colors</h1>
+          <h2 class="mt-2 text-base text-gray-600">
+            Change the template's primary colors
+          </h2>
+          <div class="content-section__box">
+            <div class="mt-6">
+              <p class="mb-3">
+                The theme color configuration for this admin template now relies
+                on CSS variables, allowing easy customization and integration
+                with JavaScript libraries such as charts or icons. The latest
+                update has centralized the color configuration in the
+                "tailwind.config.js" file.
+              </p>
+              <p class="mb-3">
+                To modify the theme colors, navigate to the "tailwind.config.js"
+                file and locate the color definitions. You can change the values
+                directly within this file to update the entire color scheme.
+              </p>
+              <p class="mb-3">
+                Here's an example of the color configuration in the
+                "tailwind.config.js" file:
+              </p>
+              <pre class="mt-4 source-preview">
+                            <code class="px-8 bg-gray-200 rounded-lg javascript">
+// Default colors
+":root": {
+    "--color-theme-1": toRGB(colors.indigo["800"]),
+    "--color-theme-2": toRGB(colors.blue["900"]),
+    "--color-primary": toRGB(colors.indigo["800"]),
+    "--color-secondary": toRGB(colors.slate["200"]),
+    "--color-success": toRGB(colors.teal["600"]),
+    "--color-info": toRGB(colors.cyan["600"]),
+    "--color-warning": toRGB(colors.yellow["600"]),
+    "--color-pending": toRGB(colors.orange["700"]),
+    "--color-danger": toRGB(colors.red["700"]),
+    "--color-light": toRGB(colors.slate["100"]),
+    "--color-dark": toRGB(colors.slate["800"]),
+},
+// Default dark-mode colors
+".dark": {
+    "--color-primary": toRGB(colors.blue["700"]),
+    "--color-darkmode-50": "87 103 132",
+    "--color-darkmode-100": "74 90 121",
+    "--color-darkmode-200": "65 81 114",
+    "--color-darkmode-300": "53 69 103",
+    "--color-darkmode-400": "48 61 93",
+    "--color-darkmode-500": "41 53 82",
+    "--color-darkmode-600": "40 51 78",
+    "--color-darkmode-700": "35 45 69",
+    "--color-darkmode-800": "27 37 59",
+    "--color-darkmode-900": "15 23 42",
+},
+// Theme 1 colors
+".theme-1": {
+    "--color-theme-1": toRGB(colors.violet["900"]),
+    "--color-theme-2": toRGB(colors.rose["800"]),
+    "--color-primary": toRGB(colors.violet["900"]),
+    "--color-secondary": toRGB(colors.slate["200"]),
+    "--color-success": toRGB(colors.teal["600"]),
+    "--color-info": toRGB(colors.cyan["600"]),
+    "--color-warning": toRGB(colors.yellow["600"]),
+    "--color-pending": toRGB(colors.orange["700"]),
+    "--color-danger": toRGB(colors.red["700"]),
+    "--color-light": toRGB(colors.slate["100"]),
+    "--color-dark": toRGB(colors.slate["800"]),
+    "&.dark": {
+        "--color-primary": toRGB(colors.sky["800"]),
+    },
+},
+// Theme 2 colors
+".theme-2": {
+    "--color-theme-1": toRGB(colors.purple["900"]),
+    "--color-theme-2": toRGB(colors.cyan["700"]),
+    "--color-primary": toRGB(colors.purple["900"]),
+    "--color-secondary": toRGB(colors.slate["200"]),
+    "--color-success": toRGB(colors.teal["600"]),
+    "--color-info": toRGB(colors.cyan["600"]),
+    "--color-warning": toRGB(colors.yellow["600"]),
+    "--color-pending": toRGB(colors.orange["700"]),
+    "--color-danger": toRGB(colors.red["700"]),
+    "--color-light": toRGB(colors.slate["100"]),
+    "--color-dark": toRGB(colors.slate["800"]),
+    "&.dark": {
+        "--color-primary": toRGB(colors.sky["800"]),
+    },
+},
+// Theme 3 colors
+".theme-3": {
+    "--color-theme-1": toRGB(colors.cyan["700"]),
+    "--color-theme-2": toRGB(colors.violet["800"]),
+    "--color-primary": toRGB(colors.cyan["700"]),
+    "--color-secondary": toRGB(colors.slate["200"]),
+    "--color-success": toRGB(colors.teal["600"]),
+    "--color-info": toRGB(colors.cyan["600"]),
+    "--color-warning": toRGB(colors.yellow["600"]),
+    "--color-pending": toRGB(colors.orange["700"]),
+    "--color-danger": toRGB(colors.red["700"]),
+    "--color-light": toRGB(colors.slate["100"]),
+    "--color-dark": toRGB(colors.slate["800"]),
+    "&.dark": {
+        "--color-primary": toRGB(colors.sky["800"]),
+    },
+},
+// Theme 4 colors
+".theme-4": {
+    "--color-theme-1": toRGB(colors.sky["700"]),
+    "--color-theme-2": toRGB(colors.rose["800"]),
+    "--color-primary": toRGB(colors.sky["700"]),
+    "--color-secondary": toRGB(colors.slate["200"]),
+    "--color-success": toRGB(colors.teal["600"]),
+    "--color-info": toRGB(colors.cyan["600"]),
+    "--color-warning": toRGB(colors.yellow["600"]),
+    "--color-pending": toRGB(colors.orange["700"]),
+    "--color-danger": toRGB(colors.red["700"]),
+    "--color-light": toRGB(colors.slate["100"]),
+    "--color-dark": toRGB(colors.slate["800"]),
+    "&.dark": {
+        "--color-primary": toRGB(colors.sky["800"]),
+    },
+},
+// Theme 5 colors
+".theme-5": {
+    "--color-theme-1": toRGB(colors.sky["800"]),
+    "--color-theme-2": toRGB(colors.emerald["800"]),
+    "--color-primary": toRGB(colors.sky["800"]),
+    "--color-secondary": toRGB(colors.slate["200"]),
+    "--color-success": toRGB(colors.teal["600"]),
+    "--color-info": toRGB(colors.cyan["600"]),
+    "--color-warning": toRGB(colors.yellow["600"]),
+    "--color-pending": toRGB(colors.orange["700"]),
+    "--color-danger": toRGB(colors.red["700"]),
+    "--color-light": toRGB(colors.slate["100"]),
+    "--color-dark": toRGB(colors.slate["800"]),
+    "&.dark": {
+        "--color-primary": toRGB(colors.sky["800"]),
+    },
+},
+// Theme 6 colors
+".theme-6": {
+    "--color-theme-1": toRGB("#247ba0"),
+    "--color-theme-2": toRGB("#0a2463"),
+    "--color-primary": toRGB("#247ba0"),
+    "--color-secondary": toRGB(colors.slate["200"]),
+    "--color-success": toRGB(colors.teal["600"]),
+    "--color-info": toRGB(colors.cyan["600"]),
+    "--color-warning": toRGB(colors.yellow["600"]),
+    "--color-pending": toRGB(colors.orange["700"]),
+    "--color-danger": toRGB(colors.red["700"]),
+    "--color-light": toRGB(colors.slate["100"]),
+    "--color-dark": toRGB(colors.slate["800"]),
+    "&.dark": {
+        "--color-primary": toRGB(colors.sky["800"]),
+    },
+},
+// Theme 7 colors
+".theme-7": {
+    "--color-theme-1": toRGB(colors.lime["950"]),
+    "--color-theme-2": toRGB(colors.teal["900"]),
+    "--color-primary": toRGB(colors.lime["950"]),
+    "--color-secondary": toRGB(colors.slate["200"]),
+    "--color-success": toRGB(colors.teal["600"]),
+    "--color-info": toRGB(colors.cyan["600"]),
+    "--color-warning": toRGB(colors.yellow["600"]),
+    "--color-pending": toRGB(colors.orange["700"]),
+    "--color-danger": toRGB(colors.red["700"]),
+    "--color-light": toRGB(colors.slate["100"]),
+    "--color-dark": toRGB(colors.slate["800"]),
+    "&.dark": {
+        "--color-primary": toRGB(colors.sky["800"]),
+    },
+},
+// Theme 8 colors
+".theme-8": {
+    "--color-theme-1": toRGB("#357266"),
+    "--color-theme-2": toRGB("#0E3B43"),
+    "--color-primary": toRGB("#357266"),
+    "--color-secondary": toRGB(colors.slate["200"]),
+    "--color-success": toRGB(colors.teal["600"]),
+    "--color-info": toRGB(colors.cyan["600"]),
+    "--color-warning": toRGB(colors.yellow["600"]),
+    "--color-pending": toRGB(colors.orange["700"]),
+    "--color-danger": toRGB(colors.red["700"]),
+    "--color-light": toRGB(colors.slate["100"]),
+    "--color-dark": toRGB(colors.slate["800"]),
+    "&.dark": {
+        "--color-primary": toRGB(colors.sky["800"]),
+    },
+},
+// Theme 9 colors
+".theme-9": {
+    "--color-theme-1": toRGB("#6C6C60"),
+    "--color-theme-2": toRGB("#4D4D42"),
+    "--color-primary": toRGB("#6C6C60"),
+    "--color-secondary": toRGB(colors.slate["200"]),
+    "--color-success": toRGB(colors.teal["600"]),
+    "--color-info": toRGB(colors.cyan["600"]),
+    "--color-warning": toRGB(colors.yellow["600"]),
+    "--color-pending": toRGB(colors.orange["700"]),
+    "--color-danger": toRGB(colors.red["700"]),
+    "--color-light": toRGB(colors.slate["100"]),
+    "--color-dark": toRGB(colors.slate["800"]),
+    "&.dark": {
+        "--color-primary": toRGB(colors.sky["800"]),
+    },
+},
+// Theme 10 colors
+".theme-10": {
+    "--color-theme-1": toRGB("#03045e"),
+    "--color-theme-2": toRGB("#0c4a6e"),
+    "--color-primary": toRGB("#03045e"),
+    "--color-secondary": toRGB(colors.slate["200"]),
+    "--color-success": toRGB(colors.teal["600"]),
+    "--color-info": toRGB(colors.cyan["600"]),
+    "--color-warning": toRGB(colors.yellow["600"]),
+    "--color-pending": toRGB(colors.orange["700"]),
+    "--color-danger": toRGB(colors.red["700"]),
+    "--color-light": toRGB(colors.slate["100"]),
+    "--color-dark": toRGB(colors.slate["800"]),
+    "&.dark": {
+        "--color-primary": toRGB(colors.sky["800"]),
+    },
+},
+// Theme 11 colors
+".theme-11": {
+    "--color-theme-1": toRGB("#2f3e46"),
+    "--color-theme-2": toRGB("#52796f"),
+    "--color-primary": toRGB("#2f3e46"),
+    "--color-secondary": toRGB(colors.slate["200"]),
+    "--color-success": toRGB(colors.teal["600"]),
+    "--color-info": toRGB(colors.cyan["600"]),
+    "--color-warning": toRGB(colors.yellow["600"]),
+    "--color-pending": toRGB(colors.orange["700"]),
+    "--color-danger": toRGB(colors.red["700"]),
+    "--color-light": toRGB(colors.slate["100"]),
+    "--color-dark": toRGB(colors.slate["800"]),
+    "&.dark": {
+        "--color-primary": toRGB(colors.sky["800"]),
+    },
+},
+// Theme 12 colors
+".theme-12": {
+    "--color-theme-1": toRGB("#5e503f"),
+    "--color-theme-2": toRGB("#22333b"),
+    "--color-primary": toRGB("#5e503f"),
+    "--color-secondary": toRGB(colors.slate["200"]),
+    "--color-success": toRGB(colors.teal["600"]),
+    "--color-info": toRGB(colors.cyan["600"]),
+    "--color-warning": toRGB(colors.yellow["600"]),
+    "--color-pending": toRGB(colors.orange["700"]),
+    "--color-danger": toRGB(colors.red["700"]),
+    "--color-light": toRGB(colors.slate["100"]),
+    "--color-dark": toRGB(colors.slate["800"]),
+    "&.dark": {
+        "--color-primary": toRGB(colors.sky["800"]),
+    },
+},
+// Theme 13 colors
+".theme-13": {
+    "--color-theme-1": toRGB("#5e548e"),
+    "--color-theme-2": toRGB("#231942"),
+    "--color-primary": toRGB("#5e548e"),
+    "--color-secondary": toRGB(colors.slate["200"]),
+    "--color-success": toRGB(colors.teal["600"]),
+    "--color-info": toRGB(colors.cyan["600"]),
+    "--color-warning": toRGB(colors.yellow["600"]),
+    "--color-pending": toRGB(colors.orange["700"]),
+    "--color-danger": toRGB(colors.red["700"]),
+    "--color-light": toRGB(colors.slate["100"]),
+    "--color-dark": toRGB(colors.slate["800"]),
+    "&.dark": {
+        "--color-primary": toRGB(colors.sky["800"]),
+    },
+},
+// Theme 14 colors
+".theme-14": {
+    "--color-theme-1": toRGB("#02292f"),
+    "--color-theme-2": toRGB("#767522"),
+    "--color-primary": toRGB("#02292f"),
+    "--color-secondary": toRGB(colors.slate["200"]),
+    "--color-success": toRGB(colors.teal["600"]),
+    "--color-info": toRGB(colors.cyan["600"]),
+    "--color-warning": toRGB(colors.yellow["600"]),
+    "--color-pending": toRGB(colors.orange["700"]),
+    "--color-danger": toRGB(colors.red["700"]),
+    "--color-light": toRGB(colors.slate["100"]),
+    "--color-dark": toRGB(colors.slate["800"]),
+    "&.dark": {
+        "--color-primary": toRGB(colors.sky["800"]),
+    },
+},
+// Theme 15 colors
+".theme-15": {
+    "--color-theme-1": toRGB("#4c956c"),
+    "--color-theme-2": toRGB("#006466"),
+    "--color-primary": toRGB("#4c956c"),
+    "--color-secondary": toRGB(colors.slate["200"]),
+    "--color-success": toRGB(colors.teal["600"]),
+    "--color-info": toRGB(colors.cyan["600"]),
+    "--color-warning": toRGB(colors.yellow["600"]),
+    "--color-pending": toRGB(colors.orange["700"]),
+    "--color-danger": toRGB(colors.red["700"]),
+    "--color-light": toRGB(colors.slate["100"]),
+    "--color-dark": toRGB(colors.slate["800"]),
+    "&.dark": {
+        "--color-primary": toRGB(colors.sky["800"]),
+    },
+},
+// Theme 16 colors
+".theme-16": {
+    "--color-theme-1": toRGB(colors.sky["900"]),
+    "--color-theme-2": toRGB(colors.blue["950"]),
+    "--color-primary": toRGB(colors.sky["900"]),
+    "--color-secondary": toRGB(colors.slate["200"]),
+    "--color-success": toRGB(colors.teal["600"]),
+    "--color-info": toRGB(colors.cyan["600"]),
+    "--color-warning": toRGB(colors.yellow["600"]),
+    "--color-pending": toRGB(colors.orange["700"]),
+    "--color-danger": toRGB(colors.red["700"]),
+    "--color-light": toRGB(colors.slate["100"]),
+    "--color-dark": toRGB(colors.slate["800"]),
+    "&.dark": {
+        "--color-primary": toRGB(colors.sky["800"]),
+    },
+},
+// Theme 17 colors
+".theme-17": {
+    "--color-theme-1": toRGB(colors.slate["900"]),
+    "--color-theme-2": toRGB(colors.slate["800"]),
+    "--color-primary": toRGB(colors.slate["900"]),
+    "--color-secondary": toRGB(colors.slate["200"]),
+    "--color-success": toRGB(colors.teal["600"]),
+    "--color-info": toRGB(colors.cyan["600"]),
+    "--color-warning": toRGB(colors.yellow["600"]),
+    "--color-pending": toRGB(colors.orange["700"]),
+    "--color-danger": toRGB(colors.red["700"]),
+    "--color-light": toRGB(colors.slate["100"]),
+    "--color-dark": toRGB(colors.slate["800"]),
+    "&.dark": {
+        "--color-primary": toRGB(colors.sky["800"]),
+    },
+},                           
+                            </code>
+                        </pre>
+            </div>
+          </div>
+        </div>
+        <div id="jit-mode" class="content-section">
+          <h1 class="text-xl font-bold">JIT Mode</h1>
+          <h2 class="mt-2 text-base text-gray-600">
+            Enable/Disable JIT mode compiler
+          </h2>
+          <div class="content-section__box">
+            <div class="mt-6">
+              <p class="mb-3">
+                Since version 2.1+ TailwindCSS has a new compiler called JIT
+                (Just In Time), which has many advantages over the previous
+                compiler, such as speeding up the compilation process and
+                rendering in the browser. To enable/disable this mode, you can
+                open the
+                <span>tailwind.config.js</span> file, comment/uncomment this
+                line <span>mode: jit</span> or add it if it is not already
+                there, don't forget to rerun the compiler to reload the
+                configuration.
+              </p>
+              <pre class="mt-4 source-preview">
+                            <code class="px-8 bg-gray-200 rounded-lg javascript">
+const colors = require("tailwindcss/colors");
+const {
+    toRGB,
+    withOpacityValue,
+} = require("@left4code/tw-starter/dist/js/tailwind-config-helper");
+
+module.exports = {
+    mode: "jit",
+    content: [
+        "./src/**/*.{php,html,js,jsx,ts,tsx,vue}",
+        "./src/**/*.{php,html,js,jsx,ts,tsx,vue}",
+        "./node_modules/@left4code/tw-starter/**/*.js",
+    ],
+                            </code>
+                        </pre>
+            </div>
+          </div>
+        </div>
+        <div id="build-tools" class="content-section">
+          <h1 class="text-xl font-bold">Build Tools</h1>
+          <h2 class="mt-2 text-base text-gray-600">
+            Learn how to configure ESBuild
+          </h2>
+          <div class="content-section__box">
+            <div class="mt-6">
+              <p class="mb-3">
+                In the latest version of this template, we have transitioned to
+                using ESBuild, which acts as a standalone build tool, replacing
+                webpack. ESBuild simplifies our build tools configuration,
+                enabling us to concentrate more on the development code. The
+                configuration for ESBuild can now be located in the
+                "esbuild.config.js" file.
+              </p>
+              <p class="mb-3">
+                Here's a comprehensive example of the ESBuild configuration for
+                both development and production builds:
+              </p>
+              <pre class="mt-4 source-preview">
+                            <code class="px-8 bg-gray-200 rounded-lg javascript">
+...
+
+// Define source and distribution paths
+const sourcePath = "src/";
+const distPath = "dist/";
+
+// Specify files and directories to watch
+const watchedFiles = ["./*.html"];
+const copyDirs = ["images", "json"];
+
+// Specify entries for JS and CSS files
+const entries = [
+// CSS Vendors
+"src/css/vendors/ckeditor.css",
+// ... (other CSS vendors)
+
+// CSS Themes
+"src/css/themes/dagger.css",
+// ... (other CSS themes)
+
+// CSS General
+"src/css/app.css",
+
+// JS Vendor
+"src/js/vendors/accordion.js",
+// ... (other JS vendors)
+
+// JS Utils
+"src/js/utils/colors.js",
+"src/js/utils/helper.js",
+
+// JS Pages
+"src/js/pages/landing-page.js",
+// ... (other JS pages)
+
+// JS Themes
+"src/js/themes/dagger.js",
+// ... (other JS themes)
+
+// JS Base Components
+"src/js/components/base/theme-color.js",
+// ... (other JS base components)
+
+// JS Components
+"src/js/components/donut-chart.js",
+// ... (other JS components)
+
+// JS General
+"src/js/app.js",
+];
+
+...
+                            </code>
+                        </pre>
+              <p class="mb-3">
+                Feel free to explore the ESBuild configuration file and adjust
+                it according to your project's requirements. If you have any
+                questions or need assistance, refer to the documentation or
+                reach out to our support team.
+              </p>
+            </div>
+          </div>
+        </div>
+        <div id="javascript-structure" class="content-section">
+          <h1 class="text-xl font-bold">Javascript Structure</h1>
+          <h2 class="mt-2 text-base text-gray-600">
+            Learn javascript code structure on Tailwise
+          </h2>
+          <div class="content-section__box">
+            <div class="mt-6">
+              <p class="mb-3">
+                The JavaScript code has been reorganized into a modular
+                structure, allowing for better readability and maintainability.
+                Instead of importing all JavaScript files into a single entry
+                file, each file is now separated and categorized based on its
+                function or purpose. Here's an example of how JavaScript files
+                are imported:
+              </p>
+              <pre class="mt-4 source-preview">
+                            <code class="px-8 bg-gray-200 rounded-lg javascript">
+&lt;!-- Importing Third-Party Libraries --&gt;
+&lt;script type="module" src="/src/js/vendors/dom.js"&gt;&lt;/script&gt;
+&lt;script type="module" src="/src/js/vendors/tailwind-merge.js"&gt;&lt;/script&gt;
+&lt;!-- ... (other third-party libraries) --&gt;
+
+&lt;!-- Importing Base Components --&gt;
+&lt;script type="module" src="/src/js/components/base/theme-color.js"&gt;&lt;/script&gt;
+&lt;script type="module" src="/src/js/components/base/lucide.js"&gt;&lt;/script&gt;
+&lt;script type="module" src="/src/js/components/base/litepicker.js"&gt;&lt;/script&gt;
+&lt;script type="module" src="/src/js/components/base/tiny-slider.js"&gt;&lt;/script&gt;
+&lt;!-- ... (other base components) --&gt;
+
+&lt;!-- Importing Utilities --&gt;
+&lt;script type="module" src="/src/js/utils/colors.js"&gt;&lt;/script&gt;
+&lt;script type="module" src="/src/js/utils/helper.js"&gt;&lt;/script&gt;
+&lt;!-- ... (other utility files) --&gt;
+
+&lt;!-- Importing Themes --&gt;
+&lt;script type="module" src="/src/js/themes/viper.js"&gt;&lt;/script&gt;
+&lt;!-- ... (other theme files) --&gt;
+
+&lt;!-- Importing Components --&gt;
+&lt;script type="module" src="/src/js/components/report-line-chart.js"&gt;&lt;/script&gt;
+&lt;script type="module" src="/src/js/components/report-donut-chart-3.js"&gt;&lt;/script&gt;
+&lt;script type="module" src="/src/js/components/base/tippy.js"&gt;&lt;/script&gt;
+&lt;script type="module" src="/src/js/components/quick-search.js"&gt;&lt;/script&gt;
+&lt;!-- ... (other component files) --&gt;                        
+                            </code>
+                        </pre>
+              <p class="mb-3">
+                The JavaScript code is now organized into the following
+                directories inside the js directory:
+              </p>
+              <ul class="mb-3 list-decimal">
+                <li>
+                  <span class="font-medium">/js/vendors</span>: Contains
+                  third-party libraries and vendor-specific code.
+                </li>
+                <li>
+                  <span class="font-medium">/js/components</span>: Includes
+                  reusable components that serve specific functions.
+                </li>
+                <li>
+                  <span class="font-medium">/js/utils</span>: Holds utility
+                  functions and helper scripts.
+                </li>
+                <li>
+                  <span class="font-medium">/js/themes</span>: Contains
+                  theme-specific JavaScript code.
+                </li>
+              </ul>
+              <p class="mb-3">
+                Each directory has its own meaning and purpose, making it easier
+                to locate and manage specific functionalities within the
+                project. Explore these directories to understand the structure
+                and make modifications according to your project's requirements.
+              </p>
+            </div>
+          </div>
+        </div>
+        <div id="css-structure" class="content-section">
+          <h1 class="text-xl font-bold">CSS Structure</h1>
+          <h2 class="mt-2 text-base text-gray-600">
+            Learn CSS code structure on Tailwise
+          </h2>
+          <div class="content-section__box">
+            <div class="mt-6">
+              <p class="mb-3">
+                Similar to the JavaScript code, the CSS assets have been
+                organized into a modular structure, enhancing maintainability
+                and ease of customization. CSS files are categorized based on
+                their function or purpose, and the import structure reflects
+                this organization. Here's an example of how CSS files are
+                imported:
+              </p>
+              <pre class="mt-4 source-preview">
+                            <code class="px-8 bg-gray-200 rounded-lg sass">
+&lt;!-- Importing Vendor Styles --&gt;
+&lt;link rel="stylesheet" href="/src/css/vendors/litepicker.css"&gt;
+&lt;link rel="stylesheet" href="/src/css/vendors/tiny-slider.css"&gt;
+&lt;link rel="stylesheet" href="/src/css/vendors/tippy.css"&gt;
+&lt;link rel="stylesheet" href="/src/css/vendors/simplebar.css"&gt;
+&lt;!-- ... (other vendor styles) --&gt;
+
+&lt;!-- Importing Theme Styles --&gt;
+&lt;link rel="stylesheet" href="/src/css/themes/viper.css"&gt;
+&lt;!-- ... (other theme styles) --&gt;
+
+&lt;!-- Importing Global Styles --&gt;
+&lt;link rel="stylesheet" href="/src/css/app.css"&gt;                           
+                            </code>
+                        </pre>
+              <p class="mb-3">
+                The CSS code is organized into two main directories inside the
+                css directory:
+              </p>
+              <ul class="mb-3 list-decimal">
+                <li>
+                  <span class="font-medium">/css/vendors</span>: This directory
+                  contains styles related to third-party libraries and
+                  vendor-specific styling.
+                </li>
+                <li>
+                  <span class="font-medium">/css/themes</span>: Here, you'll
+                  find styles specific to different themes used in the template.
+                </li>
+              </ul>
+              <p class="mb-3">
+                Additionally, the app.css file serves as the main CSS entry
+                point, bringing together global styles such as TailwindCSS
+                directives, font imports, and shared components needed across
+                all template pages. Here's an example snippet from app.css:
+              </p>
+              <pre class="mt-4 source-preview">
+                        <code class="px-8 bg-gray-200 rounded-lg sass">
+/*
+   |--------------------------------------------------------------------------
+   | Fonts
+   |--------------------------------------------------------------------------
+   |
+   | Import all fonts used in the template, the font configuration can be
+   | seen in "tailwind.config.js".
+   |
+   | Please check this link for more details:
+   | https://tailwindcss.com/docs/theme
+   |
+   */
+@import "./fonts/_public-sans.css";
+
+/*
+   |--------------------------------------------------------------------------
+   | Components
+   |--------------------------------------------------------------------------
+   |
+   | Import CSS components.
+   |
+   */
+@import "./components/_box.css";
+@import "./components/_global.css";
+@import "./components/_image-fit.css";
+@import "./components/_scrollbar-hidden.css";
+@import "./components/_typing-dots.css";
+@import "./components/_zoom-in.css";
+
+/*
+ |--------------------------------------------------------------------------
+ | TailwindCSS Directives
+ |--------------------------------------------------------------------------
+ |
+ | Import TailwindCSS directives and swipe out at build-time with all of
+ | the styles it generates based on your configured design system.
+ |
+ | Please check this link for more details:
+ | https://tailwindcss.com/docs/installation#include-tailwind-in-your-css
+ |
+ */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+                        </code>
+                      </pre>
+              <p class="mb-3">
+                Feel free to explore these directories to understand the
+                structure and make necessary adjustments according to your
+                project's styling requirements.
+              </p>
+            </div>
+          </div>
+        </div>
+        <div id="accordion" class="content-section">
+          <h1 class="text-xl font-bold">Accordion</h1>
+          <h2 class="mt-2 text-base text-gray-600">
+            Working with built-in accordion components
+          </h2>
+          <div class="content-section__box">
+            <div class="mt-6">
+              <p class="mb-3">
+                These are very basic HTML structure of the accordion components,
+                you can open the demo to check more of the other
+                implementations.
+              </p>
+              <pre class="mt-4 source-preview">
+                            <code class="px-8 bg-gray-200 rounded-lg html">
+&lt;div data-tw-merge class="accordion"&gt;
+&lt;div
+  data-tw-merge
+  class="accordion-item py-4 first:-mt-4 last:-mb-4 [&amp;:not(:last-child)]:border-b [&amp;:not(:last-child)]:border-slate-200/60 [&amp;:not(:last-child)]:dark:border-darkmode-400"
+&gt;
+  &lt;div class="accordion-header" id="faq-accordion-1"&gt;
+    &lt;button
+      data-tw-merge
+      data-tw-toggle="collapse"
+      data-tw-target="#faq-accordion-1-collapse"
+      type="button"
+      aria-expanded="true"
+      aria-controls="faq-accordion-1-collapse"
+      class="accordion-button outline-none py-4 -my-4 font-medium w-full text-left dark:text-slate-400 [&amp;:not(.collapsed)]:text-primary [&amp;:not(.collapsed)]:dark:text-slate-300"
+    &gt;
+      OpenSSL Essentials: Working with SSL Certificates, Private
+      Keys
+    &lt;/button&gt;
+  &lt;/div&gt;
+  &lt;div
+    id="faq-accordion-1-collapse"
+    aria-labelledby="faq-accordion-1"
+    class="accordion-collapse collapse mt-3 text-slate-700 leading-relaxed dark:text-slate-400 [&amp;.collapse:not(.show)]:hidden [&amp;.collapse.show]:visible show"
+  &gt;
+    &lt;div
+      data-tw-merge
+      class="leading-relaxed accordion-body text-slate-600 dark:text-slate-500"
+    &gt;
+      Lorem Ipsum is simply dummy text of the printing and
+      typesetting industry. Lorem Ipsum has been the industry's
+      standard dummy text ever since the 1500s, when an unknown
+      printer took a galley of type and scrambled it to make a
+      type specimen book. It has survived not only five
+      centuries, but also the leap into electronic typesetting,
+      remaining essentially unchanged.
+    &lt;/div&gt;
+  &lt;/div&gt;
+&lt;/div&gt;
+&lt;div
+  data-tw-merge
+  class="accordion-item py-4 first:-mt-4 last:-mb-4 [&amp;:not(:last-child)]:border-b [&amp;:not(:last-child)]:border-slate-200/60 [&amp;:not(:last-child)]:dark:border-darkmode-400"
+&gt;
+  &lt;div class="accordion-header" id="faq-accordion-2"&gt;
+    &lt;button
+      data-tw-merge
+      data-tw-toggle="collapse"
+      data-tw-target="#faq-accordion-2-collapse"
+      type="button"
+      aria-expanded="true"
+      aria-controls="faq-accordion-2-collapse"
+      class="accordion-button outline-none py-4 -my-4 font-medium w-full text-left dark:text-slate-400 [&amp;:not(.collapsed)]:text-primary [&amp;:not(.collapsed)]:dark:text-slate-300 collapsed"
+    &gt;
+      Understanding IP Addresses, Subnets, and CIDR Notation
+    &lt;/button&gt;
+  &lt;/div&gt;
+  &lt;div
+    id="faq-accordion-2-collapse"
+    aria-labelledby="faq-accordion-2"
+    class="accordion-collapse collapse mt-3 text-slate-700 leading-relaxed dark:text-slate-400 [&amp;.collapse:not(.show)]:hidden [&amp;.collapse.show]:visible"
+  &gt;
+    &lt;div
+      data-tw-merge
+      class="leading-relaxed accordion-body text-slate-600 dark:text-slate-500"
+    &gt;
+      Lorem Ipsum is simply dummy text of the printing and
+      typesetting industry. Lorem Ipsum has been the industry's
+      standard dummy text ever since the 1500s, when an unknown
+      printer took a galley of type and scrambled it to make a
+      type specimen book. It has survived not only five
+      centuries, but also the leap into electronic typesetting,
+      remaining essentially unchanged.
+    &lt;/div&gt;
+  &lt;/div&gt;
+&lt;/div&gt;
+&lt;div
+  data-tw-merge
+  class="accordion-item py-4 first:-mt-4 last:-mb-4 [&amp;:not(:last-child)]:border-b [&amp;:not(:last-child)]:border-slate-200/60 [&amp;:not(:last-child)]:dark:border-darkmode-400"
+&gt;
+  &lt;div class="accordion-header" id="faq-accordion-3"&gt;
+    &lt;button
+      data-tw-merge
+      data-tw-toggle="collapse"
+      data-tw-target="#faq-accordion-3-collapse"
+      type="button"
+      aria-expanded="true"
+      aria-controls="faq-accordion-3-collapse"
+      class="accordion-button outline-none py-4 -my-4 font-medium w-full text-left dark:text-slate-400 [&amp;:not(.collapsed)]:text-primary [&amp;:not(.collapsed)]:dark:text-slate-300 collapsed"
+    &gt;
+      How To Troubleshoot Common HTTP Error Codes
+    &lt;/button&gt;
+  &lt;/div&gt;
+  &lt;div
+    id="faq-accordion-3-collapse"
+    aria-labelledby="faq-accordion-3"
+    class="accordion-collapse collapse mt-3 text-slate-700 leading-relaxed dark:text-slate-400 [&amp;.collapse:not(.show)]:hidden [&amp;.collapse.show]:visible"
+  &gt;
+    &lt;div
+      data-tw-merge
+      class="leading-relaxed accordion-body text-slate-600 dark:text-slate-500"
+    &gt;
+      Lorem Ipsum is simply dummy text of the printing and
+      typesetting industry. Lorem Ipsum has been the industry's
+      standard dummy text ever since the 1500s, when an unknown
+      printer took a galley of type and scrambled it to make a
+      type specimen book. It has survived not only five
+      centuries, but also the leap into electronic typesetting,
+      remaining essentially unchanged.
+    &lt;/div&gt;
+  &lt;/div&gt;
+&lt;/div&gt;
+&lt;div
+  data-tw-merge
+  class="accordion-item py-4 first:-mt-4 last:-mb-4 [&amp;:not(:last-child)]:border-b [&amp;:not(:last-child)]:border-slate-200/60 [&amp;:not(:last-child)]:dark:border-darkmode-400"
+&gt;
+  &lt;div class="accordion-header" id="faq-accordion-4"&gt;
+    &lt;button
+      data-tw-merge
+      data-tw-toggle="collapse"
+      data-tw-target="#faq-accordion-4-collapse"
+      type="button"
+      aria-expanded="true"
+      aria-controls="faq-accordion-4-collapse"
+      class="accordion-button outline-none py-4 -my-4 font-medium w-full text-left dark:text-slate-400 [&amp;:not(.collapsed)]:text-primary [&amp;:not(.collapsed)]:dark:text-slate-300 collapsed"
+    &gt;
+      An Introduction to Securing your Linux VPS
+    &lt;/button&gt;
+  &lt;/div&gt;
+  &lt;div
+    id="faq-accordion-4-collapse"
+    aria-labelledby="faq-accordion-4"
+    class="accordion-collapse collapse mt-3 text-slate-700 leading-relaxed dark:text-slate-400 [&amp;.collapse:not(.show)]:hidden [&amp;.collapse.show]:visible"
+  &gt;
+    &lt;div
+      data-tw-merge
+      class="leading-relaxed accordion-body text-slate-600 dark:text-slate-500"
+    &gt;
+      Lorem Ipsum is simply dummy text of the printing and
+      typesetting industry. Lorem Ipsum has been the industry's
+      standard dummy text ever since the 1500s, when an unknown
+      printer took a galley of type and scrambled it to make a
+      type specimen book. It has survived not only five
+      centuries, but also the leap into electronic typesetting,
+      remaining essentially unchanged.
+    &lt;/div&gt;
+  &lt;/div&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+                            </code>
+                        </pre>
+              <p class="mb-3">
+                You can configure the active accordion by adding a
+                <span>show</span> class to the desired accordion.
+              </p>
+            </div>
+          </div>
+        </div>
+        <div id="alert" class="content-section">
+          <h1 class="text-xl font-bold">Alert</h1>
+          <h2 class="mt-2 text-base text-gray-600">
+            Working with built-in alert components
+          </h2>
+          <div class="content-section__box">
+            <div class="mt-6">
+              <p class="mb-3">
+                These are very basic HTML structure of the alert components, you
+                can open the demo to check more of the other implementations.
+              </p>
+              <pre class="mt-4 source-preview">
+                            <code class="px-8 bg-gray-200 rounded-lg html">
+&lt;div class="flex flex-col gap-2"&gt;
+&lt;div
+  role="alert"
+  class="relative px-5 py-4 text-white border rounded-md alert bg-primary border-primary dark:border-primary"
+&gt;
+  Awesome simple alert
+&lt;/div&gt;
+&lt;div
+  role="alert"
+  class="relative px-5 py-4 border rounded-md alert bg-secondary/70 border-secondary/70 text-slate-500 dark:border-darkmode-400 dark:bg-darkmode-400 dark:text-slate-300"
+&gt;
+  Awesome simple alert
+&lt;/div&gt;
+&lt;div
+  role="alert"
+  class="relative px-5 py-4 border rounded-md alert bg-success border-success text-slate-900 dark:border-success"
+&gt;
+  Awesome simple alert
+&lt;/div&gt;
+&lt;div
+  role="alert"
+  class="relative px-5 py-4 border rounded-md alert bg-warning border-warning text-slate-900 dark:border-warning"
+&gt;
+  Awesome simple alert
+&lt;/div&gt;
+&lt;div
+  role="alert"
+  class="relative px-5 py-4 text-white border rounded-md alert bg-pending border-pending dark:border-pending"
+&gt;
+  Awesome simple alert
+&lt;/div&gt;
+&lt;div
+  role="alert"
+  class="relative px-5 py-4 text-white border rounded-md alert bg-danger border-danger dark:border-danger"
+&gt;
+  Awesome simple alert
+&lt;/div&gt;
+&lt;div
+  role="alert"
+  class="relative px-5 py-4 text-white border rounded-md alert bg-dark border-dark dark:bg-darkmode-800 dark:border-transparent dark:text-slate-300"
+&gt;
+  Awesome simple alert
+&lt;/div&gt;
+&lt;/div&gt;
+                            </code>
+                        </pre>
+              <p class="mb-3">
+                You can add a close button to the alert by using the
+                <span>btn-close</span> class.
+              </p>
+            </div>
+          </div>
+        </div>
+        <div id="dropdown" class="content-section">
+          <h1 class="text-xl font-bold">Dropdown</h1>
+          <h2 class="mt-2 text-base text-gray-600">
+            Working with built-in dropdown components
+          </h2>
+          <div class="content-section__box">
+            <div class="mt-6">
+              <p class="mb-3">
+                These are very basic HTML structure of the dropdown components,
+                you can open the demo to check more of the other
+                implementations.
+              </p>
+              <pre class="mt-4 source-preview">
+                            <code class="px-8 bg-gray-200 rounded-lg html">
+  &lt;div
+  data-tw-merge
+  data-tw-placement="bottom-end"
+  class="relative dropdown"
+&gt;
+  &lt;button
+    data-tw-merge
+    data-tw-toggle="dropdown"
+    aria-expanded="false"
+    class="transition duration-200 border shadow-sm inline-flex items-center justify-center py-2 px-3 rounded-md font-medium cursor-pointer focus:ring-4 focus:ring-primary focus:ring-opacity-20 focus-visible:outline-none dark:focus:ring-slate-700 dark:focus:ring-opacity-50 [&amp;:hover:not(:disabled)]:bg-opacity-90 [&amp;:hover:not(:disabled)]:border-opacity-90 [&amp;:not(button)]:text-center disabled:opacity-70 disabled:cursor-not-allowed bg-primary border-primary text-white dark:border-primary cursor-pointer cursor-pointer"
+  &gt;
+    Show Dropdown
+  &lt;/button&gt;
+  &lt;div
+    data-transition
+    data-selector=".show"
+    data-enter="transition-all ease-linear duration-150"
+    data-enter-from="absolute !mt-5 invisible opacity-0 translate-y-1"
+    data-enter-to="!mt-1 visible opacity-100 translate-y-0"
+    data-leave="transition-all ease-linear duration-150"
+    data-leave-from="!mt-1 visible opacity-100 translate-y-0"
+    data-leave-to="absolute !mt-5 invisible opacity-0 translate-y-1"
+    class="dropdown-menu absolute z-[9999] hidden"
+  &gt;
+    &lt;div
+      data-tw-merge
+      class="dropdown-content rounded-md border-transparent bg-white p-2 shadow-[0px_3px_10px_#00000017] dark:border-transparent dark:bg-darkmode-600 w-40"
+    &gt;
+      &lt;a
+        class="flex items-center p-2 transition duration-300 ease-in-out rounded-md cursor-pointer hover:bg-slate-200/60 dark:bg-darkmode-600 dark:hover:bg-darkmode-400 dropdown-item"
+        &gt;New Dropdown&lt;/a
+      &gt;
+      &lt;a
+        class="flex items-center p-2 transition duration-300 ease-in-out rounded-md cursor-pointer hover:bg-slate-200/60 dark:bg-darkmode-600 dark:hover:bg-darkmode-400 dropdown-item"
+        &gt;Delete Dropdown&lt;/a
+      &gt;
+    &lt;/div&gt;
+  &lt;/div&gt;
+&lt;/div&gt;
+                            </code>
+                        </pre>
+              <p class="mb-3">
+                You can use the available javascript API to show or hide the
+                dropdown. Please check the following APIs for more datils.
+              </p>
+              <pre class="mt-4 source-preview">
+                            <code class="px-8 bg-gray-200 rounded-lg javascript">
+// Show dropdown
+const el = document.querySelector("#programmatically-dropdown");
+const dropdown = tailwind.Dropdown.getOrCreateInstance(el);
+dropdown.show();
+
+// Hide dropdown
+const el = document.querySelector("#programmatically-dropdown");
+const dropdown = tailwind.Dropdown.getOrCreateInstance(el);
+dropdown.hide();
+
+// Toggle dropdown
+const el = document.querySelector("#programmatically-dropdown");
+const dropdown = tailwind.Dropdown.getOrCreateInstance(el);
+dropdown.toggle();
+                            </code>
+                        </pre>
+            </div>
+          </div>
+        </div>
+        <div id="modal-and-slideover" class="content-section">
+          <h1 class="text-xl font-bold">Modal & Slideover</h1>
+          <h2 class="mt-2 text-base text-gray-600">
+            Working with built-in modal & slideover components
+          </h2>
+          <div class="content-section__box">
+            <div class="mt-6">
+              <p class="mb-3">
+                These are very basic HTML structure of the modal components, you
+                can open the demo to check more of the other implementations.
+              </p>
+              <pre class="mt-4 source-preview">
+                            <code class="px-8 bg-gray-200 rounded-lg html">
+&lt;!-- BEGIN: Modal Toggle --&gt;
+&lt;div class="text-center"&gt;
+  &lt;a
+    data-tw-merge
+    data-tw-toggle="modal"
+    data-tw-target="#basic-modal-preview"
+    class="transition duration-200 border shadow-sm inline-flex items-center justify-center py-2 px-3 rounded-md font-medium cursor-pointer focus:ring-4 focus:ring-primary focus:ring-opacity-20 focus-visible:outline-none dark:focus:ring-slate-700 dark:focus:ring-opacity-50 [&amp;:hover:not(:disabled)]:bg-opacity-90 [&amp;:hover:not(:disabled)]:border-opacity-90 [&amp;:not(button)]:text-center disabled:opacity-70 disabled:cursor-not-allowed bg-primary border-primary text-white dark:border-primary"
+    &gt;Show Modal&lt;/a
+  &gt;
+&lt;/div&gt;
+&lt;!-- END: Modal Toggle --&gt;
+&lt;!-- BEGIN: Modal Content --&gt;
+&lt;div
+  data-tw-backdrop=""
+  aria-hidden="true"
+  tabindex="-1"
+  id="basic-modal-preview"
+  class="modal group bg-gradient-to-b from-theme-1/50 via-theme-2/50 to-black/50 transition-[visibility,opacity] w-screen h-screen fixed left-0 top-0 [&amp;:not(.show)]:duration-[0s,0.2s] [&amp;:not(.show)]:delay-[0.2s,0s] [&amp;:not(.show)]:invisible [&amp;:not(.show)]:opacity-0 [&amp;.show]:visible [&amp;.show]:opacity-100 [&amp;.show]:duration-[0s,0.4s]"
+&gt;
+  &lt;div
+    data-tw-merge
+    class="w-[90%] mx-auto bg-white relative rounded-md shadow-md transition-[margin-top,transform] duration-[0.4s,0.3s] -mt-16 group-[.show]:mt-16 group-[.modal-static]:scale-[1.05] dark:bg-darkmode-600 sm:w-[460px] p-10 text-center"
+  &gt;
+    This is totally awesome blank modal!
+  &lt;/div&gt;
+&lt;/div&gt;
+&lt;!-- END: Modal Content --&gt;
+                            </code>
+                        </pre>
+              <p class="mb-3">
+                The slideover component inherits the functionality of the modal
+                component, you can simply add the
+                <span>modal-slide-over</span> modifier class to turn a modal
+                component into a slideover.
+              </p>
+              <pre class="mt-4 source-preview">
+                            <code class="px-8 bg-gray-200 rounded-lg html">
+&lt;!-- BEGIN: Slide Over Toggle --&gt;
+&lt;div class="text-center"&gt;
+  &lt;a
+    data-tw-merge
+    data-tw-toggle="modal"
+    data-tw-target="#basic-slide-over-preview"
+    href="#"
+    class="transition duration-200 border shadow-sm inline-flex items-center justify-center py-2 px-3 rounded-md font-medium cursor-pointer focus:ring-4 focus:ring-primary focus:ring-opacity-20 focus-visible:outline-none dark:focus:ring-slate-700 dark:focus:ring-opacity-50 [&amp;:hover:not(:disabled)]:bg-opacity-90 [&amp;:hover:not(:disabled)]:border-opacity-90 [&amp;:not(button)]:text-center disabled:opacity-70 disabled:cursor-not-allowed bg-primary border-primary text-white dark:border-primary"
+    &gt;Show Slide Over&lt;/a
+  &gt;
+&lt;/div&gt;
+&lt;!-- END: Slide Over Toggle --&gt;
+&lt;!-- BEGIN: Slide Over Content --&gt;
+&lt;div
+  data-tw-backdrop=""
+  aria-hidden="true"
+  tabindex="-1"
+  id="basic-slide-over-preview"
+  class="modal group bg-gradient-to-b from-theme-1/50 via-theme-2/50 to-black/50 transition-[visibility,opacity] w-screen h-screen fixed left-0 top-0 [&amp;:not(.show)]:duration-[0s,0.2s] [&amp;:not(.show)]:delay-[0.2s,0s] [&amp;:not(.show)]:invisible [&amp;:not(.show)]:opacity-0 [&amp;.show]:visible [&amp;.show]:opacity-100 [&amp;.show]:duration-[0s,0.4s]"
+&gt;
+  &lt;div
+    data-tw-merge
+    class="w-[90%] ml-auto h-screen flex flex-col bg-white relative shadow-md transition-[margin-right] duration-[0.6s] -mr-[100%] group-[.show]:mr-0 dark:bg-darkmode-600 sm:w-[460px]"
+  &gt;
+    &lt;div
+      data-tw-merge
+      class="flex items-center p-5 px-5 py-3 border-b border-slate-200/60 dark:border-darkmode-400"
+    &gt;
+      &lt;h2 class="mr-auto text-base font-medium"&gt;
+        Blank Slide Over
+      &lt;/h2&gt;
+    &lt;/div&gt;
+    &lt;div data-tw-merge class="flex-1 p-5 overflow-y-auto"&gt;
+      This is totally awesome blank slide over!
+    &lt;/div&gt;
+  &lt;/div&gt;
+&lt;/div&gt;
+&lt;!-- END: Slide Over Content --&gt;
+                            </code>
+                        </pre>
+              <p class="mb-3">
+                You can use the available javascript API to show or hide the
+                modal & slideover. Please check the following APIs for more
+                datils.
+              </p>
+              <pre class="mt-4 source-preview">
+                            <code class="px-8 bg-gray-200 rounded-lg javascript">
+// Show modal
+const el = document.querySelector("#basic-modal");
+const modal = tailwind.Modal.getOrCreateInstance(el);
+modal.show();
+
+// Hide modal
+const el = document.querySelector("#basic-modal");
+const modal = tailwind.Modal.getOrCreateInstance(el);
+modal.hide();
+
+// Toggle modal
+const el = document.querySelector("#basic-modal");
+const modal = tailwind.Modal.getOrCreateInstance(el);
+modal.toggle();
+                                
+// Show slideover
+const el = document.querySelector("#basic-slide-over");
+const slideOver = tailwind.Modal.getOrCreateInstance(el);
+slideOver.show();
+
+// Hide slideover
+const el = document.querySelector("#basic-slide-over");
+const slideOver = tailwind.Modal.getOrCreateInstance(el);
+slideOver.hide();
+
+// Toggle slideover
+const el = document.querySelector("#basic-slide-over");
+const slideOver = tailwind.Modal.getOrCreateInstance(el);
+slideOver.toggle();
+                            </code>
+                        </pre>
+            </div>
+          </div>
+        </div>
+        <div id="svg-loading-icon" class="content-section">
+          <h1 class="text-xl font-bold">SVG Loading Icon</h1>
+          <h2 class="mt-2 text-base text-gray-600">
+            Working with built-in SVG loading icon components
+          </h2>
+          <div class="content-section__box">
+            <div class="mt-6">
+              <p class="mb-3">
+                These are the built-in SVG loading icons available on Tailwise.
+                The icon component has a
+                <span>data-loading-icon</span> parameter to specify the icon,
+                and every icon element will be replaced with an SVG icon at
+                runtime. You can also use the <span>data-color</span> parameter
+                to specify the color of the icon.
+              </p>
+              <pre class="mt-4 source-preview">
+                            <code class="px-8 bg-gray-200 rounded-lg html">
+&lt;!-- Audio --&gt;
+&lt;i data-loading-icon="audio" class="w-8 h-8"&gt;&lt;/i&gt;
+
+&lt;!-- Ball Triangle --&gt;
+&lt;i data-loading-icon="ball-triangle" class="w-8 h-8"&gt;&lt;/i&gt;
+
+&lt;!-- Bars --&gt;
+&lt;i data-loading-icon="bars" class="w-8 h-8"&gt;&lt;/i&gt;
+
+&lt;!-- Circles --&gt;
+&lt;i data-loading-icon="circles" class="w-8 h-8"&gt;&lt;/i&gt;
+
+&lt;!-- Grid --&gt;
+&lt;i data-loading-icon="grid" class="w-8 h-8"&gt;&lt;/i&gt;
+
+&lt;!-- Hearts --&gt;
+&lt;i data-loading-icon="hearts" class="w-8 h-8"&gt;&lt;/i&gt;
+
+&lt;!-- Oval --&gt;
+&lt;i data-loading-icon="oval" class="w-8 h-8"&gt;&lt;/i&gt;
+
+&lt;!-- Puff --&gt;
+&lt;i data-loading-icon="puff" class="w-8 h-8"&gt;&lt;/i&gt;
+
+&lt;!-- Rings --&gt;
+&lt;i data-loading-icon="rings" class="w-8 h-8"&gt;&lt;/i&gt;
+
+&lt;!-- Spinning Circles --&gt;
+&lt;i data-loading-icon="spinning-circles" class="w-8 h-8"&gt;&lt;/i&gt;
+
+&lt;!-- Tail Spin --&gt;
+&lt;i data-loading-icon="tail-spin" class="w-8 h-8"&gt;&lt;/i&gt;
+
+&lt;!-- Three Dots --&gt;
+&lt;i data-loading-icon="three-dots" class="w-8 h-8"&gt;&lt;/i&gt;
+                            </code>
+                        </pre>
+              <p class="mb-3">
+                You can initialize icons at runtime with the javascript API,
+                this will be useful when you make changes to the DOM element
+                such as changing icons or using new icons.
+              </p>
+              <pre class="mt-4 source-preview">
+                            <code class="px-8 bg-gray-200 rounded-lg javascript">
+// Example re-init SVG loading icon
+tailwind.svgLoader();
+                            </code>
+                        </pre>
+            </div>
+          </div>
+        </div>
+        <div id="tab" class="content-section">
+          <h1 class="text-xl font-bold">Tab</h1>
+          <h2 class="mt-2 text-base text-gray-600">
+            Working with built-in tab components
+          </h2>
+          <div class="content-section__box">
+            <div class="mt-6">
+              <p class="mb-3">
+                These are very basic HTML structure of the tab components, you
+                can open the demo to check more of the other implementations.
+              </p>
+              <pre class="mt-4 source-preview">
+                            <code class="px-8 bg-gray-200 rounded-lg html">
+&lt;div&gt;
+&lt;ul
+  data-tw-merge
+  role="tablist"
+  class="flex w-full border-b border-slate-200 dark:border-darkmode-400"
+&gt;
+  &lt;li
+    id="example-1-tab"
+    data-tw-merge
+    role="presentation"
+    class="flex-1 -mb-px focus-visible:outline-none"
+  &gt;
+    &lt;button
+      data-tw-merge
+      data-tw-target="#example-1"
+      role="tab"
+      class="cursor-pointer block appearance-none px-3 py-2 border border-transparent text-slate-600 transition-colors dark:text-slate-400 [&amp;.active]:text-slate-700 [&amp;.active]:dark:text-white block border-transparent rounded-t-md dark:border-transparent [&amp;.active]:bg-white [&amp;.active]:border-slate-200 [&amp;.active]:border-b-transparent [&amp;.active]:font-medium [&amp;.active]:dark:bg-transparent [&amp;.active]:dark:border-t-darkmode-400 [&amp;.active]:dark:border-b-darkmode-600 [&amp;.active]:dark:border-x-darkmode-400 [&amp;:not(.active)]:hover:bg-slate-100 [&amp;:not(.active)]:dark:hover:bg-darkmode-400 [&amp;:not(.active)]:dark:hover:border-transparent active w-full py-2"
+    &gt;
+      Example Tab 1
+    &lt;/button&gt;
+  &lt;/li&gt;
+  &lt;li
+    id="example-2-tab"
+    data-tw-merge
+    role="presentation"
+    class="flex-1 -mb-px focus-visible:outline-none"
+  &gt;
+    &lt;button
+      data-tw-merge
+      data-tw-target="#example-2"
+      role="tab"
+      class="cursor-pointer block appearance-none px-3 py-2 border border-transparent text-slate-600 transition-colors dark:text-slate-400 [&amp;.active]:text-slate-700 [&amp;.active]:dark:text-white block border-transparent rounded-t-md dark:border-transparent [&amp;.active]:bg-white [&amp;.active]:border-slate-200 [&amp;.active]:border-b-transparent [&amp;.active]:font-medium [&amp;.active]:dark:bg-transparent [&amp;.active]:dark:border-t-darkmode-400 [&amp;.active]:dark:border-b-darkmode-600 [&amp;.active]:dark:border-x-darkmode-400 [&amp;:not(.active)]:hover:bg-slate-100 [&amp;:not(.active)]:dark:hover:bg-darkmode-400 [&amp;:not(.active)]:dark:hover:border-transparent w-full py-2"
+    &gt;
+      Example Tab 2
+    &lt;/button&gt;
+  &lt;/li&gt;
+&lt;/ul&gt;
+&lt;div class="border-b border-l border-r tab-content"&gt;
+  &lt;div
+    data-transition
+    data-selector=".active"
+    data-enter="transition-[visibility,opacity] ease-linear duration-150"
+    data-enter-from="!p-0 !h-0 overflow-hidden invisible opacity-0"
+    data-enter-to="visible opacity-100"
+    data-leave="transition-[visibility,opacity] ease-linear duration-150"
+    data-leave-from="visible opacity-100"
+    data-leave-to="!p-0 !h-0 overflow-hidden invisible opacity-0"
+    id="example-1"
+    role="tabpanel"
+    aria-labelledby="example-1-tab"
+    class="p-5 leading-relaxed tab-pane active"
+  &gt;
+    Lorem Ipsum is simply dummy text of the printing and typesetting
+    industry. Lorem Ipsum has been the industry's standard dummy text
+    ever since the 1500s, when an unknown printer took a galley of
+    type and scrambled it to make a type specimen book. It has
+    survived not only five centuries, but also the leap into
+    electronic typesetting, remaining essentially unchanged. It was
+    popularised in the 1960s with the release of Letraset sheets
+    containing Lorem Ipsum passages, and more recently with desktop
+    publishing software like Aldus PageMaker including versions of
+    Lorem Ipsum.
+  &lt;/div&gt;
+  &lt;div
+    data-transition
+    data-selector=".active"
+    data-enter="transition-[visibility,opacity] ease-linear duration-150"
+    data-enter-from="!p-0 !h-0 overflow-hidden invisible opacity-0"
+    data-enter-to="visible opacity-100"
+    data-leave="transition-[visibility,opacity] ease-linear duration-150"
+    data-leave-from="visible opacity-100"
+    data-leave-to="!p-0 !h-0 overflow-hidden invisible opacity-0"
+    id="example-2"
+    role="tabpanel"
+    aria-labelledby="example-2-tab"
+    class="p-5 leading-relaxed tab-pane"
+  &gt;
+    It is a long established fact that a reader will be distracted by
+    the readable content of a page when looking at its layout. The
+    point of using Lorem Ipsum is that it has a more-or-less normal
+    distribution of letters, as opposed to using 'Content here,
+    content here', making it look like readable English. Many desktop
+    publishing packages and web page editors now use Lorem Ipsum as
+    their default model text, and a search for 'lorem ipsum' will
+    uncover many web sites still in their infancy. Various versions
+    have evolved over the years, sometimes by accident, sometimes on
+    purpose (injected humour and the like).
+  &lt;/div&gt;
+&lt;/div&gt;
+&lt;/div&gt;
+                            </code>
+                        </pre>
+            </div>
+          </div>
+        </div>
+        <div id="configure-purge-css" class="content-section">
+          <h1 class="text-xl font-bold">Configure PurgeCSS</h1>
+          <h2 class="mt-2 text-base text-gray-600">
+            Configuring PurgeCSS on TailwindCSS
+          </h2>
+          <div class="content-section__box">
+            <div class="mt-6">
+              <p class="mb-3">
+                Configuring PurgeCSS in TailwindCSS is very easy. We have
+                provided an example in <span>tailwind.config.js</span>. You can
+                reconfigure these settings if you have different project
+                structures or add new file extensions.
+              </p>
+              <pre class="mt-4 source-preview">
+                            <code class="px-8 bg-gray-200 rounded-lg javascript">
+...
+content: ["./**/*.{php,html,js,jsx,ts,tsx}"],
+...
+                            </code>
+                        </pre>
+            </div>
+          </div>
+        </div>
+        <div id="running-production-build" class="content-section">
+          <h1 class="text-xl font-bold">Running Production Build</h1>
+          <h2 class="mt-2 text-base text-gray-600">
+            Running production build to produce optimized JS/CSS assets
+          </h2>
+          <div class="content-section__box">
+            <div class="mt-6">
+              <p class="mb-3">
+                To produce an optimized JS/CSS assets, you can run
+                <span>yarn run build</span> to compile assets for a production
+                build. It will automatically purge unused CSS classes and minify
+                the assets.
+              </p>
+            </div>
+          </div>
+        </div>
+        <div id="third-party-libraries" class="content-section">
+          <h1 class="text-xl font-bold">Third-Party Libraries</h1>
+          <h2 class="mt-2 text-base text-gray-600">
+            List of third-party libraries and official/documentation page
+          </h2>
+          <div class="content-section__box">
+            <div class="mt-6">
+              <table class="my-6">
+                <thead>
+                  <tr>
+                    <th class="p-3 text-left border-b border-gray-400">
+                      Library
+                    </th>
+                    <th class="p-3 text-left border-b border-gray-400">
+                      Official/Documentation Page
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="p-3 text-left border-b border-gray-400">
+                      CKEditor
+                    </td>
+                    <td class="p-3 text-left border-b border-gray-400">
+                      <a target="blank" href="https://ckeditor.com/"
+                        >https://ckeditor.com/</a
+                      >
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="p-3 text-left border-b border-gray-400">
+                      Chartjs
+                    </td>
+                    <td class="p-3 text-left border-b border-gray-400">
+                      <a target="blank" href="https://www.chartjs.org/"
+                        >https://www.chartjs.org/</a
+                      >
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="p-3 text-left border-b border-gray-400">
+                      DayJs
+                    </td>
+                    <td class="p-3 text-left border-b border-gray-400">
+                      <a target="blank" href="https://github.com/iamkun/dayjs"
+                        >https://github.com/iamkun/dayjs</a
+                      >
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="p-3 text-left border-b border-gray-400">
+                      DropzoneJs
+                    </td>
+                    <td class="p-3 text-left border-b border-gray-400">
+                      <a target="blank" href="https://www.dropzonejs.com/"
+                        >https://www.dropzonejs.com/</a
+                      >
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="p-3 text-left border-b border-gray-400">
+                      Feather Icons
+                    </td>
+                    <td class="p-3 text-left border-b border-gray-400">
+                      <a target="blank" href="https://feathericons.com/"
+                        >https://feathericons.com/</a
+                      >
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="p-3 text-left border-b border-gray-400">
+                      HighlightJs
+                    </td>
+                    <td class="p-3 text-left border-b border-gray-400">
+                      <a target="blank" href="https://highlightjs.org/"
+                        >https://highlightjs.org/</a
+                      >
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="p-3 text-left border-b border-gray-400">
+                      JS Beautify
+                    </td>
+                    <td class="p-3 text-left border-b border-gray-400">
+                      <a
+                        target="blank"
+                        href="https://github.com/beautify-web/js-beautify"
+                        >https://github.com/beautify-web/js-beautify</a
+                      >
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="p-3 text-left border-b border-gray-400">
+                      Litepicker
+                    </td>
+                    <td class="p-3 text-left border-b border-gray-400">
+                      <a
+                        target="blank"
+                        href="https://wakirin.github.io/Litepicker/"
+                        >https://wakirin.github.io/Litepicker/</a
+                      >
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="p-3 text-left border-b border-gray-400">
+                      PristineJs
+                    </td>
+                    <td class="p-3 text-left border-b border-gray-400">
+                      <a target="blank" href="http://pristine.js.org/"
+                        >http://pristine.js.org/</a
+                      >
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="p-3 text-left border-b border-gray-400">
+                      Tabulator
+                    </td>
+                    <td class="p-3 text-left border-b border-gray-400">
+                      <a target="blank" href="http://tabulator.info/"
+                        >http://tabulator.info/</a
+                      >
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="p-3 text-left border-b border-gray-400">
+                      Tom Select
+                    </td>
+                    <td class="p-3 text-left border-b border-gray-400">
+                      <a target="blank" href="https://tom-select.js.org/"
+                        >https://tom-select.js.org/</a
+                      >
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="p-3 text-left border-b border-gray-400">
+                      Tiny Slider
+                    </td>
+                    <td class="p-3 text-left border-b border-gray-400">
+                      <a
+                        target="blank"
+                        href="https://github.com/ganlanyuan/tiny-slider"
+                        >https://github.com/ganlanyuan/tiny-slider</a
+                      >
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="p-3 text-left border-b border-gray-400">
+                      TippyJs
+                    </td>
+                    <td class="p-3 text-left border-b border-gray-400">
+                      <a
+                        target="blank"
+                        href="https://atomiks.github.io/tippyjs/"
+                        >https://atomiks.github.io/tippyjs/</a
+                      >
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="p-3 text-left border-b border-gray-400">
+                      ToastifyJs
+                    </td>
+                    <td class="p-3 text-left border-b border-gray-400">
+                      <a
+                        target="blank"
+                        href="https://github.com/apvarun/toastify-js"
+                        >https://github.com/apvarun/toastify-js</a
+                      >
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="p-3 text-left border-b border-gray-400">
+                      SheetJs
+                    </td>
+                    <td class="p-3 text-left border-b border-gray-400">
+                      <a target="blank" href="https://sheetjs.com/"
+                        >https://sheetjs.com/</a
+                      >
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="p-3 text-left border-b border-gray-400">
+                      Zoom Vanilla
+                    </td>
+                    <td class="p-3 text-left border-b border-gray-400">
+                      <a
+                        target="blank"
+                        href="https://github.com/spinningarrow/zoom-vanilla.js/"
+                        >https://github.com/spinningarrow/zoom-vanilla.js/</a
+                      >
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="p-3 text-left border-b border-gray-400">
+                      Axios
+                    </td>
+                    <td class="p-3 text-left border-b border-gray-400">
+                      <a target="blank" href="https://github.com/axios/axios"
+                        >https://github.com/axios/axios</a
+                      >
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="p-3 text-left border-b border-gray-400">
+                      SVG Loaders
+                    </td>
+                    <td class="p-3 text-left border-b border-gray-400">
+                      <a
+                        target="blank"
+                        href="https://github.com/SamHerbert/SVG-Loaders"
+                        >https://github.com/SamHerbert/SVG-Loaders</a
+                      >
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="p-3 text-left border-b border-gray-400">Vite</td>
+                    <td class="p-3 text-left border-b border-gray-400">
+                      <a target="blank" href="https://vitejs.dev/"
+                        >https://vitejs.dev/</a
+                      >
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="p-3 text-left border-b border-gray-400">
+                      TailwindCSS
+                    </td>
+                    <td class="p-3 text-left border-b border-gray-400">
+                      <a
+                        class="hover:text-white"
+                        target="blank"
+                        href="https://tailwindcss.com/"
+                        >https://tailwindcss.com/</a
+                      >
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div id="getting-support" class="content-section">
+          <h1 class="text-xl font-bold">Getting Support</h1>
+          <h2 class="mt-2 text-base text-gray-600">
+            Support and assistance information
+          </h2>
+          <div class="content-section__box">
+            <div class="mt-6">
+              <p class="mb-3">
+                Don’t hesitate to contact us with any questions or concerns you
+                may have at
+                <a
+                  class="font-medium hover:text-white"
+                  href="mailto:leftforcode@gmail.com"
+                  >leftforcode@gmail.com</a
+                >. Please include your purchase code for verification process,
+                you can check
+                <a
+                  href="https://help.market.envato.com/hc/en-us/articles/202822600-Where-Is-My-Purchase-Code-"
+                  >this link</a
+                >
+                to find your purchase code.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- BEGIN: JS Assets-->
+    <script src="dist/js/app.js"></script>
+    <!-- END: JS Assets-->
+  </body>
+</html>
