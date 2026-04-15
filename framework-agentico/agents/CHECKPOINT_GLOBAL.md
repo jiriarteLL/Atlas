@@ -78,6 +78,40 @@ phases_status:
   transversal:
     status: "not_started"
     checkpoint_file: "transversal/CHECKPOINT.md"
+
+cost_summary:
+  license:
+    type: "subscription"
+    plan: "max-5x"
+    monthly_cost_usd: 200.00
+  budget:
+    budget_usd: null
+    consumed_usd: 0.00
+    consumed_pct: 0.0%
+    alert_level: "none"
+  totals:
+    total_queries: 0
+    total_tokens:
+      input: 0
+      output: 0
+      cache_read: 0
+      cache_creation: 0
+      grand_total: 0
+    total_cost_usd: 0.00
+  by_phase:
+    00-setup: { queries: 0, tokens: 0, cost_usd: 0.00 }
+    01-discovery: { queries: 0, tokens: 0, cost_usd: 0.00 }
+    02-planning: { queries: 0, tokens: 0, cost_usd: 0.00 }
+    03-development: { queries: 0, tokens: 0, cost_usd: 0.00 }
+    04-delivery: { queries: 0, tokens: 0, cost_usd: 0.00 }
+    05-operations: { queries: 0, tokens: 0, cost_usd: 0.00 }
+    06-retrospective: { queries: 0, tokens: 0, cost_usd: 0.00 }
+  efficiency:
+    avg_tokens_per_response: 0
+    avg_cost_per_response_usd: 0.00
+    cache_hit_rate: 0.0%
+    tokens_per_loc: 0
+  cost_log: "transversal/docs/COST_LOG.md"
 ```
 
 ---

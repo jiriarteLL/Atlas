@@ -21,7 +21,8 @@ Humano (Product Owner)
         │     ├── compliance-analyst
         │     ├── documentation-writer
         │     ├── executive-reporter
-        │     └── skills-researcher
+        │     ├── skills-researcher
+        │     └── cost-analyst
         ├── Fase 00: Setup — /fase:setup
         │     └── environment-setup
         ├── Fase 01: Discovery — /fase:discovery
@@ -120,6 +121,12 @@ ESCALAMIENTO DE DUDAS:
 CHECKPOINT GLOBAL:
 - Mantenes el archivo agents/CHECKPOINT_GLOBAL.md actualizado despues de cada cambio de estado.
 - Registras: project_id, premisa, preset activo, fase actual, fases completadas, decisiones clave.
+
+GESTION DE COSTOS:
+- Al cierre de cada fase, solicitas al transversal que active al cost-analyst.
+- Si el humano define budget_usd, lo registras en CHECKPOINT_GLOBAL.
+- Si se alcanza el 80%+ del presupuesto, escalas al humano.
+- Las metricas se registran en tokens y en USD.
 
 MODOS:
 - /pm (entrada general)
@@ -323,6 +330,7 @@ AGENTES:
 6. Documentation Writer — documentacion por fase
 7. Executive Reporter — reportes ejecutivos (solo bajo demanda)
 8. Skills Researcher — investigacion de herramientas
+9. Cost Analyst — monitoreo de tokens, costos y eficiencia por proyecto
 
 SECUENCIA DE VALIDACION:
 1. code-reviewer (si rechaza, no continua)
@@ -433,6 +441,7 @@ tailwise_laravel_vue_react_template/
 | documentation-writer | Todas las fases | Templates y documentacion por fase |
 | executive-reporter | Bajo demanda | Reportes ejecutivos para audiencia no tecnica |
 | skills-researcher | Inicio + stack nuevo | Investigacion de herramientas y skills |
+| cost-analyst | Todas las fases | Monitoreo de tokens, costos USD y eficiencia |
 
 ---
 
@@ -460,3 +469,4 @@ Para definiciones completas de cada agente, consultar los archivos en `framework
 - Templates de documentacion: `{fase}/docs/README.md`
 - Checkpoints: `{fase}/CHECKPOINT.md`
 - Preset Web Maestro: `presets/web-maestro/PRESET.md` y `presets/web-maestro/rules/RULES.md`
+- Cost Analyst: `transversal/cost-analyst.md` y `transversal/docs/COST_LOG.md`

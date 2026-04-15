@@ -43,6 +43,15 @@ presets:
   - los agentes verifican si hay preset activo y aplican sus reglas adicionales
   - las reglas del preset nunca contradicen las reglas generales
 
+monitoreo_de_costos:
+  - el cost-analyst registra consumo de tokens de cada consulta en COST_LOG.md
+  - al cierre de cada fase, el cost-analyst consolida metricas en el checkpoint de fase y en CHECKPOINT_GLOBAL
+  - los costos se registran siempre en tokens (valor absoluto) y en USD (valor estimado con pricing vigente)
+  - si la licencia o el pricing cambia, se actualiza en COST_LOG.md; los registros historicos NO se recalculan
+  - si el humano define un budget_usd, el cost-analyst alerta al 60%, 80%, 95% y 100% del presupuesto
+  - el cost-analyst no es un gate de validacion; opera en paralelo y reporta sin bloquear
+  - las metricas de eficiencia (tokens/respuesta, cache hit rate, tokens/LOC) se incluyen en reportes ejecutivos
+
 comunicacion_entre_agentes:
   - los agentes se comunican mediante artefactos con estructura predefinida
   - los orquestadores de fase solicitan intervención transversal al orquestador transversal
