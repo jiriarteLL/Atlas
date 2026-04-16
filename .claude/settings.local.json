@@ -1,7 +1,16 @@
 {
   "permissions": {
     "allow": [
-      "Bash(echo \"exit: $?\")"
+      "Bash(echo \"exit: $?\")",
+      "Bash(claude --version)",
+      "Read(//c/Users/aviera/.claude/**)",
+      "Bash(python3 -m json.tool)",
+      "Bash(python3 -c ':*)",
+      "Bash(python -c ':*)",
+      "Bash(node:*)",
+      "Bash(ls ~/.claude/*.log)",
+      "Bash(ls ~/.claude/usage*)",
+      "Bash(ls .claude/commands/fase-*.md .claude/commands/transversal-*.md)"
     ]
   }
 }
