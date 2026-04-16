@@ -37,9 +37,13 @@ pending_phases:
 skipped_phases: []
 
 phases_status:
+  # Estados validos: not_started | in_progress | completed | verified_by_analysis | incomplete_pre_existing | skipped
   00-setup:
     status: "not_started"
     exit_criteria_met: false
+    # sync_date: null        # Se completa si la fase fue verificada por analisis
+    # sync_notes: null       # Resumen de hallazgos del analisis
+    # missing_criteria: []   # Criterios faltantes (si incomplete_pre_existing)
   01-discovery:
     status: "not_started"
     exit_criteria_met: false

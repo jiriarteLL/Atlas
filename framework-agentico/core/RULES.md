@@ -153,16 +153,83 @@ preset_web_maestro:
   - Los validadores transversales DEBEN verificar cumplimiento del preset.
 
 # ============================================================
-# 9. CHECKPOINT
+# 9. SINCRONIZACION DE PROYECTO EXISTENTE
+# ============================================================
+sincronizacion_proyecto_existente:
+  descripcion: >
+    Cuando el PM detecta que existe codigo en el repositorio pero no hay archivos
+    de seguimiento (checkpoints de fase), debe iniciar un analisis automatico para
+    determinar que fases del framework ya estan cubiertas por el estado actual del codigo.
+
+  deteccion_automatica:
+    - Al iniciar cualquier modo (/pm, /pm:orquestar, /pm:planificar), el PM verifica:
+      1. checkpoints/GLOBAL.md tiene status "not_started" o no tiene proyecto activo
+      2. NO existen archivos en checkpoints/phases/
+      3. EXISTE codigo funcional en el repositorio mas alla de los archivos del framework
+    - Si las 3 condiciones se cumplen, el PM DEBE entrar en modo sincronizacion ANTES de cualquier otra accion.
+    - El PM informa al Project Owner que detecto un proyecto con avance previo y que va a analizar el estado.
+
+  flujo_de_sincronizacion:
+    - El PM analiza el repositorio fase por fase, en orden (00 a 06).
+    - Para CADA fase, el PM:
+      1. Lee los exit_criteria del template de fase (phases/{NN}-{nombre}.md).
+      2. Analiza el estado actual del repositorio contra cada criterio.
+      3. Clasifica cada criterio como: CUMPLIDO, PARCIAL, o NO_CUMPLIDO.
+      4. Presenta el resultado al Project Owner de forma interactiva.
+      5. Espera confirmacion del Project Owner antes de avanzar a la siguiente fase.
+    - El analisis puede usar Agent(sync-analyzer, sonnet) para inspeccionar el codigo si es necesario.
+
+  clasificacion_de_fases:
+    fase_cumplida:
+      - TODOS los exit_criteria estan CUMPLIDOS.
+      - El PM marca la fase con status "verified_by_analysis" en GLOBAL.md.
+      - Se registra en completed_phases.
+      - NO se generan los artefactos de checkpoint retroactivamente.
+      - Se registra una nota indicando: "Fase verificada por analisis de proyecto existente. No posee artefactos de checkpoint."
+    fase_incompleta:
+      - Al menos un exit_criteria esta PARCIAL o NO_CUMPLIDO.
+      - El PM lista los criterios faltantes al Project Owner.
+      - El PM consulta al Project Owner como desea proceder:
+        a) Resolver lo faltante antes de continuar (el PO lo resuelve manualmente o el PM lo incluye en la planificacion).
+        b) Marcar la fase como incompleta y documentar las excepciones.
+      - La fase queda en pending_phases hasta que el PO decida.
+    fase_no_aplica:
+      - Si una fase no tiene relevancia para el estado actual (ej: 06-retrospective en un proyecto en desarrollo), se omite del analisis.
+      - El PM lo informa y sigue con la siguiente.
+
+  restricciones:
+    - La sincronizacion es SOLO LECTURA. No modifica codigo ni ejecuta comandos destructivos.
+    - El PM NO asume cumplimiento. Si no puede verificar un criterio, lo marca como NO_CUMPLIDO.
+    - El Project Owner tiene la ultima palabra sobre si un criterio se considera cumplido.
+    - Despues de la sincronizacion, el PM actualiza GLOBAL.md con el estado real y continua el flujo normal desde la primera fase pendiente.
+
+  registro_en_global:
+    - Cada fase sincronizada se registra en phases_status con:
+        status: "verified_by_analysis" | "incomplete_pre_existing"
+        exit_criteria_met: true | false
+        sync_date: "{fecha}"
+        sync_notes: "{resumen de hallazgos}"
+        missing_criteria: [] # lista de criterios faltantes si los hay
+
+# ============================================================
+# 10. CHECKPOINT
 # ============================================================
 checkpoint:
+  estados_validos_de_fase:
+    - "not_started"              # Fase no iniciada
+    - "in_progress"              # Fase en ejecucion
+    - "completed"                # Fase completada por el framework
+    - "verified_by_analysis"     # Fase verificada por analisis de proyecto existente
+    - "incomplete_pre_existing"  # Fase con avance parcial pre-existente, pendiente de resolucion
+    - "skipped"                  # Fase omitida (con justificacion)
+
   - El PM mantiene checkpoints/GLOBAL.md actualizado despues de cada cambio de estado.
   - Cada fase puede generar artefactos en checkpoints/phases/.
   - Al reanudar una sesion, el PM verifica GLOBAL.md para determinar estado.
   - Si hay proyecto in_progress o interrupted: preguntar al humano si retomar o iniciar nuevo.
 
 # ============================================================
-# 10. MONITOREO DE COSTOS
+# 11. MONITOREO DE COSTOS
 # ============================================================
 monitoreo_de_costos:
   - Despues de cada fase, el PM lanza Agent(cost-analyst, haiku) para registrar metricas.
@@ -173,7 +240,7 @@ monitoreo_de_costos:
   - Metricas de eficiencia: tokens/respuesta, cache hit rate, tokens/LOC.
 
 # ============================================================
-# 11. CIERRE DE PROYECTO
+# 12. CIERRE DE PROYECTO
 # ============================================================
 cierre_de_proyecto:
   - El PM verifica que TODOS los issues esten cerrados en GitHub.

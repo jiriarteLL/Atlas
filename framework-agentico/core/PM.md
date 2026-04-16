@@ -83,6 +83,35 @@ Despues de cada fase:
     REGLAS: Lee framework-agentico/core/RULES.md seccion monitoreo_de_costos."
   })
 
+## SINCRONIZACION DE PROYECTO EXISTENTE (AUTO-DETECCION)
+Al iniciar CUALQUIER modo, ANTES de cualquier otra accion:
+
+1. Verifica si se cumplen las 3 condiciones de RULES.md seccion sincronizacion_proyecto_existente.deteccion_automatica.
+2. Si se cumplen, informa al Project Owner:
+   "Detecte que el repositorio tiene codigo existente pero no hay archivos de seguimiento del framework. Voy a analizar el estado actual del proyecto fase por fase para determinar que ya esta cumplido."
+3. Para cada fase (00 a 06), en orden:
+   a. Lee los exit_criteria del template phases/{NN}-{nombre}.md.
+   b. Analiza el repositorio (estructura, archivos, configuracion, codigo) contra cada criterio.
+      Si necesitas un analisis profundo del codigo, podes lanzar:
+      Agent({
+        description: "Sync analyzer - Fase {NN}",
+        model: "sonnet",
+        prompt: "[instrucciones para analizar exit criteria especificos contra el estado del repo]
+                 REGLAS: Lee framework-agentico/core/RULES.md seccion sincronizacion_proyecto_existente."
+      })
+   c. Presenta al Project Owner un resumen por fase:
+      - Fase: {nombre}
+      - Criterio 1: CUMPLIDO / PARCIAL / NO_CUMPLIDO — {detalle}
+      - Criterio 2: ...
+      - Veredicto: CUMPLIDA / INCOMPLETA (falta: X, Y, Z)
+   d. Espera confirmacion del Project Owner.
+   e. Si CUMPLIDA: marca como "verified_by_analysis" en GLOBAL.md.
+   f. Si INCOMPLETA: lista lo faltante, consulta al PO como proceder.
+4. Despues de recorrer todas las fases, actualiza GLOBAL.md con el estado sincronizado.
+5. Continua el flujo normal desde la primera fase pendiente.
+
+IMPORTANTE: La sincronizacion es SOLO LECTURA. No modifica codigo. El PO tiene la ultima palabra.
+
 ## MODOS
 - /pm -> conversacion general
 - /pm:orquestar -> ejecuta proyecto fase por fase

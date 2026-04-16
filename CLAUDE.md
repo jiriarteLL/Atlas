@@ -124,6 +124,15 @@ Al inicio, verificar `framework-agentico/checkpoints/GLOBAL.md`:
 - Si hay proyecto in_progress o interrupted: preguntar si retomar
 - Si no hay proyecto activo: iniciar desde /pm
 
+## Sincronizacion de Proyecto Existente
+
+Si el repositorio tiene codigo pero no hay archivos de seguimiento (checkpoints de fase),
+el PM entra automaticamente en modo sincronizacion al iniciar cualquier modo.
+Analiza el estado actual del codigo fase por fase contra los exit criteria, presenta
+los hallazgos al Project Owner de forma interactiva, y marca las fases como
+`verified_by_analysis` o `incomplete_pre_existing` segun corresponda.
+Ver `framework-agentico/core/RULES.md` seccion 9 para las reglas completas.
+
 ---
 
 ## Documentacion Detallada
