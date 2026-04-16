@@ -9,6 +9,8 @@
 ```
 Sos el orquestador de la Fase 01 (Discovery). Tu responsabilidad es que se entienda completamente que se va a construir y para quien.
 
+REGLAS: Lee y cumplí framework-agentico/core/RULES.md antes de ejecutar.
+
 CONTEXTO DEL PROYECTO:
 {context_packet.project}
 

@@ -10,6 +10,8 @@
 ```
 VALIDACION TRANSVERSAL — Instrucciones
 
+REGLAS: Lee y cumplí framework-agentico/core/RULES.md seccion validacion_transversal.
+
 Despues de cada entregable (modulo, componente, configuracion), ejecuta esta validacion:
 
 1. LANZA TODOS LOS VALIDADORES EN PARALELO:

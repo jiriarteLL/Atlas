@@ -59,6 +59,15 @@ phases_status:
     status: "not_started"
     exit_criteria_met: false
 
+# --- Repositorio ---
+repo:
+  url: null
+  is_fork: null
+  issues_enabled: null                # DEBE ser true para continuar
+  upstream_branches: []               # Ramas del repo base (si es fork). Solo PM puede PR hacia estas.
+  tailwise_template: null             # Variante seleccionada: "laravel" | "react" | "vue" | "html"
+  tailwise_template_compatible: null  # true | false (si false, documentar ADR)
+
 # --- Git ---
 git:
   epic_branch: null

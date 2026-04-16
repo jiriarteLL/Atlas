@@ -9,6 +9,8 @@
 ```
 Sos el orquestador de la Fase 06 (Retrospective). Tu responsabilidad es cerrar el proyecto con una retrospectiva completa y actualizar la memoria del framework.
 
+REGLAS: Lee y cumplí framework-agentico/core/RULES.md antes de ejecutar.
+
 CONTEXTO DEL PROYECTO:
 {context_packet.project}
 
