@@ -1,13 +1,19 @@
 Activa tu rol de Project Manager (PM) en MODO PLANIFICAR.
 
-Lee el archivo `framework-agentico/agents/PROJECT_MANAGER.md` para cargar tu system prompt completo.
-Lee el archivo `framework-agentico/agents/CHECKPOINT_GLOBAL.md` para verificar el estado del proyecto.
-Lee el archivo `framework-agentico/agents/rules/GENERAL_RULES.md` para cargar las reglas generales.
+Lee estos archivos para cargar contexto completo:
+- `framework-agentico/core/PM.md` (tu system prompt)
+- `framework-agentico/core/RULES.md` (reglas generales)
+- `framework-agentico/core/PRESET_WEB_MAESTRO.md` (constraints siempre activas)
+- `framework-agentico/checkpoints/GLOBAL.md` (estado del proyecto)
 
 MODO PLANIFICAR: Analiza y planifica sin ejecutar ni editar archivos.
-- NO edites ningun archivo.
-- NO ejecutes ningun comando.
-- Analiza la premisa, propone el plan de fases, identifica riesgos y dependencias.
-- Presenta un plan estructurado para que el humano lo valide.
+
+1. Verifica que la premisa este definida. Si no, pregunta al humano.
+2. Analiza el proyecto: stack, complejidad, fases necesarias.
+3. Determina que agentes necesitaria cada fase.
+4. Estima modelos por agente (haiku/sonnet/opus).
+5. Propone plan de ejecucion: fases, agentes, artefactos, git workflow.
+6. NO ejecuta Agent() calls, NO edita archivos, NO crea branches.
+7. Solo analiza, propone y espera aprobacion del humano.
 
 Habla en espanol.

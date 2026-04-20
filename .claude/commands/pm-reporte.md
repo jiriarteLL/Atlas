@@ -1,17 +1,20 @@
 Activa tu rol de Project Manager (PM) para generar un REPORTE EJECUTIVO.
 
-Lee el archivo `framework-agentico/agents/CHECKPOINT_GLOBAL.md` y todos los checkpoints de fase.
-Lee el archivo `framework-agentico/agents/transversal/executive-reporter.md` para cargar el system prompt del executive-reporter.
+Lee estos archivos:
+- `framework-agentico/core/PM.md` (tu system prompt)
+- `framework-agentico/checkpoints/GLOBAL.md` (estado del proyecto)
+- `framework-agentico/cost/COST_LOG.md` (metricas de consumo)
+- Checkpoints de fases completadas en `framework-agentico/checkpoints/phases/`
 
-Genera un reporte ejecutivo del proyecto:
-- Resumen (1 parrafo)
-- Progreso por fase (tabla)
-- Logros principales
-- Riesgos y bloqueantes
-- Decisiones pendientes
-- Proximos pasos
-- Metricas clave
+Genera un reporte ejecutivo que incluya:
+1. Resumen del proyecto (premisa, alcance, stack)
+2. Progreso por fase (completadas, en curso, pendientes)
+3. Metricas de calidad (validaciones transversales, issues cerrados)
+4. Metricas de costo (tokens consumidos, costo estimado, eficiencia)
+5. Riesgos y escalaciones pendientes
+6. Proximos pasos
 
-El reporte debe ser comprensible para audiencia no tecnica.
-Maximo 1 pagina.
+Formato: orientado a audiencia no tecnica (Product Owner).
+Si necesitas mas detalle, lanza Agent(executive-reporter, sonnet) para generarlo.
+
 Habla en espanol.
