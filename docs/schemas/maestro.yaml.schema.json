@@ -1,0 +1,172 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://maestro.llyasoc.com/schemas/maestro.yaml.schema.json",
+  "title": "maestro.yaml — Contrato de Aplicación Huésped",
+  "description": "Contrato obligatorio que toda app huésped debe incluir en la raíz de su repo. Validado por maestro-cli y por POST /api/v1/apps/register.",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "requires", "health", "auth", "resources"],
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "type": "string",
+      "enum": ["maestro.platform/v1"],
+      "description": "Versión del contrato. V1 es la única soportada por ahora."
+    },
+    "kind": {
+      "type": "string",
+      "enum": ["Application"],
+      "description": "Tipo de recurso declarado."
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["name", "version"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{2,49}$",
+          "description": "Slug único; 3-50 chars, lowercase, números y guiones."
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$",
+          "description": "Versión SemVer (X.Y.Z)."
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 500
+        }
+      }
+    },
+    "requires": {
+      "type": "object",
+      "required": ["database", "ports"],
+      "additionalProperties": false,
+      "properties": {
+        "database": {
+          "type": "string",
+          "enum": ["postgres", "mysql", "mongo", "sqlite", "none"],
+          "description": "Motor de BD que el Maestro debe provisionar dedicadamente. 'none' si la app no requiere BD."
+        },
+        "ports": {
+          "type": "object",
+          "required": ["app"],
+          "additionalProperties": false,
+          "properties": {
+            "app": {
+              "type": "integer",
+              "minimum": 1024,
+              "maximum": 65535,
+              "description": "Puerto interno del contenedor donde la app escucha. Obligatorio >= 1024 (CIS/no-negociable)."
+            }
+          }
+        }
+      }
+    },
+    "health": {
+      "type": "object",
+      "required": ["endpoint"],
+      "additionalProperties": false,
+      "properties": {
+        "endpoint": {
+          "type": "string",
+          "pattern": "^/.*",
+          "description": "Ruta HTTP sin auth que retorna 200 {status:ok}. Debe empezar con /."
+        },
+        "timeout_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5,
+          "default": 5,
+          "description": "Timeout máximo del health check (≤5s, no-negociable 3)."
+        }
+      }
+    },
+    "auth": {
+      "type": "object",
+      "required": ["mode", "headers"],
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["header"],
+          "description": "Solo 'header' es aceptado (no-negociable 1)."
+        },
+        "headers": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "X-Auth-User-Id",
+              "X-Auth-User-Email",
+              "X-Auth-Company-Id",
+              "X-Auth-Roles",
+              "X-Auth-Permissions"
+            ]
+          },
+          "minItems": 3,
+          "uniqueItems": true,
+          "description": "Subset de los headers X-Auth-* que la app consume. Traefik ForwardAuth siempre inyecta los 5; acá se declaran los que la app realmente usa."
+        }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "required": ["memory", "cpu"],
+      "additionalProperties": false,
+      "properties": {
+        "memory": {
+          "type": "string",
+          "pattern": "^(256m|512m|1g|2g|4g)$",
+          "description": "Memoria máxima: 256m | 512m | 1g | 2g | 4g (tiers válidos; no-negociable 6)."
+        },
+        "cpu": {
+          "type": "number",
+          "minimum": 0.25,
+          "maximum": 4.0,
+          "description": "Fracción de core CPU entre 0.25 y 4.0."
+        }
+      }
+    },
+    "hooks": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Webhooks que la app expone para recibir eventos del Maestro firmados HMAC-SHA256.",
+      "properties": {
+        "on_user_added": {
+          "type": "string",
+          "pattern": "^/.*",
+          "description": "Ruta POST que recibe evento 'usuario agregado a empresa'. Header X-Maestro-Webhook-Secret debe verificarse."
+        },
+        "on_user_removed": {
+          "type": "string",
+          "pattern": "^/.*"
+        },
+        "on_company_license_granted": {
+          "type": "string",
+          "pattern": "^/.*"
+        },
+        "on_company_license_revoked": {
+          "type": "string",
+          "pattern": "^/.*"
+        }
+      }
+    },
+    "env": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]*$",
+        "not": {
+          "anyOf": [
+            { "pattern": "^MAESTRO_" },
+            { "pattern": "^X_AUTH_" },
+            { "pattern": "^DATABASE_URL$" }
+          ]
+        }
+      },
+      "uniqueItems": true,
+      "description": "Variables de entorno custom de la app. Prefijos MAESTRO_*, X_AUTH_* y DATABASE_URL están reservados."
+    }
+  }
+}

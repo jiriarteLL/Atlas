@@ -1,0 +1,63 @@
+# Maestro Platform — exclusiones para imágenes Docker
+# Evita que secretos y artefactos locales terminen dentro de las imágenes.
+
+# Git y metadata
+.git
+.gitignore
+.gitattributes
+.github
+.gitlab
+.gitmodules
+
+# Entornos locales
+.env
+.env.*
+!.env.example
+
+# Dependencias y builds locales (se instalan dentro del contenedor)
+backend/vendor/
+backend/storage/framework/cache/
+backend/storage/framework/sessions/
+backend/storage/framework/views/
+backend/storage/logs/
+backend/bootstrap/cache/*.php
+portal/node_modules/
+portal/dist/
+portal/.vite/
+sdk/node/node_modules/
+sdk/node/dist/
+cli/node/node_modules/
+cli/node/dist/
+
+# IDEs y herramientas
+.idea/
+.vscode/
+.cursor/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Logs y temporales
+*.log
+logs/
+tmp/
+.tmp/
+
+# Tests coverage
+coverage/
+.nyc_output/
+.phpunit.result.cache
+
+# Docker volumes locales
+docker-volumes/
+
+# Documentación (va en repo, no en imagen)
+docs/
+PremisaWebMaestro/
+framework-agentico/
+Tailwise Bundle/
+
+# Archivos grandes / opcionales
+*.zip
+*.tar.gz
+*.backup

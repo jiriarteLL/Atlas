@@ -1,0 +1,88 @@
+# Maestro Platform — gitignore
+
+# --------- Entornos ---------
+.env
+.env.*
+!.env.example
+
+# --------- Laravel backend ---------
+backend/vendor/
+backend/node_modules/
+backend/storage/*.key
+backend/storage/oauth-*.key
+backend/storage/framework/cache/*
+backend/storage/framework/sessions/*
+backend/storage/framework/testing/*
+backend/storage/framework/views/*
+backend/storage/logs/*.log
+backend/bootstrap/cache/*.php
+backend/public/hot
+backend/public/storage
+backend/.phpunit.result.cache
+backend/.phpunit.cache
+backend/.php-cs-fixer.cache
+backend/public/build
+# Conservar la estructura de storage/ con .gitkeep
+!backend/storage/framework/cache/.gitkeep
+!backend/storage/framework/sessions/.gitkeep
+!backend/storage/framework/testing/.gitkeep
+!backend/storage/framework/views/.gitkeep
+!backend/storage/logs/.gitkeep
+
+# --------- Portal React ---------
+portal/node_modules/
+portal/dist/
+portal/.vite/
+portal/.cache/
+portal/coverage/
+portal/playwright-report/
+portal/test-results/
+
+# --------- SDK Node ---------
+sdk/node/node_modules/
+sdk/node/dist/
+sdk/node/coverage/
+
+# --------- CLI Node ---------
+cli/node/node_modules/
+cli/node/dist/
+cli/node/coverage/
+
+# --------- Docker runtime ---------
+docker-volumes/
+*.local.yml
+
+# --------- Secretos (nunca commitear) ---------
+secrets/
+*.key
+*.pem
+*.p12
+*.pfx
+oauth-*.key
+
+# --------- IDEs ---------
+.idea/
+.vscode/*
+!.vscode/settings.recommended.json
+!.vscode/extensions.json
+.cursor/
+*.swp
+*.swo
+
+# --------- SO ---------
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --------- Logs / temporales ---------
+*.log
+logs/
+tmp/
+.tmp/
+
+# --------- Tests coverage ---------
+coverage/
+.nyc_output/
+
+# --------- CI / tooling ---------
+.phpactor.json
