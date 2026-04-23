@@ -1,40 +1,22 @@
-# Cost Log — Registro de Consumo
+# Cost Log — Referencia
 
-> **Administrado por:** cost-analyst (Agent, haiku)
-> **Actualizado:** despues de cada fase
+> **Este archivo ya no contiene datos de costos directamente.**
 
----
+A partir del framework v3, los registros de costos se almacenan por rama dentro de cada proyecto:
 
-## Formato de Registro
-
-Cada entrada sigue esta estructura:
-
-| timestamp | sesion | fase | modelo | input | output | cache_read | cache_create | total_tokens | costo_usd |
-|-----------|--------|------|--------|-------|--------|------------|--------------|-------------|-----------|
-
----
-
-## Registro
-
-(Vacio — se completa al ejecutar el primer proyecto)
-
----
-
-## Metricas Acumuladas
-
-```yaml
-totals:
-  queries: 0
-  input_tokens: 0
-  output_tokens: 0
-  cache_read_tokens: 0
-  cache_creation_tokens: 0
-  grand_total_tokens: 0
-  estimated_cost_usd: 0.00
-
-efficiency:
-  avg_tokens_per_response: 0
-  cache_hit_rate: 0.0%
-  tokens_per_loc: 0
-  output_input_ratio: 0
 ```
+projects/{project-id}/branches/{branch}/cost/COST_LOG.md   — costos por rama
+projects/{project-id}/cost/SUMMARY.md                       — rollup por proyecto
+checkpoints/GLOBAL.md                                       — indice global
+```
+
+## Templates
+
+Los templates para instanciar logs de costos estan en:
+- `core/templates/COST_LOG_TEMPLATE.md` — template para COST_LOG por rama
+- `core/templates/COST_SUMMARY_TEMPLATE.md` — template para SUMMARY por proyecto
+
+## Referencia de precios
+
+La tabla de precios sigue en este directorio:
+- `cost/PRICING.md` — referencia global, no se duplica por proyecto

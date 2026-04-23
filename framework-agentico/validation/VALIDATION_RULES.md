@@ -19,4 +19,14 @@ validator_result:
       location: "archivo:linea o area general"
       recommendation: "Como corregirlo"
   summary: "Resumen en una linea del resultado"
+
+  # OBLIGATORIO — Auto-reporte de costos (ver RULES.md seccion auto_reporte_obligatorio)
+  agent_cost_report:
+    role: "nombre-del-validador"
+    model: "sonnet | haiku | opus"
+    module: "modulo validado"
+    attempt: 1                       # a que intento del modulo corresponde
+    verdict: "PASS | FAIL | N/A"
+    files_read: 0
+    estimated_output_chars: 0
 ```

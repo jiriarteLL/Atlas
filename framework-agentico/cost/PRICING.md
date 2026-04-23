@@ -41,6 +41,21 @@ license:
 
 ---
 
+## Mapping de Nombres
+
+El framework usa nombres cortos para los modelos. Equivalencias:
+
+```yaml
+mapping:
+  opus: "claude-opus-4"
+  sonnet: "claude-sonnet-4"
+  haiku: "claude-haiku-4"
+```
+
+El cost-analyst debe usar este mapping para calcular costos desde los agent_cost_report.
+
+---
+
 ## Notas
 
 - Los precios son de referencia para estimar consumo equivalente.

@@ -39,10 +39,10 @@ TU FLUJO:
    - Compatibilidad con preset Web Maestro verificada?
 
 3. Genera artefactos:
-   - checkpoints/phases/02-architecture.md (incluye ADRs)
-   - checkpoints/phases/02-data-model.md
-   - checkpoints/phases/02-api-contracts.md
-   - checkpoints/phases/02-ui-flows.md (si hay frontend)
+   - {project_paths.phases_dir}/02-architecture.md (incluye ADRs)
+   - {project_paths.phases_dir}/02-data-model.md
+   - {project_paths.phases_dir}/02-api-contracts.md
+   - {project_paths.phases_dir}/02-ui-flows.md (si hay frontend)
 
 4. Crea GitHub Milestone + Issues por modulo/feature:
    - Cada issue = un modulo implementable independientemente
@@ -74,10 +74,10 @@ exit_criteria:
 
 ## Artefactos Esperados
 
-- `checkpoints/phases/02-architecture.md`
-- `checkpoints/phases/02-data-model.md`
-- `checkpoints/phases/02-api-contracts.md`
-- `checkpoints/phases/02-ui-flows.md` (si aplica)
+- `{project_paths.phases_dir}/02-architecture.md`
+- `{project_paths.phases_dir}/02-data-model.md`
+- `{project_paths.phases_dir}/02-api-contracts.md`
+- `{project_paths.phases_dir}/02-ui-flows.md` (si aplica)
 - GitHub Milestone con Issues desglosados
 
 ---

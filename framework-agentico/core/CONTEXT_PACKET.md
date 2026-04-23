@@ -1,6 +1,6 @@
 # Context Packet — Formato de Comunicacion entre PM y Orquestadores
 
-> **Version:** 2.0
+> **Version:** 3.0
 > **Proposito:** Eliminar perdida de informacion entre Agent() calls
 
 ---
@@ -22,10 +22,20 @@ context_packet:
 
   # --- Identificacion ---
   meta:
-    project_id: "PRJ-XXXX"
+    project_id: "{repo-name}"          # nombre del repositorio de GitHub
     phase: "NN-nombre"              # ej: "03-development"
+    branch: "epic/nombre-proyecto"  # rama Git activa para esta fase
     timestamp: "YYYY-MM-DDTHH:MM:SSZ"
     retry: 0                        # numero de reintento (0 = primera vez)
+
+  # --- Paths del proyecto (para que el orquestador sepa donde escribir) ---
+  project_paths:
+    project_root: "framework-agentico/projects/{project-id}"
+    branch_root: "framework-agentico/projects/{project-id}/branches/{sanitized-branch}"
+    transactions_dir: "framework-agentico/projects/{project-id}/branches/{sanitized-branch}/transactions"
+    cost_log: "framework-agentico/projects/{project-id}/branches/{sanitized-branch}/cost/COST_LOG.md"
+    phases_dir: "framework-agentico/projects/{project-id}/branches/{sanitized-branch}/phases"
+    templates_dir: "framework-agentico/core/templates"
 
   # --- Contexto del proyecto ---
   project:
@@ -43,13 +53,14 @@ context_packet:
       - "maestro.yaml obligatorio"
       # ... lista completa segun core/PRESET_WEB_MAESTRO.md
 
-  # --- Artefactos de fases anteriores (paths a archivos) ---
+  # --- Artefactos de fases anteriores (paths dentro del proyecto) ---
+  # Nota: usar {sanitized-branch} (/ reemplazado por _) consistente con project_paths
   artifacts:
-    requirements: "framework-agentico/checkpoints/phases/01-requirements.md"
-    architecture: "framework-agentico/checkpoints/phases/02-architecture.md"
-    api_contracts: "framework-agentico/checkpoints/phases/02-api-contracts.md"
-    data_model: "framework-agentico/checkpoints/phases/02-data-model.md"
-    # ... solo incluir los que existen
+    requirements: "projects/{project-id}/branches/{sanitized-branch}/phases/01-requirements.md"
+    architecture: "projects/{project-id}/branches/{sanitized-branch}/phases/02-architecture.md"
+    api_contracts: "projects/{project-id}/branches/{sanitized-branch}/phases/02-api-contracts.md"
+    data_model: "projects/{project-id}/branches/{sanitized-branch}/phases/02-data-model.md"
+    # ... solo incluir los que existen, paths relativos a framework-agentico/
 
   # --- Estado de Git ---
   git:
@@ -93,6 +104,8 @@ phase_result:
 
   # --- Estado general ---
   meta:
+    project_id: "{project-id}"
+    branch: "{branch-name}"
     phase: "NN-nombre"
     status: "completed | completed_with_observations | blocked"
     modules_total: N
@@ -132,6 +145,7 @@ phase_result:
     branches_created: []
     branches_merged: []
     branches_pending: []
+    branch_structures_created: []    # ramas para las que se creo estructura en projects/
     prs_created: []
     prs_pending: []
     issues_closed: []
@@ -143,12 +157,82 @@ phase_result:
     - path: "ruta/al/archivo"
       description: "Que contiene"
 
-  # --- Estimacion de costo (para el cost-analyst) ---
-  cost_estimate:
-    agent_calls: N
-    files_read: N
-    files_written: N
-    estimated_complexity: "low | medium | high"
+  # --- Transacciones escritas durante la fase ---
+  transactions_written:
+    count: N
+    path: "projects/{project-id}/branches/{branch}/transactions/"
+    files: []                        # lista de nombres de archivos de transaccion generados
+    # Ejemplo: ["20260423T143022_03_backend-developer_dev-attempt-1.md", ...]
+
+  # --- Desglose de costos por agente (auto-reporte obligatorio) ---
+  cost_breakdown:
+
+    # Reporte del orquestador mismo
+    orchestrator_report:
+      role: "orchestrator"
+      model: "opus"
+      phase: "NN-nombre"
+      files_read: N
+      files_written: N
+      estimated_output_chars: N        # largo aproximado de la respuesta del orquestador
+      sub_agents_launched: N           # cantidad de Agent() calls que hizo
+
+    # Un agent_cost_report por cada Agent() call que el orquestador lanzo
+    agent_reports:
+      - role: "backend-developer"        # rol del agente
+        model: "sonnet"                  # modelo usado
+        phase: "NN-nombre"
+        module: "modulo-auth"            # issue/modulo asociado
+        attempt: 1                       # intento (1 = primera vez, 2+ = retry)
+        is_retry: false
+        retry_reason: null               # si es retry, motivo del fallo anterior
+        model_escalated: false           # true si el modelo fue escalado por retry
+        files_read: N
+        files_written: N
+        lines_of_code_produced: N
+        estimated_output_chars: N
+
+      - role: "code-reviewer"            # validador
+        model: "sonnet"
+        phase: "NN-nombre"
+        module: "modulo-auth"
+        attempt: 1                       # a que intento del modulo corresponde
+        verdict: "PASS | FAIL"
+        files_read: N
+        files_written: 0
+        estimated_output_chars: N
+
+    # Registro de reintentos (solo si hubo al menos un retry)
+    retry_log:
+      - module: "modulo-auth"
+        total_attempts: 3
+        attempts:
+          - attempt: 1
+            developer: { model: "sonnet", estimated_output_chars: N }
+            validators_launched: 5
+            blocking_validator: "security-auditor"
+            blocking_reason: "SQL injection en endpoint X"
+          - attempt: 2
+            developer: { model: "sonnet", estimated_output_chars: N }
+            validators_launched: 5
+            blocking_validator: null       # null = todos PASS
+            blocking_reason: null
+        model_escalations: 0              # cuantas veces se escalo el modelo
+        total_agent_calls: 12             # developer + validators en todos los intentos
+
+    # Totales de la fase
+    phase_totals:
+      total_agent_calls: N               # todos los Agent() calls de la fase
+      total_retries: N                    # cantidad total de reintentos
+      total_files_read: N
+      total_files_written: N
+      total_lines_of_code: N
+      total_estimated_output_chars: N     # suma de todos los agentes + orquestador
+      agents_by_role:                     # desglose por tipo de agente
+        orchestration: { calls: 1, estimated_chars: N }
+        development: { calls: N, estimated_chars: N }
+        validation: { calls: N, estimated_chars: N }
+        documentation: { calls: N, estimated_chars: N }
 
   # --- Escalaciones pendientes ---
   escalations:

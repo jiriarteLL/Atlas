@@ -63,12 +63,19 @@ Despues de cada entregable (modulo, componente, configuracion), ejecuta esta val
 
    // + validadores adicionales si el PM los definio en el context packet
 
+   NOTA: En el prompt de CADA validador, agregar al final:
+   "OBLIGATORIO: Incluí un bloque agent_cost_report al final de tu respuesta con:
+   role, model, module, attempt, verdict, files_read, estimated_output_chars.
+   Ver RULES.md seccion auto_reporte_obligatorio."
+
 2. RECOLECTA RESULTADOS:
    Cada validador devuelve:
    - verdict: PASS | FAIL | N/A
    - findings: lista de hallazgos (si hay)
    - severity: CRITICAL | HIGH | MEDIUM | LOW (si hay findings)
    - recommendation: que corregir (si FAIL)
+   - agent_cost_report: auto-reporte OBLIGATORIO (ver RULES.md seccion auto_reporte_obligatorio)
+     Campos: role, model, module, attempt, verdict, files_read, estimated_output_chars
 
 3. CONSOLIDA VEREDICTO:
    - Si TODOS son PASS: veredicto = APPROVED
