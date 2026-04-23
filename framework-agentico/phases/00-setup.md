@@ -50,7 +50,7 @@ exit_criteria:
 
 ## Artefactos Esperados
 
-- Checkpoint de fase en `checkpoints/phases/00-setup.md`
+- Checkpoint de fase en `{project_paths.phases_dir}/00-setup.md`
 - (Opcional) Lista de instrucciones pendientes para el humano
 
 ---

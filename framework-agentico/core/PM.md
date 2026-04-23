@@ -47,14 +47,39 @@ Cuando entendes el problema, determinas:
 - Exit criteria: ver RULES.md seccion checkpoint.
 - Despues de cada fase: lanzar cost-analyst (ver RULES.md seccion monitoreo_de_costos).
 
+## GESTION DE PROYECTOS Y RAMAS
+El PM gestiona el ciclo de vida completo de proyectos y ramas.
+
+### Iniciar un proyecto
+1. Obtener project-id del repositorio: gh repo view --json name -q '.name'
+2. Crear estructura en framework-agentico/projects/{project-id}/:
+   - Copiar core/templates/PROJECT_TEMPLATE.md -> PROJECT.md (reemplazar placeholders)
+   - Crear cost/ con COST_SUMMARY_TEMPLATE.md -> SUMMARY.md
+   - Crear branches/
+3. Registrar el proyecto en checkpoints/GLOBAL.md (indice de proyectos).
+4. A partir de este punto, PROJECT.md reemplaza a GLOBAL.md para este proyecto.
+
+### Crear rama (epic o issue)
+1. Sanitizar nombre: reemplazar "/" por "_" (ej: "epic/mi-app" -> "epic_mi-app").
+2. Crear branches/{sanitized-name}/ con:
+   - BRANCH_TEMPLATE.md -> BRANCH.md
+   - cost/ con COST_LOG_TEMPLATE.md -> COST_LOG.md
+   - phases/
+   - transactions/
+3. Registrar la rama en PROJECT.md seccion active_branches.
+
+### Crear rama worktree
+Los worktrees tambien se trackean. El orquestador crea la estructura de rama para cada worktree.
+Al completar el worktree (merge a issue branch), el orquestador actualiza BRANCH.md con status "merged".
+
 ## GIT WORKFLOW
 Instrucciones operativas. Las reglas (permisos, prerequisitos) estan en RULES.md seccion git_workflow.
 
 Flujo operativo:
 1. Verificar prerequisitos del repo (segun RULES.md).
-2. Crear rama epic/{nombre-proyecto}.
-3. Para cada fase: el orquestador crea milestones, issues, sub-branches.
-4. Developers trabajan en worktrees aislados.
+2. Crear rama epic/{nombre-proyecto} + estructura de proyecto (ver arriba).
+3. Para cada fase: el orquestador crea milestones, issues, sub-branches + estructura de rama.
+4. Developers trabajan en worktrees aislados (con estructura de rama).
 5. Orquestadores mergean segun permisos de RULES.md.
 6. Al cerrar: seguir RULES.md seccion cierre_de_proyecto.
 
@@ -70,44 +95,74 @@ Cada Context Packet al orquestador debe incluir:
 Lee core/PRESET_WEB_MAESTRO.md e incluilo en CADA Context Packet.
 Las reglas de aplicacion estan en RULES.md seccion preset_web_maestro.
 
-## CHECKPOINT GLOBAL
-Mantene framework-agentico/checkpoints/GLOBAL.md actualizado despues de cada cambio de estado.
+## CHECKPOINT
+- Mantene projects/{project-id}/PROJECT.md actualizado despues de cada cambio de estado.
+- Mantene checkpoints/GLOBAL.md (indice de proyectos) actualizado.
+- Cada rama tiene su BRANCH.md con estado independiente.
 
-## MONITOREO DE COSTOS
-Despues de cada fase:
+## MONITOREO DE COSTOS, AUTO-REPORTE Y TRANSACCIONES
+El PM tiene cuatro responsabilidades:
+
+### A) Registrar transacciones propias
+Cada interaccion PM <-> usuario genera una transaccion:
+  - Escribir archivo en projects/{id}/branches/{rama}/transactions/ con formato TRANSACTION_TEMPLATE.md.
+  - Tipo de operacion: pm_interaction.
+  - Si la interaccion no esta asociada a una rama especifica, usar la rama epic principal.
+  - Tambien registrar en branches/{rama}/cost/COST_LOG.md seccion pm_interactions.
+
+### B) Lanzar cost-analyst post-fase
+Despues de cada fase, el PM extrae el cost_breakdown del Phase Result y lo pasa al cost-analyst:
   Agent({
-    description: "Cost analyst post-fase",
+    description: "Cost analyst post-fase NN",
     model: "haiku",
-    prompt: "[instrucciones para leer JSONL y actualizar COST_LOG]
+    prompt: "Sos el cost-analyst. Tu trabajo es procesar el cost_breakdown de la fase
+    y actualizar los registros de costos del proyecto.
 
-    REGLAS: Lee framework-agentico/core/RULES.md seccion monitoreo_de_costos."
+    PROYECTO: {project-id}
+    RAMA: {branch-name}
+    RAMA PATH: projects/{project-id}/branches/{sanitized-branch}
+
+    COST_BREAKDOWN DE LA FASE:
+    [pegar el cost_breakdown completo del Phase Result]
+
+    INSTRUCCIONES:
+    1. Lee cost/PRICING.md para los precios por modelo.
+    2. Converti estimated_output_chars a tokens (chars / 4).
+    3. Estima input tokens: files_read * 2000 chars promedio / 4.
+    4. Calcula costo USD por cada agent_cost_report usando PRICING.md.
+    5. Registra cada agente en branches/{rama}/cost/COST_LOG.md.
+    6. Si hay retry_log, registra los reintentos en la seccion retry_tracking.
+    7. Actualiza los totales de rama en COST_LOG.md.
+    8. Hace rollup a projects/{id}/cost/SUMMARY.md (sumar costos de todas las ramas).
+    9. Actualiza projects/{id}/PROJECT.md seccion cost_summary.
+    10. Auto-reportate: escribi tu propia transaccion en branches/{rama}/transactions/.
+
+    REGLAS: Lee framework-agentico/core/RULES.md secciones monitoreo_de_costos y memorias_transaccionales."
   })
+
+### C) Pasar requisitos de auto-reporte y transacciones a orquestadores
+En CADA Context Packet, incluir en las instrucciones:
+  - "OBLIGATORIO: Todos los Agent() calls deben incluir agent_cost_report al final de su respuesta."
+  - "Recolecta todos los agent_cost_report y construi el cost_breakdown segun CONTEXT_PACKET.md."
+  - "Escribi una transaccion por cada agent_cost_report en branches/{rama}/transactions/."
+  - "Formato de transaccion: core/templates/TRANSACTION_TEMPLATE.md."
+  - "Si hay reintentos, construi el retry_log con detalle por intento."
+  - "Al crear issue branches o worktrees, crea la estructura de rama completa (BRANCH.md, cost/, transactions/)."
+
+### D) Rollup de costos al indice global
+Despues de actualizar PROJECT.md, actualizar checkpoints/GLOBAL.md con el total del proyecto.
 
 ## SINCRONIZACION DE PROYECTO EXISTENTE (AUTO-DETECCION)
 Al iniciar CUALQUIER modo, ANTES de cualquier otra accion:
 
-1. Verifica si se cumplen las 3 condiciones de RULES.md seccion sincronizacion_proyecto_existente.deteccion_automatica.
-2. Si se cumplen, informa al Project Owner:
-   "Detecte que el repositorio tiene codigo existente pero no hay archivos de seguimiento del framework. Voy a analizar el estado actual del proyecto fase por fase para determinar que ya esta cumplido."
-3. Para cada fase (00 a 06), en orden:
-   a. Lee los exit_criteria del template phases/{NN}-{nombre}.md.
-   b. Analiza el repositorio (estructura, archivos, configuracion, codigo) contra cada criterio.
-      Si necesitas un analisis profundo del codigo, podes lanzar:
-      Agent({
-        description: "Sync analyzer - Fase {NN}",
-        model: "sonnet",
-        prompt: "[instrucciones para analizar exit criteria especificos contra el estado del repo]
-                 REGLAS: Lee framework-agentico/core/RULES.md seccion sincronizacion_proyecto_existente."
-      })
-   c. Presenta al Project Owner un resumen por fase:
-      - Fase: {nombre}
-      - Criterio 1: CUMPLIDO / PARCIAL / NO_CUMPLIDO — {detalle}
-      - Criterio 2: ...
-      - Veredicto: CUMPLIDA / INCOMPLETA (falta: X, Y, Z)
-   d. Espera confirmacion del Project Owner.
-   e. Si CUMPLIDA: marca como "verified_by_analysis" en GLOBAL.md.
-   f. Si INCOMPLETA: lista lo faltante, consulta al PO como proceder.
-4. Despues de recorrer todas las fases, actualiza GLOBAL.md con el estado sincronizado.
+1. Verifica si existe projects/{repo-name}/PROJECT.md. Si existe, carga ese proyecto.
+2. Si no existe, verifica las 3 condiciones de RULES.md seccion sincronizacion_proyecto_existente.
+3. Si se cumplen, crea la estructura de proyecto y entra en modo sincronizacion:
+   a. Informa al Project Owner que detecto un proyecto con avance previo.
+   b. Para cada fase (00 a 06), analiza exit criteria contra el estado del repo.
+   c. Presenta resultados interactivamente, espera confirmacion.
+   d. Marca fases como verified_by_analysis o incomplete_pre_existing en PROJECT.md.
+4. Actualiza checkpoints/GLOBAL.md con el proyecto sincronizado.
 5. Continua el flujo normal desde la primera fase pendiente.
 
 IMPORTANTE: La sincronizacion es SOLO LECTURA. No modifica codigo. El PO tiene la ultima palabra.
@@ -116,6 +171,6 @@ IMPORTANTE: La sincronizacion es SOLO LECTURA. No modifica codigo. El PO tiene l
 - /pm -> conversacion general
 - /pm:orquestar -> ejecuta proyecto fase por fase
 - /pm:planificar -> analiza sin ejecutar ni editar
-- /pm:estado -> muestra checkpoints/GLOBAL.md
+- /pm:estado -> muestra PROJECT.md del proyecto activo (o GLOBAL.md si no hay proyecto)
 - /pm:reporte -> genera reporte ejecutivo
 ```

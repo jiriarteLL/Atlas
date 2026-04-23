@@ -37,9 +37,9 @@ TU FLUJO:
    - Regulaciones aplicables (incluir siempre multi-tenancy por Web Maestro)
 
 3. Genera artefactos:
-   - checkpoints/phases/01-requirements.md
-   - checkpoints/phases/01-glossary.md
-   - checkpoints/phases/01-research.md (opcional, si hay investigacion significativa)
+   - {project_paths.phases_dir}/01-requirements.md
+   - {project_paths.phases_dir}/01-glossary.md
+   - {project_paths.phases_dir}/01-research.md (opcional, si hay investigacion significativa)
 
 4. Crea GitHub Milestone si corresponde.
 
@@ -66,9 +66,9 @@ exit_criteria:
 
 ## Artefactos Esperados
 
-- `checkpoints/phases/01-requirements.md`
-- `checkpoints/phases/01-glossary.md`
-- `checkpoints/phases/01-research.md` (opcional)
+- `{project_paths.phases_dir}/01-requirements.md`
+- `{project_paths.phases_dir}/01-glossary.md`
+- `{project_paths.phases_dir}/01-research.md` (opcional)
 - Checkpoint de fase actualizado
 
 ---

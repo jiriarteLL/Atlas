@@ -1,4 +1,4 @@
-# Reglas Generales del Framework v2
+# Reglas Generales del Framework v3
 
 > **FUENTE UNICA DE VERDAD** — Todas las reglas del framework estan en este archivo.
 > **Aplican a:** PM, todos los orquestadores, todos los agentes, todos los niveles.
@@ -37,7 +37,7 @@ git_workflow:
   prerequisitos:
     - Antes de iniciar CUALQUIER operacion Git, el PM DEBE verificar que el repositorio tenga Issues habilitados (gh repo view --json hasIssuesEnabled).
     - Si Issues NO esta habilitado: DETENER la ejecucion INMEDIATAMENTE. Informar al humano que debe activar Issues en Settings > General > Features. NO continuar hasta confirmacion.
-    - Si el repo es un fork: el PM DEBE identificar las ramas que existen en el repositorio base (upstream) y registrarlas en checkpoints/GLOBAL.md.
+    - Si el repo es un fork: el PM DEBE identificar las ramas que existen en el repositorio base (upstream) y registrarlas en el PROJECT.md del proyecto.
 
   permisos_de_merge:
     - SOLO EL PM puede crear PRs y mergear hacia main. NADIE MAS.
@@ -69,7 +69,7 @@ plantilla_base:
   - Los agentes de desarrollo DEBEN usar esta plantilla como base salvo incompatibilidad tecnica comprobada.
   - Si existe incompatibilidad, DEBE documentarse como ADR con: que parte es incompatible, por que, y que alternativa se usa.
   - Variantes disponibles: Laravel, React, Vue, HTML. La seleccion depende del stack definido en planning.
-  - El PM registra la variante seleccionada y su compatibilidad en checkpoints/GLOBAL.md.
+  - El PM registra la variante seleccionada y su compatibilidad en el PROJECT.md del proyecto.
 
 # ============================================================
 # 4. VALIDACION TRANSVERSAL
@@ -129,7 +129,7 @@ agentes_dinamicos:
     - sonnet: desarrollo estandar, reviews, testing
     - opus: PM, orquestadores, decisiones arquitectonicas, debugging profundo
   - El orquestador puede escalar el modelo de un agente si la tarea falla o es mas compleja de lo esperado.
-  - Los agentes determinados se registran en checkpoints/GLOBAL.md.
+  - Los agentes determinados se registran en el PROJECT.md del proyecto.
 
 # ============================================================
 # 7. COMUNICACION
@@ -163,11 +163,11 @@ sincronizacion_proyecto_existente:
 
   deteccion_automatica:
     - Al iniciar cualquier modo (/pm, /pm:orquestar, /pm:planificar), el PM verifica:
-      1. checkpoints/GLOBAL.md tiene status "not_started" o no tiene proyecto activo
-      2. NO existen archivos en checkpoints/phases/
+      1. checkpoints/GLOBAL.md tiene active_project: null (no hay proyecto activo)
+      2. NO existe directorio projects/{repo-name}/ para este repositorio
       3. EXISTE codigo funcional en el repositorio mas alla de los archivos del framework
     - Si las 3 condiciones se cumplen, el PM DEBE entrar en modo sincronizacion ANTES de cualquier otra accion.
-    - El PM informa al Project Owner que detecto un proyecto con avance previo y que va a analizar el estado.
+    - El PM crea la estructura de proyecto (ver seccion aislamiento_por_proyecto) y luego informa al Project Owner que detecto un proyecto con avance previo.
 
   flujo_de_sincronizacion:
     - El PM analiza el repositorio fase por fase, en orden (00 a 06).
@@ -182,7 +182,7 @@ sincronizacion_proyecto_existente:
   clasificacion_de_fases:
     fase_cumplida:
       - TODOS los exit_criteria estan CUMPLIDOS.
-      - El PM marca la fase con status "verified_by_analysis" en GLOBAL.md.
+      - El PM marca la fase con status "verified_by_analysis" en PROJECT.md.
       - Se registra en completed_phases.
       - NO se generan los artefactos de checkpoint retroactivamente.
       - Se registra una nota indicando: "Fase verificada por analisis de proyecto existente. No posee artefactos de checkpoint."
@@ -201,10 +201,10 @@ sincronizacion_proyecto_existente:
     - La sincronizacion es SOLO LECTURA. No modifica codigo ni ejecuta comandos destructivos.
     - El PM NO asume cumplimiento. Si no puede verificar un criterio, lo marca como NO_CUMPLIDO.
     - El Project Owner tiene la ultima palabra sobre si un criterio se considera cumplido.
-    - Despues de la sincronizacion, el PM actualiza GLOBAL.md con el estado real y continua el flujo normal desde la primera fase pendiente.
+    - Despues de la sincronizacion, el PM actualiza PROJECT.md con el estado real, registra el proyecto en checkpoints/GLOBAL.md, y continua el flujo normal desde la primera fase pendiente.
 
-  registro_en_global:
-    - Cada fase sincronizada se registra en phases_status con:
+  registro_en_project:
+    - Cada fase sincronizada se registra en PROJECT.md seccion phases_status con:
         status: "verified_by_analysis" | "incomplete_pre_existing"
         exit_criteria_met: true | false
         sync_date: "{fecha}"
@@ -223,21 +223,91 @@ checkpoint:
     - "incomplete_pre_existing"  # Fase con avance parcial pre-existente, pendiente de resolucion
     - "skipped"                  # Fase omitida (con justificacion)
 
-  - El PM mantiene checkpoints/GLOBAL.md actualizado despues de cada cambio de estado.
-  - Cada fase puede generar artefactos en checkpoints/phases/.
-  - Al reanudar una sesion, el PM verifica GLOBAL.md para determinar estado.
+  - El PM mantiene PROJECT.md del proyecto activo actualizado despues de cada cambio de estado.
+  - El PM mantiene checkpoints/GLOBAL.md (indice de proyectos) sincronizado.
+  - Cada fase puede generar artefactos en branches/{rama}/phases/.
+  - Al reanudar una sesion, el PM verifica GLOBAL.md para identificar el proyecto activo, luego carga su PROJECT.md.
   - Si hay proyecto in_progress o interrupted: preguntar al humano si retomar o iniciar nuevo.
 
 # ============================================================
-# 11. MONITOREO DE COSTOS
+# 11. MONITOREO DE COSTOS Y AUTO-REPORTE
 # ============================================================
 monitoreo_de_costos:
-  - Despues de cada fase, el PM lanza Agent(cost-analyst, haiku) para registrar metricas.
-  - El cost-analyst lee el JSONL de sesion y actualiza cost/COST_LOG.md y checkpoints/GLOBAL.md.
-  - Los costos se registran en tokens (valor absoluto) y USD (valor estimado).
-  - Tabla de precios en cost/PRICING.md. Historicos NO se recalculan si el pricing cambia.
+  scope: >
+    Los costos se registran a nivel de RAMA, se agregan a nivel de PROYECTO, y se indexan en GLOBAL.
+    Nunca se escribe un costo en un lugar global — siempre fluye de rama -> proyecto -> indice.
+  flujo:
+    - Cada agente auto-reporta en su respuesta (agent_cost_report).
+    - El orquestador recolecta y genera transacciones en branches/{rama}/transactions/.
+    - El cost-analyst post-fase escribe en branches/{rama}/cost/COST_LOG.md.
+    - El cost-analyst hace rollup a projects/{id}/cost/SUMMARY.md.
+    - El PM actualiza checkpoints/GLOBAL.md con el total del proyecto.
+  - Tabla de precios en cost/PRICING.md (referencia global, no se duplica por proyecto).
+  - Historicos NO se recalculan si el pricing cambia.
   - No hay limite de presupuesto pero se monitorea para determinar estrategias futuras.
-  - Metricas de eficiencia: tokens/respuesta, cache hit rate, tokens/LOC.
+  - Metricas de eficiencia: tokens/respuesta, cache hit rate, tokens/LOC, costo por retry.
+
+  auto_reporte_obligatorio:
+    descripcion: >
+      Cada actor del framework DEBE incluir un bloque de auto-reporte en su respuesta.
+      Esto aplica a TODOS los niveles: PM, orquestadores, developers, validadores y agentes de soporte.
+      El auto-reporte es la UNICA fuente de datos de consumo, ya que Claude Code no expone
+      metricas de tokens por Agent() call al caller.
+
+    regla_general: >
+      Todo Agent() call DEBE incluir al final de su respuesta un bloque agent_cost_report
+      con el formato definido en core/CONTEXT_PACKET.md seccion cost_breakdown.
+      Omitir el auto-reporte es una violacion de reglas equivalente a omitir validacion.
+
+    estimacion_de_tokens: >
+      Como los agentes no tienen acceso a sus contadores de tokens reales, se usa la
+      convencion de proxy: estimated_output_chars (largo de la respuesta en caracteres).
+      El cost-analyst convierte a tokens estimados con la formula: chars / 4 = tokens aprox.
+      Input tokens se estiman por: cantidad de archivos leidos * promedio de chars por archivo.
+
+    por_nivel:
+      pm:
+        - El PM registra CADA interaccion como transaccion de tipo pm_interaction en la rama correspondiente.
+        - Si la interaccion no esta asociada a una rama especifica, se escribe en la rama epic principal.
+        - El PM tambien escribe en branches/{rama}/cost/COST_LOG.md seccion pm_interactions.
+        - Campos: timestamp, tipo (query/estado/reporte/orquestar/planificar/ad_hoc), estimated_output_chars.
+        - Las interacciones del PM se registran con modelo "opus".
+
+      orquestador:
+        - El orquestador incluye orchestrator_report en el Phase Result.
+        - El orquestador RECOLECTA todos los agent_cost_report de sus sub-agentes.
+        - El orquestador ESCRIBE una transaccion por cada agent_cost_report en branches/{rama}/transactions/.
+        - El orquestador construye el retry_log si hubo reintentos.
+        - El orquestador calcula los phase_totals antes de devolver el Phase Result.
+
+      developer:
+        - Cada developer incluye agent_cost_report al final de su respuesta.
+        - Campos obligatorios: role, model, module, attempt, files_read, files_written, lines_of_code_produced, estimated_output_chars.
+        - Si es retry: is_retry=true, retry_reason con el motivo del fallo anterior, model_escalated si aplica.
+        - El developer NO escribe transacciones directamente — el orquestador las persiste.
+
+      validador:
+        - Cada validador incluye agent_cost_report al final de su respuesta.
+        - Campos obligatorios: role, model, module, attempt (del modulo), verdict, files_read, estimated_output_chars.
+        - El validador NO escribe transacciones directamente — el orquestador las persiste.
+
+      agentes_de_soporte:
+        - cost-analyst, documentation-writer, sync-analyzer: incluyen agent_cost_report.
+        - El cost-analyst escribe en branches/{rama}/cost/COST_LOG.md y hace rollup a projects/{id}/cost/SUMMARY.md.
+        - El cost-analyst se auto-registra como transaccion de tipo cost_analysis.
+
+    reintentos:
+      - El costo de reintentos se trackea por rama en branches/{rama}/cost/COST_LOG.md.
+      - Cada reintento genera transacciones individuales por agente (developer + validators del intento).
+      - El retry_log en el Phase Result agrupa todos los intentos por modulo.
+      - Se registra: cuantos intentos, que validador bloqueo, si hubo escalamiento de modelo.
+      - Metrica clave: retry_cost_ratio = costo de reintentos / costo total de la fase.
+
+    interaccion_usuario:
+      - Toda interaccion PM <-> usuario consume tokens de opus (el modelo mas caro).
+      - El PM categoriza cada interaccion: query, estado, reporte, orquestar, planificar, ad_hoc.
+      - Se registran como transacciones en la rama correspondiente + en su COST_LOG.
+      - Metrica clave: pm_overhead_ratio = costo PM interactions / costo total del proyecto.
 
 # ============================================================
 # 12. CIERRE DE PROYECTO
@@ -247,7 +317,116 @@ cierre_de_proyecto:
   - El PM reporta al humano lo que no se pudo resolver.
   - SOLO EL PM crea y mergea el PR final epic -> main.
   - El PM lanza documentation-writer para consolidar documentacion.
-  - El PM lanza cost-analyst para metricas finales.
+  - El PM lanza cost-analyst para metricas finales del proyecto.
+  - El PM lanza transaction-compactor (haiku) para compactar transacciones (ver seccion memorias_transaccionales.compactacion).
   - El PM genera reporte ejecutivo (o lo delega a un Agent).
-  - El PM cierra el proyecto en GLOBAL.md con status "completed".
+  - El PM cierra el proyecto en PROJECT.md con status "completed".
+  - El PM actualiza checkpoints/GLOBAL.md (indice de proyectos).
+
+# ============================================================
+# 13. MEMORIAS TRANSACCIONALES
+# ============================================================
+memorias_transaccionales:
+  descripcion: >
+    Cada operacion del framework genera un registro transaccional inmutable.
+    Las transacciones se organizan jerarquicamente: Proyecto > Rama > Fase > Agente > Operacion.
+    Esto permite trazabilidad completa, evita colisiones entre proyectos/ramas concurrentes,
+    y habilita analisis post-mortem por cualquier dimension.
+
+  jerarquia:
+    proyecto:
+      - Cada proyecto tiene su directorio en framework-agentico/projects/{project-id}/.
+      - El project-id es el nombre del repositorio de GitHub.
+      - El PROJECT.md contiene el estado global del proyecto (ex GLOBAL.md).
+      - El cost/SUMMARY.md agrega costos de todas las ramas (rollup).
+    rama:
+      - Cada rama Git (epic, issue, worktree) tiene su subdirectorio en branches/{sanitized-name}/.
+      - Nombres sanitizados: reemplazar "/" por "_" (ej: "epic/mi-app" -> "epic_mi-app").
+      - Cada rama tiene: BRANCH.md, cost/COST_LOG.md, phases/, transactions/.
+      - Las ramas worktree tambien se trackean (son efimeras pero generan transacciones).
+    fase:
+      - Los artefactos de fase se guardan en branches/{rama}/phases/{NN}-{nombre}.md.
+      - Las transacciones de una fase comparten el campo phase en su registro.
+    agente:
+      - Cada agente genera transacciones con su role y model registrados.
+      - Un agente puede generar multiples transacciones en una misma fase (ej: developer con reintentos).
+    operacion:
+      - Es la unidad atomica. Cada Agent() call = 1 operacion = 1 transaccion.
+      - Tipos: development, validation, retry, escalation, pm_interaction, cost_analysis, documentation, orchestration.
+
+  formato:
+    - Cada transaccion es un archivo .md en branches/{rama}/transactions/.
+    - Nombre: {timestamp}_{phase}_{agent-role}_{operation-name}.md
+    - Ejemplo: 20260423T143022_03-development_backend-developer_dev-attempt-1.md
+    - El formato interno sigue core/templates/TRANSACTION_TEMPLATE.md.
+
+  inmutabilidad:
+    - Una transaccion NUNCA se edita una vez escrita.
+    - Si hay correccion, se crea una nueva transaccion con correction_of apuntando a la original.
+    - Esto garantiza un audit trail completo e integro.
+
+  quien_escribe:
+    pm:
+      - El PM escribe transacciones de tipo pm_interaction directamente en la rama correspondiente.
+      - Si la interaccion es general (no asociada a rama), se escribe en la rama epic principal.
+    orquestador:
+      - El orquestador escribe su propia transaccion de tipo orchestration.
+      - El orquestador recolecta los agent_cost_report de sub-agentes y escribe transacciones por cada uno.
+      - Los developers y validadores NO escriben transacciones directamente — reportan via agent_cost_report al orquestador, y el orquestador persiste.
+    cost_analyst:
+      - El cost-analyst escribe su propia transaccion de tipo cost_analysis.
+      - Ademas actualiza cost/COST_LOG.md de la rama y cost/SUMMARY.md del proyecto.
+
+  trazabilidad:
+    - Cada transaccion tiene un bloque trace con:
+      - triggered_by: quien lanzo este agente
+      - parent_transaction: TXN-id de la transaccion que origino esta
+      - next_action: que deberia pasar despues (informativo)
+      - correction_of: si corrige otra transaccion
+    - Esto forma una cadena de causalidad que permite reconstruir el flujo completo.
+
+  compactacion:
+    - Las transacciones se mantienen como archivos individuales durante la vida del proyecto.
+    - Al CERRAR el proyecto (seccion cierre_de_proyecto), el PM lanza:
+      Agent({
+        description: "Transaction compactor",
+        model: "haiku",
+        prompt: "Compacta las transacciones del proyecto."
+      })
+    - El compactador:
+      1. Lee TODAS las transacciones de TODAS las ramas.
+      2. Genera un archivo COMPACTED_TRANSACTIONS.md por rama con todas las transacciones en formato tabla.
+      3. Elimina los archivos .md individuales de transactions/.
+      4. El COMPACTED_TRANSACTIONS.md queda como registro historico permanente.
+    - NUNCA se compacta un proyecto con status != "completed".
+
+# ============================================================
+# 14. AISLAMIENTO POR PROYECTO
+# ============================================================
+aislamiento_por_proyecto:
+  descripcion: >
+    Cada proyecto opera en su propio espacio dentro de framework-agentico/projects/.
+    Esto evita colisiones entre proyectos concurrentes y permite tracking independiente.
+
+  estructura:
+    - Templates en core/templates/ (PROJECT, BRANCH, TRANSACTION, COST_LOG, COST_SUMMARY).
+    - El PM instancia los templates al crear un nuevo proyecto.
+    - checkpoints/GLOBAL.md es un INDICE de proyectos, no un checkpoint individual.
+
+  creacion_de_proyecto:
+    - El PM obtiene el project-id del nombre del repositorio de GitHub (gh repo view --json name).
+    - El PM crea: projects/{project-id}/ con PROJECT.md, cost/SUMMARY.md.
+    - Al crear la epic branch, el PM crea: projects/{project-id}/branches/epic_{name}/ con BRANCH.md, cost/COST_LOG.md, phases/, transactions/.
+    - Al crear issue branches, el orquestador crea la estructura equivalente.
+
+  rollup_de_costos:
+    - Los costos se registran a nivel de RAMA (branches/{rama}/cost/COST_LOG.md).
+    - El cost-analyst hace rollup de rama -> proyecto en projects/{id}/cost/SUMMARY.md.
+    - El PM hace rollup de proyecto -> indice global en checkpoints/GLOBAL.md.
+    - Cada nivel solo tiene AGREGADOS del nivel inferior, nunca entradas duplicadas.
+
+  multi_proyecto:
+    - checkpoints/GLOBAL.md lista todos los proyectos con: id, status, path, costo total.
+    - Solo un proyecto puede estar in_progress a la vez (restriccion del framework single-PM).
+    - Proyectos completed quedan como referencia historica.
 ```
