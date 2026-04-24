@@ -1,0 +1,131 @@
+# ============================================================================
+# Maestro Platform — Stack de Observabilidad
+# ============================================================================
+# Prometheus: métricas de contenedores (via cAdvisor)
+# Loki: almacenamiento de logs
+# Promtail: recolecta logs de containers Docker → Loki
+# Grafana: UI de dashboards + alertas
+# cAdvisor: métricas por contenedor (CPU/mem/net/disk)
+# Node Exporter: métricas del host
+#
+# Se levanta junto con el stack principal:
+#   docker compose -f docker-compose.dev.yml -f docker-compose.obs.yml up -d
+# ============================================================================
+
+name: maestro
+
+networks:
+  maestro-network:
+    external: true
+
+volumes:
+  obs-prometheus-data:
+  obs-grafana-data:
+  obs-loki-data:
+
+services:
+  obs-prometheus:
+    image: prom/prometheus:v3.1.0
+    container_name: obs-prometheus
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=30d'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    volumes:
+      - ./docker/observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./docker/observability/prometheus/alerts:/etc/prometheus/alerts:ro
+      - obs-prometheus-data:/prometheus
+    networks:
+      - maestro-network
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      - "traefik.enable=false"
+
+  obs-cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.51.0
+    container_name: obs-cadvisor
+    restart: unless-stopped
+    privileged: false       # CIS: nunca privileged
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    networks:
+      - maestro-network
+    command:
+      - '--housekeeping_interval=10s'
+      - '--docker_only=true'
+      - '--store_container_labels=false'
+      - '--disable_metrics=disk,diskIO,network,tcp,udp'
+
+  obs-node-exporter:
+    image: prom/node-exporter:v1.8.2
+    container_name: obs-node-exporter
+    restart: unless-stopped
+    command:
+      - '--path.rootfs=/host'
+    volumes:
+      - /:/host:ro,rslave
+    networks:
+      - maestro-network
+
+  obs-loki:
+    image: grafana/loki:3.3.2
+    container_name: obs-loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/loki-config.yml
+    volumes:
+      - ./docker/observability/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - obs-loki-data:/loki
+    networks:
+      - maestro-network
+    security_opt:
+      - no-new-privileges:true
+
+  obs-promtail:
+    image: grafana/promtail:3.3.2
+    container_name: obs-promtail
+    restart: unless-stopped
+    command: -config.file=/etc/promtail/promtail-config.yml
+    volumes:
+      - ./docker/observability/promtail/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - maestro-network
+    depends_on:
+      - obs-loki
+
+  obs-grafana:
+    image: grafana/grafana:11.4.0
+    container_name: obs-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD:-change_me_admin}"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_SERVER_ROOT_URL: "${GRAFANA_ROOT_URL:-https://grafana.maestro.local}"
+    volumes:
+      - obs-grafana-data:/var/lib/grafana
+      - ./docker/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./docker/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    networks:
+      - maestro-network
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=maestro-network"
+      - "traefik.http.routers.obs-grafana.rule=Host(`grafana.${MAESTRO_BASE_DOMAIN:-maestro.local}`)"
+      - "traefik.http.routers.obs-grafana.entrypoints=websecure"
+      - "traefik.http.routers.obs-grafana.tls=true"
+      - "traefik.http.routers.obs-grafana.middlewares=forward-auth-maestro@file,security-headers@file"
+      - "traefik.http.services.obs-grafana.loadbalancer.server.port=3000"
+    depends_on:
+      - obs-prometheus
+      - obs-loki

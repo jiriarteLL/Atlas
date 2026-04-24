@@ -1,0 +1,144 @@
+# ============================================================================
+# Maestro Platform — Prometheus alert rules V1
+# ============================================================================
+# Alertas basadas en métricas disponibles de cAdvisor + node-exporter.
+# V1 no incluye Alertmanager: estas alertas son visualizadas en Grafana
+# (datasource Prometheus → Alert tab) y disparan notificaciones vía
+# Grafana Contact Points (email / webhook genérico).
+#
+# Cuando se agregue laravel-prom-exporter (deuda V1.1) se sumarán alertas
+# de negocio (tasa 5xx, latencia p95, queue length).
+# ============================================================================
+
+groups:
+  # ----------------------------------------------------------------------
+  # Infraestructura / containers
+  # ----------------------------------------------------------------------
+  - name: infra.core
+    interval: 30s
+    rules:
+      - alert: MaestroContainerDown
+        expr: |
+          time() - container_last_seen{name=~"maestro-.*|obs-.*"} > 120
+        for: 2m
+        labels:
+          severity: SEV1
+          runbook: runbook-container-down
+        annotations:
+          summary: "Container {{ $labels.name }} desaparecido del scrape"
+          description: |
+            cAdvisor no reporta métricas del container {{ $labels.name }} desde hace >2min.
+            Verificar `docker ps` y `docker logs {{ $labels.name }}`.
+
+      - alert: MaestroContainerMemoryHigh
+        expr: |
+          (container_memory_working_set_bytes{name=~"maestro-.*"}
+            / container_spec_memory_limit_bytes{name=~"maestro-.*"}) > 0.80
+        for: 10m
+        labels:
+          severity: SEV2
+          runbook: runbook-memory-pressure
+        annotations:
+          summary: "Container {{ $labels.name }} uso memoria > 80% sostenido"
+          description: "Working set memory > 80% del límite durante 10 min."
+
+      - alert: MaestroContainerCPUHigh
+        expr: |
+          sum by(name) (rate(container_cpu_usage_seconds_total{name=~"maestro-.*"}[5m])) > 0.90
+        for: 15m
+        labels:
+          severity: SEV3
+          runbook: runbook-cpu-pressure
+        annotations:
+          summary: "Container {{ $labels.name }} CPU > 90% sostenido"
+          description: "Alta contención de CPU. Evaluar scaling horizontal."
+
+      - alert: MaestroContainerRestarting
+        expr: |
+          rate(container_start_time_seconds{name=~"maestro-.*"}[15m]) > 0
+        for: 5m
+        labels:
+          severity: SEV2
+          runbook: runbook-restart-loop
+        annotations:
+          summary: "Container {{ $labels.name }} reiniciando"
+          description: "El container se reinició dentro de los últimos 15 min."
+
+  # ----------------------------------------------------------------------
+  # Host (VPS)
+  # ----------------------------------------------------------------------
+  - name: host.resources
+    interval: 60s
+    rules:
+      - alert: HostDiskAlmostFull
+        expr: |
+          100 - ((node_filesystem_avail_bytes{mountpoint="/",fstype!~"tmpfs|overlay"} * 100)
+            / node_filesystem_size_bytes{mountpoint="/",fstype!~"tmpfs|overlay"}) > 85
+        for: 5m
+        labels:
+          severity: SEV1
+          runbook: runbook-disk-full
+        annotations:
+          summary: "Disco del host al {{ $value | printf \"%.1f\" }}%"
+          description: "Liberar espacio o aumentar el disco del VPS antes de llegar a 100%."
+
+      - alert: HostDiskGrowthFast
+        expr: |
+          predict_linear(node_filesystem_avail_bytes{mountpoint="/"}[1h], 24*3600) < 0
+        for: 30m
+        labels:
+          severity: SEV3
+          runbook: runbook-disk-growth
+        annotations:
+          summary: "Disco del host se llenará en <24h al ritmo actual"
+          description: "Planificar expansión del disco o limpieza."
+
+      - alert: HostMemoryHigh
+        expr: |
+          (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) > 0.90
+        for: 10m
+        labels:
+          severity: SEV2
+          runbook: runbook-host-memory
+        annotations:
+          summary: "Memoria del VPS > 90%"
+          description: "Memoria saturada — reducir cargas o agregar RAM al VPS."
+
+      - alert: HostLoadHigh
+        expr: |
+          node_load5 / on() count(count by(cpu) (node_cpu_seconds_total)) > 1.5
+        for: 15m
+        labels:
+          severity: SEV3
+          runbook: runbook-host-load
+        annotations:
+          summary: "Host load average 5m > 1.5x # cores"
+          description: "Saturación sostenida de CPU en el VPS."
+
+  # ----------------------------------------------------------------------
+  # Monitoring self-check
+  # ----------------------------------------------------------------------
+  - name: monitoring.selfcheck
+    interval: 60s
+    rules:
+      - alert: PrometheusTargetDown
+        expr: up == 0
+        for: 5m
+        labels:
+          severity: SEV2
+          runbook: runbook-prometheus-target-down
+        annotations:
+          summary: "Prometheus target {{ $labels.instance }} (job {{ $labels.job }}) abajo"
+          description: "Verificar container del exporter correspondiente."
+
+      - alert: MaestroAPIMetricsMissing
+        expr: absent(up{job="maestro-api"}) or up{job="maestro-api"} == 0
+        for: 10m
+        labels:
+          severity: SEV3
+          runbook: runbook-metrics-endpoint
+        annotations:
+          summary: "Endpoint /metrics del Maestro API no responde"
+          description: |
+            Esperado al instalar laravel-prom-exporter (deuda V1.1).
+            Por ahora esta alerta es informativa; no bloquea operación.

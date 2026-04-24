@@ -1,0 +1,67 @@
+# Traefik static configuration (dev)
+# ADR-004: Traefik v3 con ForwardAuth + TLS + security headers
+
+global:
+  checkNewVersion: false
+  sendAnonymousUsage: false
+
+api:
+  dashboard: true
+  insecure: false
+
+log:
+  level: DEBUG
+  format: json
+
+accessLog:
+  format: json
+  fields:
+    headers:
+      defaultMode: keep
+      names:
+        X-Auth-User-Id: drop          # nunca loguear headers de auth
+        X-Auth-User-Email: drop
+        X-Auth-Company-Id: drop
+        X-Auth-Roles: drop
+        X-Auth-Permissions: drop
+        Authorization: drop
+        Cookie: drop
+
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
+  websecure:
+    address: ":443"
+    http:
+      middlewares:
+        - "security-headers@file"
+        - "rate-limit-default@file"
+      tls: {}
+
+providers:
+  # DEV: Traefik usa /var/run/docker.sock directo (el socket-proxy latest rechaza v1.24 que Traefik v3 negocia).
+  # PROD: el preset maestro-platform usa tcp://maestro-docker-proxy:2375 con proxy configurado para permitir v1.24.
+  docker:
+    endpoint: "unix:///var/run/docker.sock"
+    exposedByDefault: false
+    network: maestro-network
+  file:
+    filename: /etc/traefik/dynamic.yml
+    watch: true
+
+# TLS: en dev usamos self-signed vía ACME con staging CA; en prod Let's Encrypt real
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: "admin@maestro.local"
+      storage: /acme/acme.json
+      # En dev forzar staging para no quemar el rate limit de Let's Encrypt
+      caServer: "https://acme-staging-v02.api.letsencrypt.org/directory"
+      httpChallenge:
+        entryPoint: web

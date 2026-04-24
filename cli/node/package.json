@@ -1,0 +1,30 @@
+{
+  "name": "maestro-cli",
+  "version": "0.1.0-dev",
+  "description": "CLI oficial de Maestro Platform para devs de apps huésped. Comandos: validate, new.",
+  "license": "proprietary",
+  "type": "module",
+  "bin": {
+    "maestro-cli": "./dist/cli.js"
+  },
+  "main": "./dist/cli.js",
+  "files": ["dist", "templates", "README.md"],
+  "scripts": {
+    "build": "tsc",
+    "start": "node ./dist/cli.js"
+  },
+  "dependencies": {
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
+    "commander": "^13.0.0",
+    "kleur": "^4.1.5",
+    "yaml": "^2.6.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
