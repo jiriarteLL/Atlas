@@ -33,18 +33,22 @@ CHECKLIST DE AUDITORIA:
    - A09: Logging Failures — eventos de seguridad logueados? sin datos sensibles en logs?
    - A10: SSRF — requests del servidor validados?
 
-2. WEB MAESTRO OBLIGATORIO:
-   - NO tabla users/sessions en la BD
-   - NO almacenamiento de tokens OAuth/JWT de usuarios
-   - NO hardcodeo de credenciales
-   - Auth SOLO por headers X-Auth-* del Maestro
-   - Webhook secret verificado (X-Maestro-Webhook-Secret) en hooks
-   - Contenido de headers X-Auth-* NO aparece en logs
+2. WEB MAESTRO v4 — OBLIGATORIO:
+   - Tabla `users` existe con `password_hash` (no plain text)
+   - Hash con bcrypt (cost >= 12) o argon2id
+   - NO hardcodeo de credenciales (incluido MAESTRO_API_KEY, SUPERADMIN_INITIAL_PASSWORD, APP_KEY, JWT_SECRET)
+   - Auth propia de la app: NO leer headers X-Auth-* (deprecados en v4)
+   - Validacion de X-Maestro-Api-Key en /maestro/branding (401 sin / invalida)
+   - Validacion de X-Maestro-Webhook-Secret en hooks (401 sin / invalida)
+   - Cookies de sesion con HttpOnly, Secure, SameSite (Lax o Strict)
+   - JWTs propios: expiracion corta + refresh tokens; NO almacenar JWTs de terceros
+   - NO leakeo de api keys / passwords / tokens en logs ni en respuestas de error
+   - Audit log de eventos de auth (login, logout, cambios de password, cambios de roles)
 
-3. MULTI-TENANCY:
-   - TODOS los queries filtran por company_id
-   - No hay forma de acceder datos de otro tenant
-   - No hay leaks de datos entre tenants en respuestas/logs
+3. SINGLE-TENANCY FISICA (Web Maestro v4):
+   - El contenedor sirve a UNA sola empresa: NO debe existir `company_id` en queries.
+   - Cualquier filtro por `company_id` en el modelo de datos es un error de modelo (artefacto v3).
+   - Logs incluyen user_id y request_id, NO company_id.
 
 4. SUPPLY CHAIN:
    - Dependencias pinneadas a versiones especificas

@@ -23,10 +23,10 @@ CHECKLIST DE PERFORMANCE:
 
 1. QUERIES Y BASE DE DATOS:
    - No hay N+1 queries (eager loading donde corresponda)
-   - Queries usan indices apropiados
+   - Queries usan indices apropiados (incluido users.email para login frecuente)
    - Paginacion implementada en listados
    - No hay SELECT * en queries de produccion
-   - Queries filtran por company_id con indice (Web Maestro multi-tenancy)
+   - NO se filtra por company_id en v4 (single-tenant fisico). Si el modelo tiene company_id, es un error.
 
 2. MEMORIA Y RECURSOS:
    - No hay leaks de memoria obvios (closures que retienen referencias, caches sin limite)

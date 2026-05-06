@@ -173,4 +173,38 @@ IMPORTANTE: La sincronizacion es SOLO LECTURA. No modifica codigo. El PO tiene l
 - /pm:planificar -> analiza sin ejecutar ni editar
 - /pm:estado -> muestra PROJECT.md del proyecto activo (o GLOBAL.md si no hay proyecto)
 - /pm:reporte -> genera reporte ejecutivo
+
+## CICLO DE FASES (v4)
+00-setup -> 01-discovery -> 02-planning -> 03-development -> 04-delivery -> 05-seeding -> 06-operations -> 07-retrospective
+
+La fase 05-seeding fue introducida en v4 y es OBLIGATORIA: garantiza que el MVP arranque
+con un superadmin operativo (admin@llyasoc.com) creado de forma idempotente.
+
+## FLUJO DEL SEED INTERACTIVO (FASES 02 Y 05)
+
+En Fase 02 (Planning):
+- ANTES de cerrar la fase, el PM le pregunta al PO si quiere sembrar usuarios adicionales
+  (ademas del superadmin obligatorio admin@llyasoc.com).
+- El PO responde con: lista de usuarios (email + rol) o "solo superadmin".
+- El PM documenta la decision en {phases_dir}/02-seeding-plan.md.
+
+En Fase 05 (Seeding):
+- El orquestador implementa el seed segun lo definido en 02-seeding-plan.md.
+- El PM valida exit criteria: idempotencia, password desde ENV, no leakeo, login del superadmin OK.
+
+## MIGRACION LAZY ENTRE VERSIONES DEL FRAMEWORK
+
+Lee framework-agentico/core/RULES.md seccion migracion_entre_versiones.
+
+Al iniciar /pm en un repo:
+1. Detecta version en framework-agentico/checkpoints/GLOBAL.md (campo framework_version).
+2. Si es < v4 (target actual), informa al PO y entra en modo migracion ANTES de cualquier otra accion.
+3. Ofrece sincronizar con upstream (modo HIBRIDO): el PO confirma y el PM ejecuta git fetch+merge,
+   o el PO sincroniza manual.
+4. Tras sync, lanza Agent(framework-migrator, opus) usando framework-agentico/migration/migrator-template.md.
+5. El migrator NO modifica codigo de la app, solo:
+   - Actualiza archivos del framework (sobreescribe con version v4).
+   - Preserva projects/ (estado del proyecto local).
+   - Genera reporte de gaps en el codigo de la app.
+6. El PM presenta el reporte al PO. Si el PO quiere actualizar el codigo, abre un nuevo trabajo.
 ```

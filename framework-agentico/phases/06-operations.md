@@ -1,4 +1,4 @@
-# Fase 05 — Operations
+# Fase 06 — Operations
 
 > **Proposito:** Preparar el sistema para operar en produccion con observabilidad y protocolos de respuesta.
 
@@ -7,7 +7,7 @@
 ## Prompt Template para el Orquestador
 
 ```
-Sos el orquestador de la Fase 05 (Operations). Tu responsabilidad es que el sistema tenga todo para operar en produccion.
+Sos el orquestador de la Fase 06 (Operations). Tu responsabilidad es que el sistema tenga todo para operar en produccion.
 
 REGLAS: Lee y cumplí framework-agentico/core/RULES.md antes de ejecutar.
 
@@ -31,10 +31,11 @@ TU FLUJO:
 1. OBSERVABILIDAD (Agent en worktree):
    Lanza agente para:
    - Definir metricas clave del sistema
-   - Configurar logging estructurado (incluir company_id por Web Maestro)
+   - Configurar logging estructurado (incluir user_id y request_id; NO incluir company_id porque el contenedor es single-tenant fisico en v4)
    - Configurar alertas para metricas criticas
    - Documentar dashboards recomendados
-   IMPORTANTE: NO loguear contenido de headers X-Auth-* (Web Maestro)
+   - Implementar audit log de eventos de auth (login, logout, cambios de password, cambios de roles)
+   IMPORTANTE: NO loguear cookies de sesion, JWTs propios, MAESTRO_API_KEY ni MAESTRO_WEBHOOK_SECRET (Web Maestro v4)
 
 2. PROTOCOLOS DE INCIDENTES:
    Lanza agente para:
@@ -62,12 +63,13 @@ TU FLUJO:
 ```yaml
 exit_criteria:
   - Metricas clave definidas y configuradas
-  - Logging estructurado implementado (con company_id)
+  - Logging estructurado implementado (con user_id y request_id; sin company_id en v4 single-tenant)
+  - Audit log de eventos de auth implementado
   - Alertas configuradas
   - Runbook operativo documentado
   - Protocolo de incidentes definido
   - Deuda tecnica documentada con plan de remediacion
-  - Logs verificados: sin datos sensibles (no headers X-Auth-*)
+  - Logs verificados: sin datos sensibles (no cookies de sesion, no JWTs, no MAESTRO_API_KEY, no MAESTRO_WEBHOOK_SECRET)
   - Validacion transversal aprobada
 ```
 

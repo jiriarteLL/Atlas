@@ -1,6 +1,12 @@
 # Convenciones de la Plataforma Maestro — Coexistencia Maestro ↔ Apps Huésped
 
-> **Fuente de verdad** para naming, puertos, redes, volúmenes, subdominios y variables de entorno que **TODA aplicación huésped** debe respetar para coexistir con el Maestro y con otras apps huésped sin conflicto.
+> ⚠️ **DOCUMENTO DEPRECADO (convenciones v1) — superado por `docs/CONVENCIONES_PLATAFORMA_V2.md`.**
+>
+> Este documento contiene las convenciones de Maestro v1 (multi-tenant con `company_id`, ForwardAuth, headers `X-Auth-*`). Para Maestro v2 / apps v4 (single-tenant fisico, auth propia) usar `CONVENCIONES_PLATAFORMA_V2.md`.
+>
+> ---
+>
+> **Fuente de verdad (legacy)** para naming, puertos, redes, volúmenes, subdominios y variables de entorno que **TODA aplicación huésped v1** debe respetar para coexistir con el Maestro v1.
 >
 > **Deliverable DEL-001** generado en Fase 02 (Planning) el 2026-04-16.
 > **Origen**: DEC-012 (zero local installs) + DEC-017 (multi-tenant con escala V1 de 1 empresa × 7 apps).

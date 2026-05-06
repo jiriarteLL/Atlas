@@ -37,8 +37,9 @@ project_cost:
     02-planning: { cost_usd: 0.00, retries: 0 }
     03-development: { cost_usd: 0.00, retries: 0 }
     04-delivery: { cost_usd: 0.00, retries: 0 }
-    05-operations: { cost_usd: 0.00, retries: 0 }
-    06-retrospective: { cost_usd: 0.00, retries: 0 }
+    05-seeding: { cost_usd: 0.00, retries: 0 }
+    06-operations: { cost_usd: 0.00, retries: 0 }
+    07-retrospective: { cost_usd: 0.00, retries: 0 }
 
   # --- Desglose por modelo (sumado de todas las ramas) ---
   by_model:

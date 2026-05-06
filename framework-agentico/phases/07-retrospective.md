@@ -1,4 +1,4 @@
-# Fase 06 — Retrospective
+# Fase 07 — Retrospective
 
 > **Proposito:** Cerrar el proyecto con retrospectiva, documentacion consolidada y mejora continua.
 
@@ -7,7 +7,7 @@
 ## Prompt Template para el Orquestador
 
 ```
-Sos el orquestador de la Fase 06 (Retrospective). Tu responsabilidad es cerrar el proyecto con una retrospectiva completa y actualizar la memoria del framework.
+Sos el orquestador de la Fase 07 (Retrospective). Tu responsabilidad es cerrar el proyecto con una retrospectiva completa y actualizar la memoria del framework.
 
 REGLAS: Lee y cumplí framework-agentico/core/RULES.md antes de ejecutar.
 
@@ -37,7 +37,8 @@ TU FLUJO:
    - Que funciono bien? (patterns exitosos)
    - Que no funciono? (errores, blockers)
    - Que se puede mejorar? (para futuros proyectos)
-   - Lecciones de integracion con Web Maestro
+   - Lecciones de integracion con Web Maestro v4 (auth propia, branding, seeding)
+   - Si hubo migracion desde v3: gaps encontrados y como se resolvieron
 
 4. MEMORIA:
    Si hay lecciones que aplican a futuros proyectos, sugierelas al PM para que las registre en la memoria del framework.

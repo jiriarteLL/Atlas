@@ -1,6 +1,14 @@
 # Mejores Prácticas para Aplicaciones Huésped — Maestro Platform
 
-> **Documento orientativo.** Acompaña a `docs/APP_HUESPED_SPEC.md` (que es normativo y vinculante).
+> ⚠️ **DOCUMENTO DEPRECADO (acompaña al contrato v1) — superado por `docs/APP_HUESPED_BEST_PRACTICES_V2.md`.**
+>
+> Este documento contiene practicas alineadas con el contrato `maestro.platform/v1` (Maestro v1, framework v3). Para apps nuevas (framework v4) usar `APP_HUESPED_BEST_PRACTICES_V2.md`.
+>
+> Algunas practicas siguen siendo aplicables (12-factor, supply chain, observabilidad, testing, despliegue, comunicacion). Las que cambian estan marcadas en el documento V2 con notas explicitas.
+>
+> ---
+>
+> **Documento orientativo (legacy).** Acompaña a `docs/APP_HUESPED_SPEC.md` v1 (legacy).
 >
 > **Audiencia:** equipos que diseñan, implementan, operan y mantienen apps en Maestro Platform.
 > **Carácter:** recomendaciones derivadas de estándares industriales (12-factor, OWASP, OpenSSF, SLSA, NIST SSDF, CNCF) adaptadas al contexto de la plataforma.

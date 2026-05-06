@@ -1,8 +1,8 @@
-# CLAUDE.md — Framework de Desarrollo Agentico v3
+# CLAUDE.md — Framework de Desarrollo Agentico v4
 
-> **Version:** 3.0.0
+> **Version:** 4.0.0
 > **Proyecto:** Aplicaciones genericas para plataforma Web Maestro
-> **Framework:** PM persistente + Agent() calls reales + memorias transaccionales + aislamiento por proyecto
+> **Framework:** PM persistente + Agent() calls reales + single-tenant + auth propia + memorias transaccionales + aislamiento por proyecto + migracion lazy entre versiones
 
 ---
 
@@ -32,7 +32,8 @@ Humano (Product Owner)
         │     └── Actualiza: rama/COST_LOG -> proyecto/SUMMARY -> GLOBAL
         │
         └── Fases: 00-Setup → 01-Discovery → 02-Planning →
-            03-Development → 04-Delivery → 05-Operations → 06-Retrospective
+            03-Development → 04-Delivery → 05-Seeding →
+            06-Operations → 07-Retrospective
 
 Datos:
   projects/{project-id}/
@@ -72,7 +73,7 @@ Solo el PM tiene slash commands. Todo lo demas es interno via Agent().
   ├── PM verifica prerequisitos del repo (ver RULES.md)
   ├── PM crea epic branch + estructura de rama
   |
-  ├── Para cada fase (00 a 06):
+  ├── Para cada fase (00 a 07):
   │   ├── PM registra interaccion propia como transaccion
   │   ├── PM construye Context Packet con project_paths (core/CONTEXT_PACKET.md)
   │   ├── PM lanza Agent(orquestador, opus) con el packet
@@ -161,6 +162,33 @@ Analiza el estado actual fase por fase contra los exit criteria, presenta
 los hallazgos al Project Owner interactivamente, y marca las fases como
 `verified_by_analysis` o `incomplete_pre_existing` segun corresponda.
 Ver `framework-agentico/core/RULES.md` seccion 9 para las reglas completas.
+
+## Migracion Lazy entre Versiones del Framework
+
+Cada repo de aplicacion huesped es un fork de este template y tiene su propia copia
+del framework. Cuando el framework upstream avanza de version (ej: v3 -> v4), los forks
+quedan atrasados hasta que se sincronicen.
+
+Al iniciar `/pm` en un fork:
+
+1. El PM lee `framework-agentico/checkpoints/GLOBAL.md` y compara `framework_version`
+   con la version target (la del upstream).
+2. Si esta desactualizada, el PM ofrece sincronizar con upstream (modo HIBRIDO):
+   el PO autoriza y el PM ejecuta `git fetch upstream && git merge upstream/{main}`,
+   o el PO lo hace manual.
+3. Tras el sync, el PM lanza `Agent(framework-migrator, opus)` que actualiza
+   `projects/{id}/PROJECT.md` (renumera fases, agrega 05-seeding como pending) y
+   genera un reporte de gaps en el codigo de la app.
+4. El PM presenta el reporte al PO. La migracion **no toca el codigo** de la app;
+   resolver los gaps es un nuevo trabajo si el PO lo decide.
+
+La migracion aplica a CUALQUIER version anterior a la actual (v1, v2, v3 -> v4).
+
+Ver detalle en:
+- `framework-agentico/CHANGELOG.md` (cambios entre versiones)
+- `framework-agentico/migration/v3-to-v4.md` (proceso v3 -> v4)
+- `framework-agentico/migration/migrator-template.md` (template del Agent migrator)
+- `framework-agentico/core/RULES.md` seccion 15 (reglas de migracion)
 
 ---
 

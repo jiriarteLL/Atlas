@@ -1,4 +1,4 @@
-# Reglas Generales del Framework v3
+# Reglas Generales del Framework v4
 
 > **FUENTE UNICA DE VERDAD** — Todas las reglas del framework estan en este archivo.
 > **Aplican a:** PM, todos los orquestadores, todos los agentes, todos los niveles.
@@ -429,4 +429,53 @@ aislamiento_por_proyecto:
     - checkpoints/GLOBAL.md lista todos los proyectos con: id, status, path, costo total.
     - Solo un proyecto puede estar in_progress a la vez (restriccion del framework single-PM).
     - Proyectos completed quedan como referencia historica.
+
+# ============================================================
+# 15. MIGRACION ENTRE VERSIONES DEL FRAMEWORK
+# ============================================================
+migracion_entre_versiones:
+  descripcion: >
+    El framework versiona cambios mayores. Las apps huesped (forks) pueden quedar
+    atrasadas respecto a la version actual del framework. La migracion es LAZY:
+    el PM detecta la version desactualizada al ejecutar /pm en un fork y ofrece migrar.
+
+  alcance:
+    - Aplica a CUALQUIER version anterior a la version actual del framework.
+      Una app con framework v1, v2, v3 o cualquier version pre-v4 debe llevarse al estado v4.
+    - La migracion NO modifica el codigo de la app. Solo actualiza los archivos del framework
+      y produce un reporte de gaps en el codigo de la app que el PO puede resolver despues.
+
+  deteccion_de_version:
+    - El PM lee framework_version en framework-agentico/checkpoints/GLOBAL.md.
+    - Compara contra la version target del framework (la que figura en este repo upstream).
+    - Si la version local < version target: el PM entra en modo migracion ANTES de cualquier otra accion.
+
+  flujo_lazy:
+    - Cuando el PO ejecuta /pm en un fork con framework desactualizado:
+      1. El PM informa la version detectada y la version target.
+      2. El PM ofrece sincronizar el fork con upstream (modo HIBRIDO):
+         a. Si el PO acepta y autoriza, el PM ejecuta `git fetch upstream && git merge upstream/{main_branch}`.
+         b. Si el PO prefiere manual, el PM lista los pasos y espera a que el PO sincronice.
+      3. Tras el sync, el PM relee framework_version en GLOBAL.md.
+      4. Si la version local ahora es la target, el PM lanza:
+         Agent({
+           description: "Framework migrator v{old} -> v{target}",
+           model: "opus",
+           prompt: "Sos el framework-migrator. Lee framework-agentico/migration/migrator-template.md
+           y ejecuta la migracion del proyecto local al estado v{target}.
+           NO modifiques codigo de la app. Genera reporte de gaps."
+         })
+      5. El migrator devuelve un reporte de gaps. El PM se lo presenta al PO.
+      6. El PO decide si abrir un nuevo trabajo (issue/branch) para corregir los gaps en el codigo.
+
+  restricciones:
+    - La migracion NO toca codigo de la app sin autorizacion explicita del PO.
+    - La migracion preserva projects/ (estado del proyecto local).
+    - Si el PO rechaza migrar, el PM advierte que NO puede operar bajo el preset v4 con framework anterior, y queda en modo solo-lectura hasta migrar.
+    - El PM NUNCA hace force push ni reescribe historia de git.
+
+  documentos_de_referencia:
+    - framework-agentico/migration/v3-to-v4.md (proceso detallado v3 -> v4)
+    - framework-agentico/migration/migrator-template.md (template del Agent migrator)
+    - framework-agentico/CHANGELOG.md (cambios entre versiones)
 ```

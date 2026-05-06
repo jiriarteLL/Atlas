@@ -1,14 +1,14 @@
 # Indice Global de Proyectos
 
 > **Administrado por:** Project Manager (PM)
-> **Ultima actualizacion:** 2026-04-23
+> **Ultima actualizacion:** 2026-05-06
 > **Nota:** Este archivo es un INDICE. El estado detallado de cada proyecto esta en su PROJECT.md.
 
 ---
 
 ```yaml
-framework_version: "3.0"
-preset: "web-maestro"                   # siempre activo
+framework_version: "4.0"
+preset: "web-maestro"                   # siempre activo (v4: single-tenant + auth propio)
 
 # --- Proyecto activo ---
 # Solo un proyecto puede estar in_progress a la vez (restriccion single-PM)
@@ -49,9 +49,10 @@ global_cost:
 
 ## Notas
 
-- Framework v3 — memorias transaccionales + aislamiento por proyecto
+- Framework v4 — single-tenant + auth propio por app + fase de seeding (ver CHANGELOG.md)
 - Cada proyecto tiene su estado en projects/{project-id}/PROJECT.md
 - Costos se registran por rama, se agregan por proyecto, se indexan aqui
 - Templates en core/templates/
 - Preset Web Maestro siempre activo
 - Para iniciar proyecto: invocar `/pm`
+- Migracion lazy v3 -> v4: ver framework-agentico/migration/v3-to-v4.md

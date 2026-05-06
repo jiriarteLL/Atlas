@@ -1,67 +1,121 @@
-# CLAUDE.md — App huésped Maestro
+# CLAUDE.md — App huésped Maestro v2
 
-> Este archivo **hereda** las reglas de la plataforma Maestro. Claude Code lo lee en cada sesión y aplica estas restricciones automáticamente al generar o modificar código en este proyecto.
+> Este archivo **hereda** las reglas de la plataforma Maestro v2 / framework agéntico v4. Claude Code lo lee en cada sesión y aplica estas restricciones automáticamente al generar o modificar código en este proyecto.
+>
+> **Versión del contrato:** `maestro.platform/v2`
+> **Framework agéntico:** v4
+> **Reemplaza al CLAUDE.md v1** (que asumía headers `X-Auth-*` y multi-tenancy con `company_id`).
 
-## Regla 1: Auth por headers, NUNCA login propio
+## Regla 1: Auth propia de la app — NO leer headers X-Auth-*
 
-- La app **NO** implementa login, registro ni reset de password.
-- La identidad viene en los headers: `X-Auth-User-Id`, `X-Auth-User-Email`, `X-Auth-Company-Id`, `X-Auth-Roles`, `X-Auth-Permissions`.
-- Usá `authMiddleware()` del SDK: `import { authMiddleware } from '@maestro/sdk-node'`.
-- Nunca crees tablas `users`, `sessions`, `password_resets` ni similares.
+- La app implementa **su propio login** (formulario + endpoint POST + middleware).
+- Tablas obligatorias: `users`, `roles`, `permissions` con pivots (estructura sugerida en docs/APP_HUESPED_SPEC_V2.md §3).
+- Password storage: bcrypt (cost ≥ 12) o argon2id. **NUNCA** texto plano, MD5, SHA1, SHA256 directo.
+- Cookies con `HttpOnly`, `Secure`, `SameSite=Lax`, **O** JWT con expiracion corta + refresh token.
+- **NO** leas headers `X-Auth-*` (deprecados en v2; el Maestro v2 no los inyecta).
+- En este template (Node + Express): usa middleware como Passport.js, express-session, o helmet + jsonwebtoken segun necesidad.
 
-## Regla 2: Multi-tenancy — filtrar por company_id en TODO query
+## Regla 2: Single-tenant físico — NO filtres por company_id
 
-- `tenantFilter(req)` del SDK te da el `company_id` del request actual.
-- Cualquier `SELECT`, `INSERT`, `UPDATE`, `DELETE` debe incluir `WHERE company_id = <tenant>`.
-- Bug de no-filtrado = leak entre tenants = catastrófico.
+- Cada contenedor sirve a UNA empresa. La empresa esta implícita.
+- **NO** agregues `company_id` a las tablas. **NO** filtres queries por `company_id`.
+- Si necesitas datos de la empresa (nombre, logo), exponelos via el endpoint `/maestro/branding` (Regla 6).
 
 ## Regla 3: Health check sin auth obligatorio
 
-- `GET /health` debe responder 200 JSON `{"status":"ok"}` sin pasar por auth middleware.
-- Timeout máximo: 5 segundos.
-- El Maestro lo consulta cada 30s; 3 fallos → restart automático.
+- `GET /health` responde 200 JSON `{"status":"ok"}` **sin pasar por auth middleware**.
+- Timeout maximo: 5 segundos.
+- Verifica conectividad a la BD con `SELECT 1` en happy path.
 
-## Regla 4: Hooks verificados HMAC
+## Regla 4: Endpoint /maestro/branding con X-Maestro-Api-Key
 
-- Los endpoints declarados en `maestro.yaml` bajo `hooks:` reciben eventos del Maestro.
-- SIEMPRE usar `hookVerifierMiddleware()` para verificar firma HMAC-SHA256.
-- Nunca confiar en hooks sin verificar la firma.
+- Expone el path declarado en `maestro.yaml` bajo `branding.url` (default `/maestro/branding`).
+- **DEBE** validar header `X-Maestro-Api-Key` contra ENV var `MAESTRO_API_KEY`.
+- Sin / con api key inválida → `HTTP 401`.
+- Con api key válida → 200 + JSON: `{ "company_name", "logo_url", "primary_color"?, "favicon_url"? }`.
+- `company_name` y `logo_url` son obligatorios; los otros opcionales.
 
-## Regla 5: Variables de entorno
+## Regla 5: Hooks verificados con HMAC
 
-- **OBLIGATORIO leer del env**: `DATABASE_URL`, `MAESTRO_*`. Nunca hardcodear.
-- **RESERVADOS (prohibidos en tu app)**: prefijos `MAESTRO_`, `X_AUTH_`, `DATABASE_URL`.
-- Tus env vars custom se declaran en `maestro.yaml` → `env:` y deben matchear regex `^[A-Z][A-Z0-9_]*$`.
+- Endpoints declarados en `maestro.yaml` bajo `hooks:` reciben eventos del Maestro v2.
+- **SIEMPRE** verificar header `X-Maestro-Webhook-Signature` (HMAC-SHA256 del body con `MAESTRO_WEBHOOK_SECRET`).
+- Comparar en tiempo constante (`crypto.timingSafeEqual` en Node).
+- Idempotente: deduplica por `event_id`.
 
-## Regla 6: Dockerfile obligatorios
+## Regla 6: Variables de entorno
+
+**OBLIGATORIO leer del env (NO hardcodear):**
+- `DATABASE_URL`
+- `MAESTRO_API_KEY`
+- `SUPERADMIN_INITIAL_PASSWORD`
+- `JWT_SECRET` (o `APP_KEY` segun stack)
+
+**RESERVADOS (prohibidos como custom env vars):** prefijos `MAESTRO_*`, `SUPERADMIN_*`, y `DATABASE_URL`.
+
+Custom env vars en `maestro.yaml` → `env:`. Regex `^[A-Z][A-Z0-9_]*$`.
+
+## Regla 7: Dockerfile obligatorio
 
 - Multi-stage (`FROM ... AS build` + `FROM ... AS runtime`).
-- `USER` directive con UID no-root.
+- `USER` con UID no-root.
 - `HEALTHCHECK` instruction.
 - `EXPOSE` con el puerto de `maestro.yaml`.
-- **Prohibido**: `--privileged`, montar `/var/run/docker.sock`, exponer puertos <1024.
+- **Prohibido**: `--privileged`, montar `/var/run/docker.sock`, exponer puertos < 1024, hardcodear secretos.
 
-## Regla 7: Nada de secretos en código
+## Regla 8: Nada de secretos en código
 
-- Pre-commit scan con gitleaks + CI deep scan del historial git.
-- Secretos como passwords, tokens, API keys SOLO por env vars inyectadas en runtime por el Maestro.
+- Pre-commit con gitleaks + CI deep scan del historial.
+- Secretos solo via ENV vars inyectadas en runtime.
 
-## Regla 8: `maestro.yaml` es el contrato
+## Regla 9: maestro.yaml v2 es el contrato
 
-- Cualquier cambio al contrato requiere `maestro-cli validate` antes de commit.
-- CI/CD valida en cada push; build falla si el contrato es inválido.
+- `apiVersion: maestro.platform/v2` (no v1).
+- Campos obligatorios: `auth.mode: own`, `auth.login_path`, `branding.url`, `seeding.superadmin_email` (default `admin@llyasoc.com`).
+- Cualquier cambio requiere `maestro-cli validate` (v2) antes de commit.
 
-## Regla 9: Comunicación inter-apps solo via Gateway
+## Regla 10: Seeder del superadmin (fase 05-seeding del framework agéntico)
 
-- Si necesitás llamar a otra app del mismo tenant, usar `GatewayClient` del SDK.
-- Nunca llamar a otra app por URL directa (las redes Docker lo bloquean igualmente).
+- Implementa un seeder idempotente que:
+  - Lee `SUPERADMIN_INITIAL_PASSWORD` del env.
+  - Si no existe o es debil (< 12 chars / blacklisted): falla con exit code != 0.
+  - Crea (si no existe) rol `superadmin` con TODOS los permisos.
+  - Crea (si no existe) usuario `admin@llyasoc.com` con rol `superadmin`.
+  - Si ya existe: NO toca password; verifica que tenga el rol.
+  - Logs sin password ni hash.
+- Hook en pipeline post-migrations: ejecutar el seeder.
 
-## Regla 10: Logs estructurados JSON sin datos sensibles
+## Regla 11: Logs estructurados JSON sin datos sensibles
 
-- Formato JSON a stdout/stderr (Loki los recolecta).
-- **Nunca** loguear: headers `X-Auth-*`, passwords, tokens, `DATABASE_URL`, bodies de requests completos.
-- Incluir `company_id` en logs para trazabilidad multi-tenant.
+- Formato JSON a stdout/stderr.
+- Incluir `user_id` y `request_id` (NO `company_id` — single-tenant fisico).
+- **NUNCA** loguear: passwords, hashes, JWTs propios, `MAESTRO_API_KEY`, `MAESTRO_WEBHOOK_SECRET`, `SUPERADMIN_INITIAL_PASSWORD`, cookies de sesion, bodies con datos sensibles.
+
+## Regla 12: Audit log de auth (recomendado)
+
+- Tabla `audit_log` con eventos: login (exitoso / fallido), logout, password change, role change.
+- Campos: timestamp, user_id, action, ip_address, user_agent, success.
+- Inmutable (solo INSERT).
 
 ---
 
-Más info en la documentación de la plataforma (`docs/CONVENCIONES_PLATAFORMA.md` del Maestro).
+## Stack de este template
+
+- **Runtime:** Node 22+
+- **Framework:** Express 4.x
+- **BD:** PostgreSQL via `pg` o `prisma`
+- **Auth:** sugerido `passport.js` (con strategy local) + `express-session` con cookie store, **O** `jsonwebtoken` con cookies HttpOnly.
+- **Hash:** `bcrypt` o `argon2`.
+- **Validación:** `zod` o `joi`.
+- **Testing:** `vitest` o `jest` + `supertest`.
+
+> El stack es ilustrativo. Cualquier librería madura es válida; lo obligatorio es cumplir las 12 reglas anteriores.
+
+---
+
+## Referencias
+
+- `docs/APP_HUESPED_SPEC_V2.md` — contrato normativo v2
+- `docs/APP_HUESPED_BEST_PRACTICES_V2.md` — recomendaciones
+- `docs/CONVENCIONES_PLATAFORMA_V2.md` — naming, redes, env vars
+- `framework-agentico/core/PRESET_WEB_MAESTRO.md` — preset v4
+- `framework-agentico/phases/05-seeding.md` — detalle de la fase de seeding

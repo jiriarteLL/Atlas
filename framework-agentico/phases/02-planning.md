@@ -36,19 +36,27 @@ TU FLUJO:
    - La arquitectura es compatible con el modelo de datos?
    - Los contratos de API cubren todos los requisitos funcionales?
    - Los flujos de UI consumen las APIs definidas?
-   - Compatibilidad con preset Web Maestro verificada?
+   - Compatibilidad con preset Web Maestro v4 verificada (auth propia, single-tenant, branding endpoint, login_path en maestro.yaml)?
 
 3. Genera artefactos:
    - {project_paths.phases_dir}/02-architecture.md (incluye ADRs)
-   - {project_paths.phases_dir}/02-data-model.md
-   - {project_paths.phases_dir}/02-api-contracts.md
+   - {project_paths.phases_dir}/02-data-model.md (incluye users/roles/permissions, sin company_id)
+   - {project_paths.phases_dir}/02-api-contracts.md (incluye /login, /logout, /maestro/branding, /health)
    - {project_paths.phases_dir}/02-ui-flows.md (si hay frontend)
+   - {project_paths.phases_dir}/02-seeding-plan.md (decisiones de seeding — ver paso 4)
 
-4. Crea GitHub Milestone + Issues por modulo/feature:
+4. DECISION DE SEEDING (escalar al PM):
+   El PM debe preguntar al PO si quiere sembrar usuarios adicionales (con roles especificos)
+   ademas del superadmin obligatorio (`admin@llyasoc.com`). Documentar la decision en
+   `02-seeding-plan.md` con: lista de usuarios adicionales (email + rol), o explicito que
+   NO se siembran usuarios mas alla del superadmin.
+
+5. Crea GitHub Milestone + Issues por modulo/feature:
    - Cada issue = un modulo implementable independientemente
    - Cada issue tiene branch asignada: epic/{proyecto}/{modulo}
+   - Incluir issue para la fase 05-seeding (seeder + tests).
 
-5. Devuelve Phase Result al PM.
+6. Devuelve Phase Result al PM.
 ```
 
 ---
@@ -60,14 +68,15 @@ exit_criteria:
   - Stack tecnologico definido y documentado
   - Patrones arquitectonicos documentados en ADRs
   - Diagrama de componentes (C4 nivel 2 minimo)
-  - Modelo de datos disenado
-  - Contratos de API definidos
+  - Modelo de datos disenado (incluye users/roles/permissions, sin company_id)
+  - Contratos de API definidos (incluye /login, /logout, /maestro/branding, /health)
   - Flujos de usuario documentados (si hay frontend)
   - Sistema de diseno UI definido (si hay frontend)
-  - Threat model considerado
+  - Threat model considerado (auth propia, password storage, api keys)
+  - Decision de seeding documentada (superadmin obligatorio + usuarios adicionales si los hay)
   - Coherencia validada entre todos los artefactos
-  - GitHub Milestone + Issues creados
-  - Compatibilidad con Web Maestro verificada
+  - GitHub Milestone + Issues creados (incluye issue de fase 05-seeding)
+  - Compatibilidad con Web Maestro v4 verificada
 ```
 
 ---
@@ -78,6 +87,7 @@ exit_criteria:
 - `{project_paths.phases_dir}/02-data-model.md`
 - `{project_paths.phases_dir}/02-api-contracts.md`
 - `{project_paths.phases_dir}/02-ui-flows.md` (si aplica)
+- `{project_paths.phases_dir}/02-seeding-plan.md`
 - GitHub Milestone con Issues desglosados
 
 ---

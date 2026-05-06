@@ -32,8 +32,9 @@ pending_phases:
   - "02-planning"
   - "03-development"
   - "04-delivery"
-  - "05-operations"
-  - "06-retrospective"
+  - "05-seeding"
+  - "06-operations"
+  - "07-retrospective"
 skipped_phases: []
 
 phases_status:
@@ -42,8 +43,9 @@ phases_status:
   02-planning: { status: "not_started", exit_criteria_met: false }
   03-development: { status: "not_started", exit_criteria_met: false }
   04-delivery: { status: "not_started", exit_criteria_met: false }
-  05-operations: { status: "not_started", exit_criteria_met: false }
-  06-retrospective: { status: "not_started", exit_criteria_met: false }
+  05-seeding: { status: "not_started", exit_criteria_met: false }
+  06-operations: { status: "not_started", exit_criteria_met: false }
+  07-retrospective: { status: "not_started", exit_criteria_met: false }
 
 # --- Repositorio ---
 repo:
@@ -107,8 +109,9 @@ cost_summary:
     02-planning: { agent_calls: 0, retries: 0, tokens: 0, cost_usd: 0.00 }
     03-development: { agent_calls: 0, retries: 0, tokens: 0, cost_usd: 0.00 }
     04-delivery: { agent_calls: 0, retries: 0, tokens: 0, cost_usd: 0.00 }
-    05-operations: { agent_calls: 0, retries: 0, tokens: 0, cost_usd: 0.00 }
-    06-retrospective: { agent_calls: 0, retries: 0, tokens: 0, cost_usd: 0.00 }
+    05-seeding: { agent_calls: 0, retries: 0, tokens: 0, cost_usd: 0.00 }
+    06-operations: { agent_calls: 0, retries: 0, tokens: 0, cost_usd: 0.00 }
+    07-retrospective: { agent_calls: 0, retries: 0, tokens: 0, cost_usd: 0.00 }
   by_role:
     orchestration: { calls: 0, tokens: 0, cost_usd: 0.00 }
     development: { calls: 0, tokens: 0, cost_usd: 0.00 }

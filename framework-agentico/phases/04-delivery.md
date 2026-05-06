@@ -54,14 +54,17 @@ TU FLUJO:
 
 ```yaml
 exit_criteria:
-  - Dockerfile generado y validado (compatible Web Maestro)
+  - Dockerfile generado y validado (compatible Web Maestro v4)
   - docker-compose funcional para desarrollo local
   - Pipeline CI/CD configurado
   - Sistema ensamblado compila y arranca
   - Smoke tests pasan
   - Health check verificado
+  - Endpoint /maestro/branding responde 401 sin api key y 200 con api key valida
+  - ENV vars obligatorias declaradas (DATABASE_URL, MAESTRO_API_KEY, SUPERADMIN_INITIAL_PASSWORD, APP_KEY/JWT_SECRET segun stack)
+  - App registrada en el Maestro (URL, puerto, empresa_id, estado: active)
   - Validacion transversal aprobada
-  - maestro.yaml validado (si existe)
+  - maestro.yaml validado contra schema v4 (auth_model: own, login_path, branding_url declarados)
 ```
 
 ---

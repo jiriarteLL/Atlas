@@ -1,8 +1,24 @@
 # Especificación Técnica de Aplicación Huésped — Maestro Platform
 
-> **Documento normativo.** Vincula a todo equipo, interno o externo, que pretenda registrar una aplicación genérica en Maestro Platform.
+> ⚠️ **DOCUMENTO DEPRECADO (contrato v1) — superado por `maestro.platform/v2`.**
 >
-> **Versión del contrato:** `maestro.platform/v1`
+> Este documento describe el contrato `maestro.platform/v1` que se uso entre Maestro v1 y apps v3 del framework agentico. **Para apps nuevas (framework v4) usar `docs/APP_HUESPED_SPEC_V2.md`**.
+>
+> Las apps que aun usan v1 deben migrar a v4. El proceso de migracion esta documentado en `framework-agentico/migration/v3-to-v4.md`.
+>
+> Cambios principales v1 -> v2:
+> - Auth: de `mode: header` (Traefik ForwardAuth + headers `X-Auth-*`) a `mode: own` (login propio de la app).
+> - Tenancy: de multi-tenant con `company_id` a single-tenant fisico (un contenedor = una empresa).
+> - Branding: nuevo endpoint `/maestro/branding` autenticado con `X-Maestro-Api-Key`.
+> - Seeding: nueva fase 05-seeding con superadmin `admin@llyasoc.com`.
+>
+> Detalle completo en `framework-agentico/CHANGELOG.md`.
+>
+> ---
+>
+> **Documento normativo (legacy).** Vincula a todo equipo, interno o externo, que registró una aplicación genérica en Maestro Platform v1.
+>
+> **Versión del contrato:** `maestro.platform/v1` (LEGACY)
 > **Última revisión:** 2026-04-28
 > **Audiencia:** desarrolladores, tech leads, responsables de plataforma de equipos integradores.
 > **Predecesores normativos:** `PremisaWebMaestro/01-PREMISAS-Y-NO-NEGOCIABLES.md`, `PremisaWebMaestro/06-SDK-Y-CONTRATO.md`, `docs/CONVENCIONES_PLATAFORMA.md`, `docs/schemas/maestro.yaml.schema.json`.

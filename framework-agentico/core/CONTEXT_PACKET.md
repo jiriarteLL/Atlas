@@ -1,6 +1,6 @@
 # Context Packet — Formato de Comunicacion entre PM y Orquestadores
 
-> **Version:** 3.0
+> **Version:** 4.0
 > **Proposito:** Eliminar perdida de informacion entre Agent() calls
 
 ---
@@ -45,12 +45,16 @@ context_packet:
       frontend: "Framework / Lenguaje"
       database: "Motor / Version"
       infra: "Docker / Cloud / etc"
-    preset_constraints:              # Web Maestro (siempre presentes)
-      - "Auth por headers X-Auth-*, NO tabla users"
-      - "Filtrar queries por company_id"
+    preset_constraints:              # Web Maestro v4 (siempre presentes)
+      - "Auth propia de la app: tablas users + roles + permissions; tokens propios (NO X-Auth-*)"
+      - "Single-tenant fisico: NO filtrar queries por company_id"
       - "GET /health -> 200 sin auth"
-      - "Dockerfile non-root, HEALTHCHECK, no privileged"
-      - "maestro.yaml obligatorio"
+      - "GET /maestro/branding -> 401 sin X-Maestro-Api-Key, 200 con api key valida"
+      - "El Maestro NO inyecta headers X-Auth-*; abre URL en target=_blank"
+      - "Dockerfile non-root, HEALTHCHECK, sin --privileged ni docker.sock"
+      - "maestro.yaml obligatorio: auth_model: own, login_path, branding_url"
+      - "Fase 05-seeding crea admin@llyasoc.com idempotente (password desde SUPERADMIN_INITIAL_PASSWORD)"
+      - "ENV vars obligatorias: DATABASE_URL, MAESTRO_API_KEY, SUPERADMIN_INITIAL_PASSWORD, APP_KEY/JWT_SECRET"
       # ... lista completa segun core/PRESET_WEB_MAESTRO.md
 
   # --- Artefactos de fases anteriores (paths dentro del proyecto) ---
