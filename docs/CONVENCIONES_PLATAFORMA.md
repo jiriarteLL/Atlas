@@ -286,7 +286,7 @@ Reglas verificadas automáticamente por `maestro-cli validate`:
 
 ## 9. `maestro.yaml` — Contrato resumido
 
-Ver `docs/02-planning/API_CONTRACTS.md §3` para la especificación completa.
+La especificación completa del contrato gateway se documenta en la fase 02-planning de cada proyecto generado por el framework agéntico (entregable `API_CONTRACTS.md`).
 
 Ejemplo canónico:
 ```yaml
@@ -381,12 +381,9 @@ Toda app huésped debe loguear a **stdout/stderr** (no a archivos). Formato:
 
 ## 13. Referencias cruzadas
 
-- Arquitectura: `docs/02-planning/ARCHITECTURE.md`
-- ADRs: `docs/02-planning/ADR_LOG.md`
-- Modelo de datos: `docs/02-planning/DATA_MODEL.md`
-- Contratos de API: `docs/02-planning/API_CONTRACTS.md`
-- UX: `docs/02-planning/UX_SPECS.md`
-- Threat model: `docs/02-planning/THREAT_MODEL.md`
+Estos artefactos son **generados por el framework agéntico** durante el ciclo de desarrollo. Ver:
+
+- Fase 02 — Planning: `framework-agentico/phases/02-planning.md` define cómo se generan ARCHITECTURE, ADR_LOG, DATA_MODEL, API_CONTRACTS, UX_SPECS y THREAT_MODEL.
+- Decisiones: cada proyecto registra sus ADRs en `framework-agentico/projects/{project-id}/branches/{rama}/phases/02-planning-adr.md`.
 - Preset y reglas: `framework-agentico/agents/presets/maestro-platform/rules/RULES.md`
-- Decisiones: `framework-agentico/agents/CHECKPOINT_GLOBAL.md` (DEC-001 a DEC-022)
 - Premisa vinculante: `PremisaWebMaestro/01-PREMISAS-Y-NO-NEGOCIABLES.md`
