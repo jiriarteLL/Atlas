@@ -1,5 +1,23 @@
 # Arquitectura Actual del Proyecto
-Generado: Tue Apr 14 11:14:23     2026
+
+> ⚠️ **DOCUMENTO LEGACY (snapshot historico) — NO refleja el estado actual del repo.**
+>
+> Este archivo es un **snapshot de la estructura de directorios** del proyecto Maestro Platform v1 al **2026-04-14**, anterior al cleanup del PR #8 (commit `ddc41fb`, 2026-05-07) que borro el codigo de la aplicacion Maestro v1 del repositorio template y al bump del framework agentico v3 -> v4 (commit `9930d7b`, 2026-05-06).
+>
+> **Para ver la arquitectura actual del repositorio (v4) usa:**
+>
+> - `README.md` — guia de desarrollo de apps huesped v4
+> - `framework-agentico/` — framework agentico v4 (8 fases, validators, presets, migration)
+> - `docs/APP_HUESPED_SPEC_V2.md` — contrato `maestro.platform/v2`
+> - `docs/CONVENCIONES_PLATAFORMA_V2.md` — convenciones v2
+> - `framework-agentico/agents/presets/maestro-platform-v2/PRESET.md` — preset para construir el Maestro v2
+> - `CHANGELOG.md` — historial completo del repo
+>
+> El contenido debajo (listado de archivos del 2026-04-14) se conserva como **referencia historica del estado pre-cleanup**. La mayoria de esos paths ya **NO existen** en el repo actual.
+>
+> ---
+>
+> Generado: Tue Apr 14 11:14:23     2026
 
 ## Estructura de Directorios
 ```
