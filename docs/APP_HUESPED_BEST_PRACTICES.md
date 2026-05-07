@@ -1,637 +1,411 @@
 # Mejores Prácticas para Aplicaciones Huésped — Maestro Platform
 
-> **Documento orientativo.** Acompaña a `docs/APP_HUESPED_SPEC.md` (que es normativo y vinculante).
+> **Documento orientativo.** Acompaña a `docs/APP_HUESPED_SPEC.md` (normativo).
 >
-> **Audiencia:** equipos que diseñan, implementan, operan y mantienen apps en Maestro Platform.
-> **Carácter:** recomendaciones derivadas de estándares industriales (12-factor, OWASP, OpenSSF, SLSA, NIST SSDF, CNCF) adaptadas al contexto de la plataforma.
-> **Última revisión:** 2026-04-28.
-
-Las recomendaciones aquí vertidas están priorizadas con un código de color implícito por sección. Cada subsección abre con un *takeaway* en una línea para lectura rápida y baja a profundidad para implementadores.
+> **Versión:** 2.0.0
+> **Framework agéntico:** v4
+> **Última revisión:** 2026-05-07.
+> **Reemplaza a:** `legacy/v3/docs/APP_HUESPED_BEST_PRACTICES.md` (acompañaba al contrato v1).
+> **Stack agnóstico:** ejemplos en Node/Laravel/Python son ilustrativos; cualquier stack es válido.
 
 ---
 
 ## 1. Filosofía base
 
-> *Takeaway:* combiná **12-factor**, **tenant-aware-by-default** y **zero-trust**. Cuando dudes, prefiere cumplir los tres a la vez.
+> *Takeaway:* combiná **12-factor**, **single-tenant-by-default**, **auth-propia-segura** y **zero-trust**.
 
-### 1.1 The Twelve Factors aplicados a Maestro
+### 1.1 The Twelve Factors aplicados a Maestro v2
 
-| Factor | Implicación en Maestro |
+| Factor | Implicación en Maestro v2 |
 |---|---|
-| 1. Codebase | Un repositorio por app, varios deploys (uno por empresa). |
-| 2. Dependencies | Todas declaradas (`package.json`, `composer.json`, `go.mod`, `requirements.txt`). Lock files commiteados. |
-| 3. Config | Solo vía env vars inyectadas por Maestro. Nada en código ni en imagen. |
-| 4. Backing services | La BD es un recurso adjunto via `DATABASE_URL`. Cambiable sin redeploy de imagen. |
-| 5. Build, release, run | Build = imagen Docker; release = imagen + config inyectada; run = contenedor en VPS. Etapas separadas. |
-| 6. Processes | Apps stateless. Estado en BD, archivos solo en blob storage del Maestro. |
-| 7. Port binding | App escucha en `requires.ports.app`. Nadie más lo bindea. |
-| 8. Concurrency | Escalar verticalmente bumpeando tier; horizontalmente cuando Maestro pase a Swarm/K8s. |
+| 1. Codebase | Un repositorio por app, **un deploy por empresa** (single-tenant fisico). |
+| 2. Dependencies | Lock files commiteados (`package-lock.json`, `composer.lock`, `go.sum`, etc.). |
+| 3. Config | Solo via ENV vars. Nada en código ni en imagen. |
+| 4. Backing services | BD adjunta via `DATABASE_URL`. |
+| 5. Build, release, run | Build = imagen; release = imagen + config; run = contenedor. |
+| 6. Processes | Apps stateless. Estado en BD; archivos a blob storage. |
+| 7. Port binding | App escucha en `requires.ports.app`. |
+| 8. Concurrency | Escalar verticalmente bumpeando tier. |
 | 9. Disposability | Arranque ≤ 60 s, shutdown limpio en SIGTERM ≤ 30 s. |
-| 10. Dev/prod parity | `docker-compose.dev.yml` reproduce headers `X-Auth-*` y motor de BD idéntico. |
-| 11. Logs | JSON a stdout. Promtail/Loki los recoge. |
-| 12. Admin processes | Comandos artisan / management / scripts vía `docker exec` o jobs efímeros, nunca embebidos en el server web. |
+| 10. Dev/prod parity | `docker-compose.dev.yml` reproduce el entorno. |
+| 11. Logs | JSON a stdout con `user_id` y `request_id`. |
+| 12. Admin processes | Comandos via `docker exec` o jobs efímeros. |
 
-### 1.2 Tenant-aware-by-default
+### 1.2 Single-tenant-by-default (cambio respecto a v1)
 
-- Todo modelo, repositorio, servicio o caché **DEBE** filtrar por `company_id` del header.
-- Usá el SDK oficial: implementa el patrón *Row-Level-Security application-side*. Si rolá tu propio adaptador, **escribí tests que verifiquen que un usuario de empresa A nunca puede leer datos de empresa B**.
-- Caché por tenant: prefijar todas las claves con `c:<company_id>:`. Nunca compartir caché entre empresas.
+- **Cada contenedor sirve a UNA empresa.** No hay `company_id` en el modelo de datos.
+- La empresa esta implicita por contenedor; sus datos de branding (nombre, logos) se exponen via `/maestro/branding`.
+- Esto **simplifica el modelo de datos**: no hay scopes globales por tenant, no hay risk de leak cross-tenant a nivel de aplicación (el aislamiento es fisico, a nivel de contenedor).
+- Si en el futuro se necesita multi-tenancy, se hace por **un contenedor por empresa**, no por filtrado en queries.
 
-### 1.3 Zero trust en el borde y en el interior
+### 1.3 Auth-propia segura
 
-- El borde lo cubre Traefik + ForwardAuth. Vos no necesitás auth.
-- En el interior: cada llamada saliente a otra app **DEBE** pasar por el API Gateway del Maestro y firmarse con `MAESTRO_APP_SECRET`.
-- Nunca confíes en hostnames del DNS interno: validá la firma del payload.
+- La app es **un Identity Provider para sus usuarios** (no un consumidor pasivo de identidad como en v1).
+- Aplican OWASP ASVS 4.0 y NIST SP 800-63B (Digital Identity Guidelines).
+- Implementación recomendada: librerías maduras del stack (Laravel Sanctum, NextAuth, Passport.js, Django auth, Spring Security). NO escribir auth desde cero.
+
+### 1.4 Zero trust en el borde y en el interior
+
+- El Maestro v2 NO valida identidad de usuario por la app (cada app lo hace).
+- Pero sí autentica las **llamadas server-to-server** (consumo de `/maestro/branding`, hooks): siempre con HMAC o api keys.
+- Internamente: cada app es independiente. No hay comunicación inter-apps directa salvo via gateway autenticado del Maestro v2.
 
 ---
 
-## 2. Estructura de repositorios
+## 2. Auth propia: prácticas recomendadas
+
+### 2.1 Password storage
+
+- **bcrypt cost ≥ 12** o **argon2id** (memory ≥ 32 MB, iterations ≥ 3, parallelism ≥ 1).
+- Nunca SHA1/SHA256 directo.
+- **Pepper** (secret adicional al hash) en ENV var separada — opcional pero recomendado.
+- Rotación de hash: si se cambia el cost, re-hashear silenciosamente al próximo login exitoso.
+
+### 2.2 Password policy
+
+- Minimo 12 caracteres.
+- Complejidad razonable (mezcla de mayúsculas, minúsculas, números, símbolos) — alternativamente, simplemente 14+ chars sin restricción de complejidad (NIST 800-63B 5.1.1.2).
+- Blacklist de passwords comunes (top 100K de HaveIBeenPwned o similar).
+- NO forzar cambios periódicos de password (NIST 800-63B 5.1.1.2).
+
+### 2.3 Sesiones (cookie HttpOnly + Secure)
+
+- Cookies con `HttpOnly`, `Secure`, `SameSite=Lax`.
+- Token de sesión opaco (no JWT) almacenado en BD.
+- Expiración relativa (sliding) ≥ 24 h con limite absoluto ≤ 30 dias.
+- Logout invalida el token en BD.
+- Rotacion de session ID en login exitoso (anti session fixation).
+
+### 2.4 JWT (alternativa a cookies)
+
+- Si usas JWT en lieu de cookies:
+  - Algoritmo `RS256` o `EdDSA`. NO `HS256` con secret compartido.
+  - Expiración corta (≤ 15 min).
+  - Refresh token separado, almacenado en cookie HttpOnly o en BD.
+- NO almacenes JWT en `localStorage`; vulnerable a XSS.
+
+### 2.5 Multi-Factor Authentication (MFA)
+
+- Para apps con datos sensibles, soportar MFA opcional (TOTP via apps como Google Authenticator).
+- Backup codes generados en setup.
+- Recovery flow seguro (no por email simple; idealmente confirmation por admin u otro factor).
+
+### 2.6 Recuperación de password
+
+- Token unico de un solo uso, con expiración ≤ 1 h.
+- Email enviado por servicio externo (SES, SendGrid, etc.) — no SMTP propio en el contenedor.
+- Ratelimit estricto (3 intentos por hora por email).
+- NO revelar si el email existe en respuestas (opacidad anti-enumeration).
+
+### 2.7 Roles y permisos
+
+- Modelo RBAC sugerido: `users <-> roles <-> permissions`.
+- Permisos como strings opacos (`users.create`, `reports.view`).
+- Rol `superadmin` con TODOS los permisos (asignado al usuario `admin@llyasoc.com` por el seeder de fase 05).
+- Permisos verificados en backend (NO solo en frontend).
+
+### 2.8 Audit log de auth
+
+- Tabla `audit_log` con eventos: login (exitoso y fallido), logout, password change, role change.
+- Campos: timestamp, user_id, action, ip_address, user_agent, success.
+- Retencion mínima 90 dias.
+- Inmutable (solo INSERT; idealmente con triggers DB que rechazan UPDATE/DELETE).
+
+---
+
+## 3. Estructura de repositorios
 
 > *Takeaway:* un repo por app, trunk-based, conventional commits, semver, CHANGELOG generado.
 
-### 2.1 Mono-repo vs poly-repo
+(Igual que en v1, sin cambios significativos.)
 
-- **Recomendado:** poly-repo (un repo por app). Aísla blast radius, simplifica permisos, alinea con la separación de equipos del Maestro.
-- **Mono-repo justificado:** equipos de plataforma que mantienen 3+ apps muy acopladas y tienen tooling para enrutar despliegues por path. Si vas a mono-repo, usá `nx`, `turborepo`, `bazel` o `pnpm workspaces`.
-
-### 2.2 Branching: trunk-based development
-
-- Una sola rama larga: `main`.
-- Feature branches cortas (≤ 3 días, idealmente ≤ 1 día).
-- Toda integración a `main` vía Pull Request con CI verde + ≥ 1 reviewer.
-- Releases por tag semver (`v1.4.2`), nunca por rama larga.
-
-### 2.3 Conventional Commits + SemVer + Keep a Changelog
-
-- Mensajes de commit: `<tipo>(<scope>)!: <mensaje>` con tipos `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `perf`, `build`, `ci`, `revert`.
-- `!` después del scope marca breaking change.
-- SemVer: `MAJOR.MINOR.PATCH`. Breaking → MAJOR. Funcionalidad backward-compat → MINOR. Bug fix → PATCH.
-- `CHANGELOG.md` generado por `release-please` o `changesets` desde commits.
-
-### 2.4 Code ownership
-
-- `CODEOWNERS` en `.github/` mapea paths a equipos para auto-asignar reviewers.
-- Reglas de protección de `main`:
-  - Require PR review (≥ 1, idealmente 2 para cambios en seguridad/migraciones).
-  - Require status checks (todos los jobs de CI verdes).
-  - Require branches up-to-date.
-  - Require signed commits (gpg o sigstore).
-  - Disallow force-push y deletion.
-
-### 2.5 Convenciones de archivos
-
-| Archivo | Recomendación |
-|---|---|
-| `README.md` | Quickstart en ≤ 5 minutos. Diagrama de arquitectura ASCII. Variables de entorno. Cómo correr `docker-compose.dev.yml`. |
-| `CHANGELOG.md` | Generado automáticamente. No editar a mano. |
-| `CONTRIBUTING.md` | Cómo abrir PRs, estilo de commits, cómo ejecutar tests. |
-| `SECURITY.md` | Canal privado de reporte (`security@…`), SLA de respuesta, política de disclosure (90 días o coordinada). |
-| `LICENSE` | Identificada con SPDX (`MIT`, `Apache-2.0`, `BSD-3-Clause`, `proprietary`). |
-| `.editorconfig` | Tamaño de tab, charset, EOL — uniforme cross-IDE. |
-| `.gitattributes` | `* text=auto eol=lf`. Evita problemas con CRLF en Windows. |
-| `docs/ADR/` | Architecture Decision Records (Michael Nygard format). Nuevo ADR por decisión técnica importante. |
-| `docs/RFC/` | Para propuestas grandes (cambios cross-cutting), antes de codificar. |
+- Poly-repo (un repo por app).
+- Trunk-based development con `main` protegida.
+- Conventional commits + SemVer + Keep a Changelog.
+- `CODEOWNERS`, `SECURITY.md`, `LICENSE`, `.editorconfig`, `.gitattributes`.
+- ADRs en `docs/ADR/` para decisiones técnicas mayores.
 
 ---
 
-## 3. CI/CD con GitHub Actions
+## 4. CI/CD con GitHub Actions
 
-> *Takeaway:* pipeline en 5 fases (validate → build → scan → publish → register). Cada fase falla rápido y reporta en el PR.
+(Mayormente igual que v1; los cambios son específicos del modelo v2.)
 
-### 3.1 Pipeline canónico
+### 4.1 Pipeline canónico v2
 
 ```
-validate (en cada push)
-  ├── lint
-  ├── typecheck
-  ├── unit tests
-  ├── maestro-cli validate
-  ├── gitleaks (historial completo)
-  └── dependency review (PRs)
-build-and-push (solo en main)
-  ├── docker buildx build --provenance --sbom
-  ├── push GHCR (tags: <semver>, <sha>, NUNCA :latest)
-scan
-  ├── trivy / grype sobre la imagen (CRITICAL/HIGH bloquean)
-  ├── cosign sign (sigstore keyless)
-  └── attestations (SLSA L3 build provenance)
-publish-artifacts
-  ├── upload SBOM (SPDX o CycloneDX)
-  └── upload provenance attestation
-register
-  └── POST /api/v1/apps/register al Maestro
+validate → build → scan → publish → register → seed
 ```
 
-### 3.2 Acciones recomendadas (con anclaje a SHA)
+Diferencias respecto a v1:
+- **`maestro-cli validate`** verifica `apiVersion: maestro.platform/v2` y campos nuevos (auth.mode=own, branding.url, seeding).
+- **`register`** envia metadata al Maestro v2 (cuando exista).
+- **`seed`** ejecuta el seeder del superadmin (parte de fase 05-seeding del framework v4).
 
-| Acción | Propósito |
-|---|---|
-| `actions/checkout@v4` | Checkout del código. Usá `fetch-depth: 0` para gitleaks. |
-| `actions/setup-node@v4` / `setup-python@v5` / `setup-go@v5` / `shivammathur/setup-php@v2` | Setup del runtime con cache integrado. |
-| `docker/setup-buildx-action@v3` | Builder con cache + multi-arch. |
-| `docker/login-action@v3` | Login a GHCR vía `GITHUB_TOKEN`. |
-| `docker/build-push-action@v6` | Build con `provenance: true` + `sbom: true`. |
-| `aquasecurity/trivy-action` o `anchore/scan-action` | Scan de vulnerabilidades. |
-| `sigstore/cosign-installer@v3` + `cosign sign --yes` | Firma keyless de imágenes. |
-| `gitleaks/gitleaks-action@v2` | Detección de secretos en historial. |
-| `github/codeql-action` | SAST contra PRs. |
-| `actions/dependency-review-action` | Bloquea introducción de deps con CVEs altas en PRs. |
-| `release-please-action` | Generación de releases + tags + CHANGELOG. |
+### 4.2 Acciones recomendadas
 
-> **Anclá las acciones a SHA**, no a tag mutable, para reducir riesgo de supply chain (`uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.1`).
+(Idem v1.) `actions/checkout@v4`, `docker/build-push-action@v6`, `aquasecurity/trivy-action`, `sigstore/cosign-installer@v3`, `gitleaks/gitleaks-action@v2`, `github/codeql-action`.
 
-### 3.3 Permisos mínimos del workflow
+### 4.3 Secret management
 
-```yaml
-permissions:
-  contents: read       # leer el repo
-  packages: write      # publicar a GHCR
-  id-token: write      # OIDC para cosign keyless / cloud login
-  pull-requests: write # para release-please / dependency-review
-```
-
-Nunca `permissions: write-all`. Configuración recomendada a nivel organización: `read` por defecto, los workflows escalan.
-
-### 3.4 OIDC en lugar de secrets de cloud
-
-- Para autenticarte a AWS / Azure / GCP, usá **OIDC federation** vía `id-token: write` y los actions oficiales de cada cloud (`aws-actions/configure-aws-credentials@v4`, `azure/login@v2`, `google-github-actions/auth@v2`).
-- Resultado: no hay long-lived secrets en el repo; las credenciales son ephemeral y con scope mínimo.
-
-### 3.5 Reusable workflows y composite actions
-
-- Si tu organización mantiene varias apps, extraé los pasos comunes (validate, scan, sign, register) a un repo `org/.github` con `workflow_call`.
-- Las apps consumen: `uses: org/.github/.github/workflows/maestro-app.yml@v1`.
-- Aislamiento de cambios: bumps controlados por tag.
-
-### 3.6 Concurrency, environments y approval gates
-
-- `concurrency: { group: deploy-${{ github.ref }}, cancel-in-progress: false }` evita despliegues paralelos del mismo branch.
-- Definí `environments: production` con required reviewers para gate manual antes de `register`.
-- Para apps críticas, gate adicional con check de "horario laboral / no-freeze" (ver §4 de `APP_HUESPED_SPEC.md` y memoria de freeze de release).
+- `MAESTRO_API_KEY` y `SUPERADMIN_INITIAL_PASSWORD` se inyectan via GitHub Secrets o vault externo.
+- Nunca en código, nunca en logs.
+- Rotación recomendada cada 90 dias.
 
 ---
 
-## 4. Seguridad (Supply Chain + AppSec)
+## 5. Seguridad (Supply Chain + AppSec)
 
-> *Takeaway:* asumir compromiso. Firmar todo, escanear todo, rotar todo, almacenar nada.
+> *Takeaway:* asumir compromiso. Firmar todo, escanear todo, rotar todo, almacenar nada salvo passwords hasheadas.
 
-### 4.1 Supply chain
+### 5.1 Supply chain
 
-| Práctica | Herramienta | Rol |
-|---|---|---|
-| Lock files | npm/yarn/pnpm/composer/pip/go.sum | Reproducibilidad. |
-| Pin de imágenes base por digest | `FROM node:22.13-alpine@sha256:...` | Inmutabilidad de la base. |
-| Pin de actions por SHA | `uses: foo/bar@<sha40>` | Inmutabilidad de las actions. |
-| SBOM | Syft (integrado en buildx con `sbom: true`) | Inventario auditable. |
-| Provenance | SLSA L3 attestation (buildx `provenance: true`) | Quién y cómo construyó la imagen. |
-| Firma | Cosign keyless (sigstore) | Verificable sin gestionar claves. |
-| Verificación en deploy | Maestro verifica firma cosign antes de provisionar | Cierra el loop. |
-| Dependabot | `.github/dependabot.yml` | Bumps automáticos semanales. |
-| Renovate | Alternativa más flexible que Dependabot | Reglas finas por paquete. |
+(Igual a v1.) Lock files, pin de imágenes por digest, pin de actions por SHA, SBOM, provenance, cosign sign.
 
-### 4.2 AppSec en CI
+### 5.2 AppSec específico de v2
 
-- **SAST:** GitHub Advanced Security CodeQL para JS/TS/Python/Go/Java/Ruby/C#. Ejecutar en push y en cron semanal.
-- **DAST:** OWASP ZAP baseline en staging contra el endpoint expuesto vía Traefik.
-- **Secret scanning:** habilitar en GitHub repos (push protection). Reforzar con `gitleaks` que cubre el historial.
-- **Dependency review:** action oficial bloquea PRs que introducen vulns críticas.
-- **License scanning:** `licensee` o `fossa` para detectar licencias incompatibles con tu producto.
+- **SAST con foco en auth:** code scanners deben verificar uso correcto del middleware de auth, no leakeo de passwords en logs, no SQL injection en queries de auth.
+- **DAST:** OWASP ZAP baseline contra `/login`, `/logout`, endpoints protegidos, `/maestro/branding`, hooks.
+- **Dependency review:** bloquear PRs que introducen libs de auth con CVEs altas.
+- **License scanning:** mantener dependencies con licencias compatibles.
 
-### 4.3 Hardening de imágenes Docker
+### 5.3 Hardening de imágenes Docker
 
-- Multi-stage build con runtime mínima (alpine, slim, distroless).
-- `USER` no-root (UID > 1000).
-- `--read-only` filesystem cuando sea posible (ajustar `tmpfs` para temporales).
-- `--cap-drop=ALL --cap-add=<solo lo necesario>` (mayoría de apps no necesita ninguna capability).
-- `--security-opt=no-new-privileges` (lo aplica el Maestro automáticamente).
-- Imagen final sin shell ni paquete manager (distroless impide `docker exec` interactivo, asumilo y usá sidecars de debug).
+(Idem v1.) Multi-stage, USER no-root, read-only filesystem cuando posible, cap-drop ALL.
 
-### 4.4 Hardening de runtime
+### 5.4 Hardening de runtime
 
-- `seccomp` default profile habilitado (Maestro lo aplica).
-- Variables de entorno sensibles **NUNCA** se loguean. Filtros en logger.
-- Cabeceras de respuesta:
-  - `Strict-Transport-Security: max-age=31536000; includeSubDomains; preload` (Traefik lo añade, vos no lo sobrescribas).
-  - `Content-Security-Policy` adecuado para tu UI.
-  - `X-Content-Type-Options: nosniff`.
-  - `Referrer-Policy: strict-origin-when-cross-origin`.
+- Variables de entorno sensibles **NUNCA** se loguean (filtros en logger).
+- Headers de respuesta: HSTS, CSP, X-Content-Type-Options, Referrer-Policy.
+- Rate limiting en `/login` (ej. 5 intentos por minuto por IP, 10 por hora por email).
 
-### 4.5 Política de rotación
+### 5.5 Política de rotación
 
-- `MAESTRO_APP_SECRET` rota automáticamente cada 90 días. La app **DEBE** soportar dos secretos válidos en transición (verificar firma con cualquiera).
-- Credenciales de BD: rotación coordinada por Maestro. La app las relee al recibir SIGHUP o al reiniciar.
-- API keys de servicios externos: rotación trimestral mínima.
+- `MAESTRO_API_KEY` rota cada 90 dias.
+- `JWT_SECRET` / `APP_KEY`: rotación trimestral con soporte de múltiples claves activas durante transición.
+- Credenciales de BD: rotación coordinada por Maestro v2.
+- Tokens de sesión: invalidados en logout y al cambio de password.
 
 ---
 
-## 5. Observabilidad
+## 6. Observabilidad
 
-> *Takeaway:* logs JSON + métricas Prometheus + trazas OTel. Atributo `tenant_id` en todo.
+> *Takeaway:* logs JSON + métricas Prometheus + trazas OTel. Atributos `user_id`, `request_id` (sin `tenant_id`/`company_id` en v2 single-tenant).
 
-### 5.1 Logs estructurados
+### 6.1 Logs estructurados
 
 ```json
 {
-  "ts": "2026-04-28T13:24:11.832Z",
+  "ts": "2026-05-06T13:24:11.832Z",
   "level": "info",
-  "msg": "ticket.created",
-  "tenant_id": "7e2b1f12-...",
+  "msg": "user.login.success",
   "user_id": "b3a8c0e8-...",
   "request_id": "01HV7N5Z...",
   "app": "hr-dashboard",
-  "version": "0.9.0",
-  "duration_ms": 47,
-  "ticket_id": "tk_8123"
+  "version": "2.0.0",
+  "duration_ms": 47
 }
 ```
 
-- Un solo logger por app, configurado por env (`LOG_LEVEL`, `LOG_FORMAT`).
-- En desarrollo: pretty-print. En producción: JSON.
-- Recomendados: `pino` (Node), `structlog` (Python), `monolog` con `JsonFormatter` (Laravel), `slog` (Go ≥ 1.21).
-- Nunca loguear: `Authorization`, `Cookie`, `X-Auth-*` completo, body de requests con PII, payloads de webhooks con datos sensibles.
+- **Sin `company_id`** (single-tenant fisico).
+- Eventos de auth siempre logueados (login.success, login.failed, logout, password_change).
+- Nunca loguear: `Authorization`, `Cookie`, `MAESTRO_API_KEY`, `MAESTRO_WEBHOOK_SECRET`, password, hash, JWT.
 
-### 5.2 Métricas Prometheus
+### 6.2 Métricas Prometheus
 
-- Endpoint `/metrics` autenticado solo para el scrapper de Prometheus del Maestro (Maestro lo accede vía red privada).
+- Endpoint `/metrics` autenticado solo para el scrapper del Maestro.
 - Métricas RED por endpoint: Rate, Errors, Duration.
-- Métricas USE por instancia: Utilization, Saturation, Errors (CPU, memoria, BD pool).
-- Etiquetas obligatorias: `app`, `version`, `tenant_id` (cuidado con cardinalidad: si hay > 1k tenants, omitir tenant en métricas y mantenerlo solo en logs/trazas).
+- Métricas USE por instancia: CPU, memoria, BD pool.
+- Métricas de auth: `auth_login_attempts_total`, `auth_login_failures_total`, `auth_active_sessions`.
 
-### 5.3 Trazas distribuidas (OpenTelemetry)
+### 6.3 Trazas distribuidas (OpenTelemetry)
 
-- Auto-instrumentación de los SDKs oficiales (HTTP server, BD, HTTP client).
-- Propagar `traceparent` y `tracestate` (W3C Trace Context) en llamadas inter-app.
-- Endpoint OTLP: `MAESTRO_OTLP_ENDPOINT` cuando esté disponible (env var futura).
-- Sampling: 100 % en error, 5–10 % en happy path; tail-sampling en el colector central.
+(Idem v1.) Auto-instrumentación, propagación W3C Trace Context, sampling.
 
-### 5.4 SLOs y error budgets
+### 6.4 SLOs y error budgets
 
-- Definir SLO por endpoint crítico:
-  - Latencia: `p99 < 500 ms` (ej.).
-  - Disponibilidad: `success_rate > 99.5 %` mensual.
-- Error budget = `1 - SLO`. Si se consume > 50 % del budget en 7 días, frenar features y trabajar en estabilidad.
-- Alertas multi-window multi-burn-rate (Google SRE Workbook).
+- SLO de disponibilidad: `success_rate > 99.5 %` mensual.
+- SLO de latencia: `p99 < 500 ms` para endpoints UI; `p99 < 1 s` para login.
+- Alertas multi-window multi-burn-rate.
 
 ---
 
-## 6. Testing
+## 7. Testing
 
-> *Takeaway:* pirámide invertida está mal; pirámide normal: muchos unit, suficientes integración, pocos e2e. Sumá *contract tests* contra el contrato del Maestro.
+> *Takeaway:* pirámide normal: muchos unit, suficientes integración, pocos e2e. Sumá *contract tests* del contrato v2.
 
-### 6.1 Niveles
+### 7.1 Niveles
 
-| Nivel | Cobertura objetivo | Velocidad esperada |
-|---|---|---|
-| Unit | ≥ 70 % de lógica de dominio | < 100 ms por test |
-| Integración | Rutas críticas + acceso a BD real (testcontainers) | 1–10 s por test |
-| Contract test del SDK | Todas las rutas de la app | Determinístico |
-| E2E (docker-compose.dev) | Flujos de usuario top 5 | Aceptable < 5 min |
-| Smoke en producción | Health + login + 1 lectura + 1 escritura por tenant canario | < 30 s |
-
-### 6.2 Test data y tenants de prueba
-
-- Cada test crea su propio `company_id` aleatorio (UUID) y limpia al final.
-- Nunca uses tenants reales en tests automatizados.
-- Para tests integrados con Maestro real, usá el set bootstrap-demo (tenant `acme-demo`), nunca empresas con datos productivos.
-
-### 6.3 Contract tests
-
-- Generá un test que arranca tu app, simula los headers `X-Auth-*` con un mock-Traefik, y verifica:
-  - `/health` responde 200 en ≤ 3 s.
-  - Cualquier ruta sin headers responde 401.
-  - Datos de empresa A nunca se filtran a empresa B (test paramétrico cruzado).
-- El SDK oficial provee este harness; usalo.
-
-### 6.4 Mutation testing (avanzado)
-
-- Para apps con lógica de negocio sensible (financiera, regulada), correr mutation testing periódico (`stryker-mutator` para Node/.NET, `mutmut` para Python, `infection` para PHP, `gomutesting` para Go).
-- Ratio aceptable: ≥ 80 % mutantes detectados.
-
----
-
-## 7. Despliegue y operación
-
-> *Takeaway:* migraciones expand-then-contract, blue/green vía Maestro, feature flags por tenant.
-
-### 7.1 Migraciones de BD seguras
-
-| Operación | Estrategia |
+| Nivel | Cobertura objetivo |
 |---|---|
-| Agregar columna nullable | Una sola migración, deploy normal. |
-| Agregar columna `NOT NULL` | Tres pasos: (1) migración agrega columna nullable, deploy app que escribe en ambas. (2) backfill async. (3) migración que pone `NOT NULL` y elimina código de doble-escritura. |
-| Renombrar columna | Expand-then-contract: agregar nueva, dual-write, migrar lectura, deprecar vieja en N+1. |
-| Borrar columna | Marcar como deprecada en una versión, removerla en la siguiente major. |
-| Cambiar tipo | Expand-then-contract con columna shadow. |
-| Agregar índice grande | `CREATE INDEX CONCURRENTLY` (Postgres). En MySQL, online DDL o pt-online-schema-change. |
+| Unit | ≥ 70 % de lógica de dominio |
+| Integración | Rutas críticas + acceso a BD real (testcontainers) |
+| Contract test del SDK (cuando exista para v2) | Todas las rutas auth + branding |
+| E2E | Flujos top 5 (login, logout, recuperación, CRUD principal) |
+| Smoke en producción | Health + login del superadmin + 1 lectura |
 
-> Regla de oro: **una migración nunca debe ser incompatible con la versión anterior de la app**. Si lo es, partila.
+### 7.2 Tests específicos de v2 obligatorios
 
-### 7.2 Feature flags
+- Login con creds validas → 200 + token/cookie.
+- Login con creds invalidas → 401.
+- Endpoint protegido sin auth → 401.
+- Endpoint protegido con auth válida → 200.
+- `/maestro/branding` sin api key → 401.
+- `/maestro/branding` con api key inválida → 401.
+- `/maestro/branding` con api key válida → 200 + JSON con `company_name` y `logo_url`.
+- Seed idempotente: re-ejecutar NO duplica `admin@llyasoc.com`.
+- Superadmin tiene TODOS los permisos definidos por la app.
+- Hooks: `X-Maestro-Webhook-Signature` ausente o invalido → 401; valido → 200.
 
-- Recomendados: GrowthBook self-hosted, Unleash, OpenFeature SDK.
-- Flags por tenant (`X-Auth-Company-Id` como contexto).
-- Toda nueva feature de riesgo va detrás de un flag inicialmente en 0 %, se rampea por canary tenant (`acme-demo`), luego por cohorte, luego al 100 %.
-- Borrar flags muertos cada quarter; código tras flag eliminado debe limpiarse.
+### 7.3 Test data
 
-### 7.3 Release management
+- Usuarios de prueba creados por test setup, eliminados en teardown.
+- Nunca usar `admin@llyasoc.com` en tests automatizados (es el superadmin real).
+- Para tests integrados con Maestro v2 mock, usar fixtures de `acme-demo` o equivalente.
 
-- Cadencia recomendada: releases pequeños y frecuentes (≥ 1 por sprint, idealmente diario en main).
-- Tag semver al merge a main; el workflow de `release-please` propone PR de release con CHANGELOG.
-- Anuncio de release: webhook a Slack/Discord con link al CHANGELOG.
+### 7.4 Mutation testing (avanzado)
 
-### 7.4 Rollback
-
-- Maestro mantiene versiones en GHCR. Rollback = re-provisionar instancia con tag anterior.
-- La app **DEBE** ser tolerante a rollback: una migración aplicada no debe bloquear correr la versión anterior. De ahí la regla de §7.1.
-- Definir runbook de rollback en `RUNBOOK.md` con comandos exactos.
-
-### 7.5 Cold start budget
-
-- App debería responder al primer request en ≤ 15 s desde STOPPED → RUNNING.
-- Para lograrlo:
-  - Imagen liviana (≤ 200 MB descomprimida).
-  - Lazy initialization de conexiones costosas.
-  - Health check rápido (≤ 200 ms en happy path).
-  - JIT warmup mínimo (Node/Go cumplen; JVM/.NET requieren AOT o ReadyToRun).
-
-### 7.6 Capacity planning
-
-- Ejecutar load tests representativos (k6, Gatling, JMeter) trimestralmente o ante cambios mayores.
-- Alertas en Grafana cuando una instancia consume > 80 % de tier por 3 ventanas de 5 min consecutivas → solicitar bump de tier o investigar leak.
+- Para apps con lógica financiera/regulada, ratio de mutantes detectados ≥ 80 %.
 
 ---
 
-## 8. Comunicación y colaboración
+## 8. Despliegue y operación
 
-> *Takeaway:* documentar decisiones, automatizar lo repetitivo, definir canales claros.
+> *Takeaway:* migraciones expand-then-contract, blue/green via Maestro v2, feature flags por usuario.
 
-### 8.1 Canales
+### 8.1 Migraciones de BD seguras
 
-| Canal | Uso |
-|---|---|
-| Slack/Discord `#maestro-platform` | Anuncios de plataforma, freezes, breaking changes. |
-| Slack/Discord `#app-<slug>` | Por app: alertas, deploys, on-call handoff. |
-| GitHub Issues | Bugs y features de la app. |
-| GitHub Discussions | RFCs, dudas, decisiones abiertas. |
-| Linear / Jira / Monday | Tracking de roadmap (no obligatorio). Linkear a PRs. |
-| PagerDuty / Opsgenie | Incidentes de severidad ≥ 2. |
-| Email `security@…` | Reporte privado de vulnerabilidades. |
+(Igual a v1.) Expand-then-contract, dual-write, indices CONCURRENTLY.
 
-### 8.2 Plantilla de Pull Request
+### 8.2 Feature flags
 
-`.github/PULL_REQUEST_TEMPLATE.md`:
+- Flags por **usuario** o por **rol** (en v2 single-tenant, ya no por tenant).
+- Recomendados: GrowthBook, Unleash, OpenFeature SDK.
+- Flags muertos eliminados cada quarter.
 
-```md
-## Resumen
-<qué cambia y por qué>
+### 8.3 Release management
 
-## Tipo
-- [ ] feat / fix / chore / docs / refactor / test / perf / build / ci / revert
+- Releases pequeños y frecuentes.
+- Tag semver al merge a main; release-please para CHANGELOG.
+- Anuncio via webhook a Slack/Discord.
 
-## Riesgo y blast radius
-- [ ] Toca migraciones (expand-then-contract OK / N/A)
-- [ ] Toca contrato `maestro.yaml` (subir versión)
-- [ ] Toca seguridad / autenticación
-- [ ] Cambia performance esperada
+### 8.4 Rollback
 
-## Pruebas
-- [ ] Unit
-- [ ] Integración
-- [ ] Manual en `docker-compose.dev`
-- [ ] Tenant canario (`acme-demo`) en staging
+- Maestro v2 mantiene versiones en GHCR.
+- App tolerante a rollback: una migración aplicada no debe bloquear correr la versión anterior (ver §8.1).
 
-## Checklist Maestro
-- [ ] `maestro-cli validate` verde
-- [ ] CHANGELOG actualizado (o release-please lo hace)
-- [ ] Documentación actualizada si la API cambió
-- [ ] Logs no exponen PII / secretos
-```
+### 8.5 Cold start budget
 
-### 8.3 ADRs
+- Primer request en ≤ 15 s desde STOPPED → RUNNING.
+- Imagen liviana, lazy initialization, health check rápido.
 
-- Formato Michael Nygard: Title, Status, Context, Decision, Consequences.
-- Numerados secuencialmente: `docs/ADR/0001-uso-de-postgres.md`.
-- Status: Proposed → Accepted | Deprecated | Superseded by ADR-XXXX.
-- Inmutables salvo cambio de status. Decisiones nuevas → ADR nuevo que supersede.
+### 8.6 Capacity planning
 
-### 8.4 RFC para cambios grandes
-
-- Cambios cross-cutting (rediseño de módulo, integración nueva, deprecación) abren un RFC en `docs/RFC/000N-titulo.md` antes de codificar.
-- Plantilla: Motivación, propuesta detallada, alternativas, drawbacks, impacto, plan de rollout.
-- Se discute en GitHub Discussions con un period de comentarios mínimo (3 días hábiles).
-
-### 8.5 On-call y escalación
-
-- Cada app define rotación on-call con un mínimo de 2 personas (sin SPOFs).
-- Runbook en `RUNBOOK.md` cubre los escenarios de incidente más frecuentes.
-- Severidades:
-  - SEV-1: app caída para todos los tenants. Page inmediato.
-  - SEV-2: degradación parcial, > 10 % requests con error. Notificación inmediata.
-  - SEV-3: bug funcional sin downtime. Ticket en horario laboral.
-  - SEV-4: cosmético / mejora.
-- Postmortem obligatorio para SEV-1/SEV-2 en ≤ 5 días hábiles. Blameless. Output: ADRs y/o tickets de mejora.
-
-### 8.6 Code review
-
-- Reviewers focalizan en: corrección, claridad, seguridad, tenant-isolation, observabilidad.
-- Reviewers **NO** focalizan en: estilo (lo hace el linter), performance prematura.
-- Tono: descriptivo, con propuesta concreta. "Esta query no filtra por `company_id`, sugiero usar el scope `ForTenant`" > "Está mal".
-- SLA: primer review ≤ 1 día hábil; resolver PRs en ≤ 5 días o cerrar.
+- Load tests trimestrales (k6, Gatling, JMeter).
+- Alertas en Grafana cuando una instancia consume > 80 % de tier.
 
 ---
 
-## 9. Documentación que la app debe mantener
+## 9. Comunicación y colaboración
 
-> *Takeaway:* doc viva, generada cuando se pueda, revisada con cada major.
-
-### 9.1 README mínimo
-
-```md
-# <App slug>
-
-> <una línea: qué hace y para quién>
-
-## Quickstart local
-```bash
-docker-compose -f docker-compose.dev.yml up
-open http://localhost:8080
-```
-
-## Variables de entorno
-| Var | Obligatoria | Origen | Descripción |
-| ... |
-
-## Arquitectura
-<diagrama ASCII o link a docs/architecture.md>
-
-## Tests
-```bash
-make test
-```
-
-## Despliegue
-Maestro lo hace tras `register`. Ver `RUNBOOK.md`.
-
-## Licencia
-SPDX: <identifier>
-```
-
-### 9.2 RUNBOOK.md
-
-- Cómo conectar al log live (Grafana / Loki dashboard).
-- Cómo dumpear el schema de la BD vía exec.
-- Comandos de "hold the line" durante un incidente.
-- Procedimiento de rollback paso a paso.
-- Contactos de escalación.
-
-### 9.3 OpenAPI / GraphQL schema
-
-- Si la app expone API consumida por terceros, mantener OpenAPI 3.1 o el schema GraphQL versionado en `docs/api/`.
-- Validar que el código y el schema no divergan vía test (`schemathesis`, `dredd`, `graphql-inspector`).
-
-### 9.4 Documentación de seguridad (`SECURITY.md`)
-
-- Versiones soportadas (matriz).
-- Canal privado: `security@<dominio>` o GitHub private vulnerability reporting.
-- SLA de triage: ≤ 72 h.
-- Política de disclosure: 90 días o coordinada.
+(Idem v1.) Slack/Discord, Issues, RFCs, ADRs, code review, on-call, postmortems blameless.
 
 ---
 
-## 10. Performance
+## 10. Documentación que la app debe mantener
 
-> *Takeaway:* presupuestos cuantificados por endpoint. Mídelo, no lo adivines.
-
-### 10.1 Latencia
-
-- Endpoint principal de UI: `p50 < 100 ms`, `p99 < 500 ms`.
-- Endpoint pesado de reporte: `p99 < 5 s`. Si supera, mover a job async + polling.
-- Health endpoint: `p99 < 200 ms`.
-
-### 10.2 Throughput
-
-- Cada instancia tier `standard` debería soportar ≥ 50 RPS sostenidos en lecturas simples.
-- Para más, escalar tier o partir la app.
-
-### 10.3 Caché
-
-- Redis disponible vía `REDIS_URL` si la app lo declara.
-- TTLs cortos (1–5 min) salvo justificación.
-- Invalidación al escribir; nunca depender solo de TTL para corrección.
-- Claves prefijadas por `tenant_id` para evitar leaks.
-
-### 10.4 BD
-
-- Pool de conexiones: dimensionar por `tier`. `micro: 5`, `standard: 10`, `professional: 20`, `enterprise: 50`.
-- Toda query nueva pasa por `EXPLAIN` antes de mergear.
-- Índices sobre `company_id` siempre, y sobre las columnas usadas en WHERE de filtros frecuentes.
-- Sin N+1: usar eager-loading (`include`/`with`/`Preload`).
+- `README.md` con quickstart.
+- `RUNBOOK.md` con incidentes comunes.
+- `OpenAPI 3.1` (si la app expone API).
+- `SECURITY.md`.
+- ADRs en `docs/ADR/`.
+- **NEW v2:** documentación del modelo de auth (login flow, password policy, MFA si aplica, recuperación), del modelo de roles/permisos, y del seeder del superadmin.
 
 ---
 
-## 11. Accesibilidad y UX (apps con UI)
+## 11. Performance
 
-> *Takeaway:* WCAG 2.2 AA mínimo. i18n desde el día 1 si vendés a Latam + España.
+(Idem v1.)
 
-- Tests automáticos: `axe-core` integrado en e2e.
-- Targets: contraste 4.5:1 mínimo para texto normal, 3:1 para texto grande.
-- Foco visible siempre, navegación completa por teclado.
-- ARIA: usar landmarks, nombres accesibles, evitar duplicar (no `aria-label` cuando hay `<label>` correcto).
-- i18n: cadenas extraídas a archivos `locale/<lang>.json`. Nunca concatenar strings.
-- Soportar locale del browser y del header `X-Auth-User-Locale` (si la plataforma lo añade).
+- Latencia: `p99 < 500 ms` para UI; `p99 < 5 s` para reportes pesados.
+- Throughput: tier `standard` ≥ 50 RPS sostenidos en lecturas simples.
+- Caché: TTLs cortos, prefijos por usuario (single-tenant ya garantiza aislamiento).
+- BD: pool dimensionado por tier, índices sobre `users.email` (lookup frecuente en login).
 
 ---
 
-## 12. Definition of Done — checklist antes de pedir registro
+## 12. Definition of Done v2
 
-Una versión está lista para registrarse en Maestro cuando:
+Una versión está lista para registrarse en Maestro v2 cuando:
 
 ### Contrato
-- [ ] `maestro.yaml` valida contra el schema (`maestro-cli validate` verde).
+- [ ] `maestro.yaml` valida contra schema v2 (`apiVersion: maestro.platform/v2`).
 - [ ] Versión bumpeada según semver.
 - [ ] CHANGELOG actualizado.
 
+### Auth (NEW v2)
+- [ ] Login propio implementado (login_path + middleware).
+- [ ] Tabla users con password_hash (bcrypt o argon2id).
+- [ ] Modelo de roles y permisos implementado.
+- [ ] Endpoint `/maestro/branding` autenticado con `X-Maestro-Api-Key`.
+- [ ] Seeder del superadmin idempotente.
+- [ ] `admin@llyasoc.com` se crea correctamente con `SUPERADMIN_INITIAL_PASSWORD`.
+
 ### Código
-- [ ] Linter verde, formatter aplicado.
-- [ ] Type-check verde (si aplica).
-- [ ] Tests unitarios verdes con cobertura ≥ 70 % en lógica de dominio.
+- [ ] Linter, formatter, type-check verdes.
+- [ ] Tests unitarios verdes con cobertura ≥ 70 %.
 - [ ] Tests de integración con BD real verdes.
-- [ ] Contract tests del SDK verdes (incluye cross-tenant).
+- [ ] Tests específicos de v2 (login, logout, branding, seed) verdes.
 
 ### Seguridad
 - [ ] gitleaks limpio (historial completo).
-- [ ] Trivy CRITICAL/HIGH limpio en la imagen final.
+- [ ] Trivy CRITICAL/HIGH limpio.
 - [ ] CodeQL sin findings críticos.
-- [ ] Dependabot al día (no PRs abiertos > 30 días).
 - [ ] Cosign sign aplicado.
 - [ ] SBOM publicado.
+- [ ] No leakeo de api keys / passwords / tokens en logs.
 
 ### Operación
-- [ ] Health endpoint responde < 3 s con la BD real.
-- [ ] Logs JSON con `tenant_id` y `request_id`.
+- [ ] Health endpoint < 3 s.
+- [ ] Logs JSON con `user_id` y `request_id` (sin `company_id`).
 - [ ] Métricas `/metrics` expuestas.
-- [ ] Migraciones backward-compatible (si las hay).
+- [ ] Audit log de eventos de auth implementado.
+- [ ] Migraciones backward-compatible.
 
 ### Documentación
-- [ ] README quickstart verificado en un entorno limpio.
-- [ ] RUNBOOK actualizado con cualquier nuevo procedimiento.
-- [ ] CHANGELOG completa el "Unreleased" con la versión actual.
-- [ ] ADRs nuevos commiteados si hubo decisiones técnicas relevantes.
-
-### Despliegue
-- [ ] Imagen publicada con tag `<semver>` y `<sha>` (no `:latest`).
-- [ ] Workflow de `register` ejecutado y exitoso.
-- [ ] Smoke tests en staging contra tenant canario aprobados.
+- [ ] README quickstart verificado.
+- [ ] RUNBOOK actualizado.
+- [ ] CHANGELOG completa la versión actual.
+- [ ] Documentación del modelo de auth y roles.
 
 ---
 
 ## 13. Anti-patrones organizacionales (qué evitar)
 
-| Anti-patrón | Por qué evitar | Alternativa |
+(Idem v1, mas:)
+
+| Anti-patrón v2 | Por qué evitar | Alternativa |
 |---|---|---|
-| Long-lived feature branches | Drift con main, merge hells, riesgo en PR enormes. | Trunk-based + feature flags. |
-| PRs gigantes | Imposibles de revisar a fondo, ocultan bugs. | PRs ≤ 400 LOC; partir el cambio. |
-| "Lo arreglo en el siguiente PR" | Deuda técnica que nunca se paga. | Si es chico, en este PR. Si es grande, ticket inmediato y referenciado. |
-| Tests solo del happy path | Falsos positivos de calidad. | Tests de borde, errores, concurrencia, idempotencia. |
-| Logs de texto plano sin nivel | Imposible buscar / filtrar. | JSON estructurado con `level`. |
-| Usar `:latest` en producción | Despliegues no reproducibles, riesgo de pull mutado. | Tag semver inmutable + digest. |
-| Compartir secretos por chat | Leak de credenciales. | Vault / 1Password / GitHub Secrets / OIDC. |
-| Hotfix directo en producción sin PR | Sin trazabilidad ni review. | Hotfix branch + PR fast-track con 1 reviewer. |
-| Postmortem con culpables | Mata el aprendizaje, oculta problemas a futuro. | Blameless. Foco en proceso/sistema. |
-| Documentación que vive en chat | Se pierde, se contradice. | ADR / RFC / README / RUNBOOK en repo. |
+| Mezclar auth headers `X-Auth-*` con auth propia | Crea ambiguedad, vulnerabilidades | Auth propia exclusivamente |
+| Multi-tenancy logica con `company_id` en v2 | Contradice single-tenant fisico | Un contenedor por empresa |
+| Hardcodear `SUPERADMIN_INITIAL_PASSWORD` | Leak en imagen / repo | ENV var inyectada |
+| Seeder no idempotente | Crea duplicados o pisa cambios | Idempotente; chequea existencia |
+| Loggear password / api key | Compromiso de seguridad | Filtros en logger |
 
 ---
 
 ## 14. Estándares de industria referenciados
 
-| Estándar | Aplicación |
-|---|---|
-| RFC 2119 / RFC 8174 | Vocabulario MUST/SHOULD/MAY usado en SPEC. |
-| RFC 7230, 7231 (HTTP/1.1) y 9110 (HTTP semántico) | Convenciones de headers y métodos. |
-| RFC 5322 | Validación de emails. |
-| RFC 4122 | UUIDs (preferentemente v4). |
-| W3C Trace Context | Propagación de trazas. |
-| Conventional Commits 1.0 | Mensajes de commit. |
-| SemVer 2.0 | Versionado del contrato y de las apps. |
-| Keep a Changelog 1.1 | Formato de CHANGELOG. |
-| The Twelve-Factor App | Filosofía base. |
-| OWASP Top 10 (2021) | Foco de AppSec en CI. |
-| OWASP ASVS 4.0 | Checklist exhaustivo de verificación. |
-| NIST SP 800-218 (SSDF) | Marco de desarrollo seguro. |
-| SLSA 1.0 (L3 objetivo) | Provenance + firma. |
-| Sigstore (Cosign, Fulcio, Rekor) | Firma keyless de imágenes y artefactos. |
-| OpenTelemetry | Trazas, métricas, logs unificados. |
-| WCAG 2.2 AA | Accesibilidad de UI. |
-| OpenAPI 3.1 / GraphQL Spec | Documentación de APIs. |
+(Igual que v1, mas: NIST SP 800-63B Digital Identity Guidelines, OWASP ASVS 4.0 V2 Authentication, OWASP ASVS 4.0 V3 Session Management.)
 
 ---
 
 ## 15. Cómo este documento se mantiene
 
-- Cambios proponen vía PR contra este archivo.
-- Cambios estructurales requieren ADR en `docs/ADR/`.
-- Revisión semestral mínima por el equipo de plataforma.
-- Cuando una recomendación se vuelva norma (caída de costo / madurez del ecosistema), migrar la cláusula a `APP_HUESPED_SPEC.md` y hacer cross-reference desde acá.
+- PR contra este archivo.
+- Cambios estructurales requieren ADR.
+- Revisión semestral por el equipo de plataforma.
+- Cuando una recomendación se vuelva norma, migrar la cláusula a `docs/APP_HUESPED_SPEC.md`.
 
 ---
 
@@ -639,4 +413,4 @@ Una versión está lista para registrarse en Maestro cuando:
 
 | Versión | Fecha | Cambio |
 |---|---|---|
-| 1.0.0 | 2026-04-28 | Versión inicial. Cubre 12-factor, repos, GH Actions, supply chain, observabilidad, testing, despliegue, comunicación, performance y a11y. |
+| 2.0.0 | 2026-05-06 | Versión inicial. Best practices alineadas con `maestro.platform/v2` y framework agéntico v4. Énfasis en auth propia, single-tenant fisico, seeding del superadmin. |

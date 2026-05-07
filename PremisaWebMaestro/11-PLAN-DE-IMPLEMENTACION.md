@@ -1,249 +1,423 @@
 # Plan de Implementación por Fases
 
+> **Versión:** v4 (framework agéntico v4 / contrato `maestro.platform/v2`)
+> **Última revisión:** 2026-05-07
+> **Estado:** vigente
+> **Reemplaza a:** `legacy/v3/PremisaWebMaestro/11-PLAN-DE-IMPLEMENTACION.md` (modelo v1).
+
+---
+
 ## Propósito de este documento
 
-Este documento establece las fases de construcción de Maestro Platform ordenadas cronológicamente. Cada fase tiene sus dependencias, entregables concretos, criterios de aceptación y una estimación de duración. Un agente de IA que asista en la planificación o ejecución del proyecto debe seguir este orden porque cada fase construye sobre los cimientos de la anterior.
+Este documento establece las **fases de construcción** de la **Web Maestro** v4 ordenadas cronológicamente. Cada fase tiene sus dependencias, entregables concretos, criterios de aceptación y estimación de duración. Un agente que asista en la planificación o ejecución del proyecto debe seguir este orden porque cada fase construye sobre los cimientos de la anterior.
+
+Este plan se ejecuta a través del **framework agéntico v4** con el preset `maestro-platform` activo (ver `07-SISTEMA-AGENTICO.md`). Las 8 fases del framework (00-setup → 07-retrospective) corresponden directamente con las del plan, adaptadas al contexto del proyecto Web Maestro.
 
 ---
 
 ## Principios del plan
 
-Las fases son secuenciales pero con solapamiento controlado. La fase dos puede comenzar cuando la fase uno alcanza el ochenta por ciento de completitud. Pero la fase tres no puede comenzar hasta que la fase uno esté completamente terminada y aceptada.
+### 1. Construir sobre lo construido
 
-Cada fase produce un entregable funcional. No hay fases puramente de diseño ni fases puramente de investigación. Al final de cada fase, algo funciona que no funcionaba antes.
+Cada fase **DEBE** completar sus exit criteria antes de iniciar la siguiente. Saltarse una fase introduce deuda técnica que se paga cara.
 
-Los criterios de aceptación son binarios. Se cumplen o no se cumplen. No hay aceptación parcial. Si un criterio no se cumple, la fase no está completa.
+### 2. Validación transversal continua
 
----
+Después de cada entregable significativo, el orquestador lanza los 5 validadores transversales mínimos en paralelo (`code-reviewer`, `security-auditor`, `qa-tester`, `performance-analyst`, `compliance-analyst`). Sin todos PASS, no se mergea.
 
-## Fase uno: Fundación de identidad y modelo de datos
+### 3. Decisiones documentadas como ADR
 
-Esta es la fase más importante. Todo lo demás se construye sobre los cimientos que se establecen aquí. Si esta fase se ejecuta mal, todas las fases siguientes heredarán los problemas.
+Cada decisión arquitectónica importante queda como **Architecture Decision Record** con: contexto, decisión, alternativas consideradas, consecuencias.
 
-### Alcance
+### 4. Iteración explícita
 
-Configurar Laravel Passport como servidor OAuth2 capaz de emitir tokens JWT. Implementar las migraciones de base de datos para todas las entidades del modelo de datos descrito en el documento 02-MODELO-DE-DATOS.md. Implementar los modelos de Eloquent con sus relaciones, scopes y reglas de validación. Implementar los endpoints de API para gestionar empresas, usuarios, aplicaciones y licencias. Implementar la autenticación con usuario y contraseña. Implementar la autenticación con Microsoft. Implementar el endpoint de validación de tokens que ForwardAuth usará en la fase dos.
+Si los validadores rechazan, hay máximo 3 reintentos por módulo. Tras 3, se escala al PM y eventualmente al PO.
 
-### Dependencias
+### 5. Persistencia y reversibilidad
 
-Ninguna. Esta es la primera fase.
-
-### Entregables
-
-Un servidor OAuth2 funcional que emite tokens JWT con la estructura definida en el documento de Autenticación y Autorización. Un endpoint POST /api/auth/login que acepta email y contraseña y retorna un JWT. Un flujo OAuth2 funcional con Microsoft Entra ID que retorna un JWT del Maestro. Un endpoint GET /api/auth/validate que recibe un token JWT y responde con headers X-Auth si es válido o con 401 si no lo es. Endpoints CRUD completos para companies, users, applications y las tres tablas pivote. Soft delete implementado en todas las entidades. Campos cifrados para datos sensibles. Audit log registrando todas las operaciones de escritura.
-
-### Criterios de aceptación
-
-Un usuario puede registrarse, iniciar sesión con contraseña y recibir un JWT válido. Un usuario puede iniciar sesión con Microsoft y recibir un JWT válido. El endpoint de validación responde correctamente con headers X-Auth para tokens válidos. El endpoint de validación responde 401 para tokens expirados, inválidos o revocados. Un usuario puede pertenecer a múltiples empresas y cambiar la empresa activa recibiendo un nuevo JWT. Las relaciones many-to-many funcionan correctamente con todas las reglas de integridad. El audit log registra toda operación administrativa con antes y después.
-
-### Duración estimada
-
-Tres a cuatro semanas.
+Los datos de la BD del Maestro persisten entre versiones (ver No-negociable 14). Las migraciones de schema son expand-then-contract. Las acciones destructivas requieren confirmación explícita del PO.
 
 ---
 
-## Fase dos: Reverse proxy y autenticación centralizada
+## Fase 00 — Setup (≈ 1-2 días)
 
-Esta fase pone en producción el mecanismo de ForwardAuth que protegerá todas las aplicaciones futuras.
+### Objetivo
+Verificar que el equipo tiene un entorno de desarrollo funcional para el proyecto Web Maestro.
 
-### Alcance
-
-Desplegar Traefik como reverse proxy del stack del Maestro. Configurar terminación TLS con Let's Encrypt. Configurar el middleware ForwardAuth que consulta el endpoint de validación del Maestro. Configurar los headers de seguridad. Configurar rate limiting. Configurar la redirección HTTP a HTTPS.
-
-### Dependencias
-
-La fase uno debe estar completa porque ForwardAuth necesita el endpoint de validación funcional.
+### Pre-requisitos
+- Repo del Maestro creado (privado, propiedad del equipo de plataforma).
+- GitHub Issues habilitados.
+- Acceso del equipo al repo confirmado.
 
 ### Entregables
+- Verificación de Docker, Docker Compose, git, IDE en cada dev.
+- Confirmación de que NO hay PHP/Node/psql instalados en el host (todo via contenedores).
+- `docker-compose.dev.yml` inicial que arranca un stack mínimo para validar el setup.
+- Checkpoint en `framework-agentico/projects/<id>/branches/<rama>/phases/00-setup.md`.
 
-Traefik corriendo como contenedor dentro de maestro-network escuchando en puertos 80 y 443. Certificados TLS generados automáticamente para el dominio del Maestro. Redirección automática de HTTP a HTTPS. Middleware ForwardAuth configurado y funcional que valida tokens contra el Maestro e inyecta headers X-Auth. Rate limiting configurado con un límite razonable por defecto de cien requests por minuto por IP. Headers de seguridad inyectados en todas las respuestas.
-
-### Criterios de aceptación
-
-El portal Maestro es accesible exclusivamente por HTTPS. Un request sin token a cualquier ruta protegida recibe 401. Un request con token válido a una ruta protegida pasa al backend con headers X-Auth inyectados. Un request con token expirado recibe 401. La latencia agregada por ForwardAuth es menor a cincuenta milisegundos en percentil noventa y cinco. Los headers de seguridad están presentes en todas las respuestas verificables con herramientas de auditoría web.
-
-### Duración estimada
-
-Dos a tres semanas.
+### Exit criteria
+- Cada dev del equipo ejecuta `docker compose run --rm maestro-api npm install` (o equivalente) sin errores.
+- Verificación de acceso al repo y a las herramientas externas (registries de imágenes, observabilidad).
 
 ---
 
-## Fase tres: Motor de provisionamiento de instancias
+## Fase 01 — Discovery (≈ 1-2 semanas)
 
-Esta fase implementa la capacidad de crear y destruir instancias de aplicaciones dockerizadas con aislamiento completo.
+### Objetivo
+Entender completamente qué se va a construir y bajo qué restricciones.
 
-### Alcance
-
-Implementar el motor de provisionamiento como un servicio Laravel que usa la API de Docker para gestionar contenedores. Implementar la creación de redes Docker aisladas por instancia. Implementar la creación de bases de datos dedicadas con credenciales únicas. Implementar la máquina de estados del ciclo de vida de instancias. Implementar los health checks periódicos. Implementar el auto-restart de instancias con health checks fallidos. Implementar las labels de Traefik para ruteo dinámico.
-
-### Dependencias
-
-La fase uno debe estar completa para el modelo de datos de instancias. La fase dos debe estar completa para que Traefik pueda rutear a los contenedores creados dinámicamente.
+### Pre-requisitos
+- Fase 00 completa.
+- Premisa del proyecto leída por todo el equipo (este conjunto de documentos `PremisaWebMaestro/`).
 
 ### Entregables
+- `phases/01-requirements.md` con requisitos funcionales (priorización MoSCoW) y no-funcionales (perf, seguridad, disponibilidad).
+- `phases/01-glossary.md` con términos del dominio (companies, applications, deployments, api_keys, webhook_secrets, audit_log, admin_users, etc.) y sinónimos del PO.
+- `phases/01-research.md` (si aplica): investigación de regulaciones (GDPR, LGPD, ISO 27001, SOC 2 según mercado).
+- GitHub Milestone creado.
 
-Un endpoint POST /api/instances/create que recibe el ID de la aplicación y el ID de la empresa y crea una instancia completa con red aislada, base de datos dedicada y contenedor de la app. Un endpoint POST /api/instances/stop y POST /api/instances/start para detener y reiniciar instancias. Un endpoint DELETE /api/instances/destroy para destruir instancias con periodo de retención de datos. Health checks periódicos ejecutándose como jobs en la cola de Laravel. Auto-restart funcional tras tres health checks fallidos consecutivos. Transiciones de estado correctas en la máquina de estados del ciclo de vida.
-
-### Criterios de aceptación
-
-Se puede crear una instancia de una aplicación de prueba dockerizada y accederla a través de su subdominio con autenticación ForwardAuth. La instancia tiene su propia red Docker, su propia base de datos y sus propios límites de recursos. El contenedor de base de datos solo es accesible desde el contenedor de la app. El health check detecta cuando la aplicación deja de responder y ejecuta restart automático. La instancia pasa por todos los estados del ciclo de vida correctamente. Los datos de una instancia no son accesibles desde otra instancia.
-
-### Duración estimada
-
-Tres a cuatro semanas.
+### Exit criteria
+- Requisitos funcionales documentados con MoSCoW.
+- Requisitos no funcionales: latencia de redirección < 200ms, provisioning < 60s, branding fetch (con cache) < 50ms, hooks success rate ≥ 99%.
+- Criterios de aceptación para cada requisito.
+- Glosario completo (incluyendo los sinónimos del PO según `framework-agentico/core/RULES.md` sección `glosario_de_sinonimos`).
+- Regulaciones aplicables identificadas.
+- Las 14 no-negociables y 10 premisas (`01-PREMISAS-Y-NO-NEGOCIABLES.md`) marcadas como **MUST** en el backlog.
 
 ---
 
-## Fase cuatro: Portal web con renderizado de aplicaciones
+## Fase 02 — Planning (≈ 2-3 semanas)
 
-Esta fase implementa la interfaz de usuario del portal que los usuarios finales usarán para acceder a sus aplicaciones.
+### Objetivo
+Tomar todas las decisiones técnicas de diseño antes de escribir código.
 
-### Alcance
-
-Implementar el shell React del portal con barra superior, sidebar y área de contenido principal. Implementar el selector de empresa activa. Implementar el renderizado de aplicaciones en iframes. Implementar el protocolo postMessage para transferencia de autenticación. Implementar la pantalla de carga para cold start. Implementar la pantalla de bienvenida para usuarios sin apps. Implementar el manejo de estados de error.
-
-### Dependencias
-
-La fase uno para la autenticación del portal. La fase tres para que existan instancias que mostrar.
+### Pre-requisitos
+- Fase 01 completa.
 
 ### Entregables
 
-Un portal React funcional accesible en el dominio del Maestro. Sidebar que muestra las aplicaciones licenciadas de la empresa activa del usuario con indicadores de estado. Iframe que carga la aplicación seleccionada con transferencia de token vía postMessage. Selector de empresa activa funcional que cambia el contexto completo. Pantalla de carga cuando una instancia dormida está arrancando con tiempo estimado. Manejo visual de errores para apps caídas, licencias expiradas, tokens expirados y falta de conexión.
+**ADRs obligatorios** (cada uno como archivo en `phases/02-adr-*.md`):
+- ADR-001: Stack tecnológico (recomendación: Laravel + React + PostgreSQL + Redis).
+- ADR-002: Estrategia de cifrado AES-256 para api_keys, webhook_secrets, password_hash.
+- ADR-003: Estrategia de provisioning (Docker API directa vs ansible vs cloud-specific).
+- ADR-004: Reverse proxy (Traefik con TLS Let's Encrypt; sin ForwardAuth).
+- ADR-005: Estrategia de redes Docker por deployment.
+- ADR-006: BD del Maestro (PostgreSQL recomendado por triggers SQL nativos).
+- ADR-007: Comunicación inter-apps via API Gateway del Maestro (no directa).
+- ADR-008: Política de retención (backups 30d, deployments destruidos 90d).
+- ADR-009: Implementación de MFA para `superadmin` (sí/no, qué método).
 
-### Criterios de aceptación
+**Modelo de datos**:
+- `phases/02-data-model.md` con todas las tablas según `02-MODELO-DE-DATOS.md`.
+- Diagrama ER (puede ser ASCII o Mermaid).
+- Migraciones planeadas (no implementadas todavía).
 
-Un usuario puede iniciar sesión y ver las aplicaciones de su empresa en el sidebar. Al hacer click en una aplicación, se carga dentro del iframe con autenticación transparente. El usuario nunca ve un segundo formulario de login dentro de la aplicación. Al cambiar de empresa, el sidebar se actualiza con las apps de la nueva empresa. Una instancia dormida muestra pantalla de carga y se auto-recarga cuando está lista. Los errores se manejan visualmente sin pantallas en blanco. El portal funciona en desktop, tablet y móvil.
+**Contratos de API**:
+- `phases/02-api-contracts.md` con OpenAPI/Swagger spec de:
+  - `/api/v2/auth/*` (login, logout, refresh, me, password-change).
+  - `/api/v2/companies` (CRUD).
+  - `/api/v2/applications` (read-only para admins; mutación via `/api/v2/apps/register`).
+  - `/api/v2/deployments` (CRUD + lifecycle: provision, suspend, destroy, purge, restore, rotate-api-key, rotate-webhook-secret).
+  - `/api/v2/branding/*` (read, force-refresh).
+  - `/api/v2/audit_log` (read).
+  - `/api/v2/admins` (CRUD).
+  - `/api/v2/apps/register` (POST de auto-registro).
+  - `/api/v2/portal/my-apps` (consumido por apps huésped).
+  - `/api/v2/gateway/<app>/<path>` (gateway inter-apps).
+  - `/health`.
 
-### Duración estimada
+**UX del portal**:
+- `phases/02-ui-flows.md` con flujos: login, dashboard, gestión de empresas, gestión de deployments, audit log viewer.
+- Wireframes (Figma, Excalidraw, o equivalente).
+- Decisión sobre Tailwise (preferido pero no obligatorio; ver premisa 4 y `framework-agentico/core/RULES.md` sección `plantilla_base`).
 
-Tres a cuatro semanas.
+**Threat model**:
+- `phases/02-threat-model.md` con las 16 amenazas listadas en `09-SEGURIDAD.md` y sus mitigaciones.
+
+**Plan de seeding**:
+- `phases/02-seeding-plan.md` con superadmin del Maestro (`admin@llyasoc.com`) + admins adicionales si aplica.
+
+**Convenciones**:
+- Actualización de `docs/CONVENCIONES_PLATAFORMA.md` para v4 (naming canónico, env vars, puertos, redes Docker).
+
+**Issues por módulo**:
+- GitHub Milestone con issues, una por módulo o feature implementable independientemente. Cada issue con su issue branch.
+
+### Exit criteria
+- Todos los ADRs aprobados.
+- Modelo de datos coherente con `02-MODELO-DE-DATOS.md`.
+- Contratos de API revisados por el equipo.
+- Threat model validado por security architect.
+- Plan de seeding aprobado por el PO.
+- Milestone con issues desglosados.
 
 ---
 
-## Fase cinco: SDK versión uno y herramientas de desarrollo
+## Fase 03 — Development (≈ 2-3 meses, depende de la complejidad)
 
-Esta fase entrega las herramientas que los desarrolladores necesitan para crear aplicaciones para la plataforma.
+### Objetivo
+Construir el sistema módulo por módulo con validación transversal continua.
 
-### Alcance
+### Pre-requisitos
+- Fase 02 completa.
 
-Implementar el SDK de Node.js como primer SDK oficial. Definir y publicar el JSON Schema del contrato maestro.yaml. Implementar el CLI maestro-cli con los comandos validate y new. Crear el repositorio template de aplicaciones. Documentar el proceso de desarrollo de una nueva aplicación.
+### Estrategia de módulos
 
-### Dependencias
+Implementar en orden recomendado:
 
-Las fases uno a cuatro deben estar completas porque el SDK y el CLI interactúan con todos los componentes de la plataforma.
+**Sprint 1: Fundación**
+- Setup del proyecto Laravel/Node/Python según ADR-001.
+- Migraciones iniciales (companies, applications, admin_users, admin_roles, admin_permissions, audit_log con triggers).
+- Cifrado AES-256 helper.
+- Login propio del Maestro para admins.
+- Rol `superadmin` y middleware de auth.
 
-### Entregables
+**Sprint 2: Catálogo (registry)**
+- CRUD de `companies`.
+- CRUD de `applications` (read-only para admins, write via `/api/v2/apps/register`).
+- Endpoint `/api/v2/apps/register` con validación contra JSON Schema v2.
+- Token de registro por owner.
 
-Paquete npm @maestro/sdk-node publicado con middleware de autenticación, filtro de tenant y helpers de permisos. CLI maestro-cli publicado en npm con los comandos validate y new funcionales. JSON Schema del contrato maestro.yaml publicado. Template repository de GitHub configurado. Documentación para desarrolladores que cubre desde cero hasta despliegue.
+**Sprint 3: Deployments — capa de datos**
+- Tabla `deployments` con constraint UNIQUE parcial.
+- Tabla `api_keys`, `webhook_secrets` con cifrado.
+- Endpoints CRUD para gestión.
 
-### Criterios de aceptación
+**Sprint 4: Provisioner**
+- Servicio de provisioning que consume Docker API.
+- Generación de redes Docker dedicadas.
+- Generación de credenciales aleatorias.
+- Inyección de ENV vars al levantar contenedor.
+- Ejecución de migrations + seeders.
+- Esperar health check.
+- Idempotencia y rollback en fallo.
 
-Un desarrollador puede ejecutar maestro-cli new y obtener un proyecto funcional en menos de un minuto. El proyecto generado pasa maestro-cli validate sin errores. El SDK middleware lee correctamente los headers X-Auth y provee el objeto user en el request. El filtro de tenant agrega automáticamente la condición company_id a las consultas. La documentación cubre todos los pasos necesarios para crear, desarrollar y desplegar una aplicación.
+**Sprint 5: Salud y branding**
+- Job periódico de health checks.
+- Máquina de estados con acciones correctivas escalonadas.
+- Job periódico de fetch de `/maestro/branding`.
+- Cache en `branding_cache`.
 
-### Duración estimada
+**Sprint 6: Hooks salientes**
+- Worker de envío de hooks con HMAC-SHA256.
+- Reintentos con backoff exponencial.
+- Idempotencia por `event_id`.
+- Tabla `hooks_log`.
 
-Dos a tres semanas.
+**Sprint 7: Portal admin (frontend)**
+- Login del portal.
+- Dashboards (ejecutivo, deployments, audit log).
+- CRUD de empresas, deployments.
+- Vista de detalle del deployment con click `target="_blank"`.
+- Tailwise React (recomendado).
 
----
+**Sprint 8: CLI y schema**
+- `maestro-cli validate` (v2).
+- `maestro-cli new` (template para apps).
+- Publicación de `maestro.yaml.schema.v2.json`.
 
-## Fase seis: Pipeline de CI/CD estandarizado
+**Sprint 9: API Gateway inter-apps (opcional MVP)**
+- Si el alcance del MVP lo requiere; sino, posterior.
 
-Esta fase implementa el pipeline automático que valida, construye y registra las aplicaciones.
+### Validación transversal por sprint
 
-### Alcance
+Después de cada sprint:
+- Lanzar 5 validadores en paralelo: `code-reviewer`, `security-auditor`, `qa-tester`, `performance-analyst`, `compliance-analyst`.
+- Adicional para módulos críticos (auth, provisioner, secretos): validadores en `opus`.
+- Sin todos PASS, no se mergea el sprint a la epic branch.
 
-Crear el workflow de GitHub Actions estándar para aplicaciones. Configurar la integración con el registry de Docker. Implementar el endpoint de registro de aplicaciones en el Maestro. Implementar el escaneo de imágenes por vulnerabilidades. Configurar las protecciones de rama en los repositorios.
-
-### Dependencias
-
-La fase cinco debe estar completa porque el pipeline usa maestro-cli validate.
-
-### Entregables
-
-Workflow de GitHub Actions funcional que ejecuta validación, build, scan, push y registro. Endpoint POST /api/apps/register funcional en el Maestro. Integración con el escáner de vulnerabilidades. Protecciones de rama configuradas en los repositorios de aplicaciones.
-
-### Criterios de aceptación
-
-Un push a cualquier rama ejecuta la validación y los tests. Un merge a main construye la imagen Docker, la escanea y la publica. La publicación exitosa notifica al Maestro con la nueva versión. Un build que falla la validación o el scan de seguridad bloquea el despliegue.
-
-### Duración estimada
-
-Dos semanas.
-
----
-
-## Fase siete: Sistema agéntico
-
-Esta fase implementa la capa de inteligencia artificial que asiste a los desarrolladores.
-
-### Alcance
-
-Definir el system prompt del Agente Orquestador con todas las reglas de la plataforma. Implementar la generación automática de CLAUDE.md como parte de maestro-cli new. Crear el primer agente especialista para Node.js con Express. Documentar cómo crear agentes especialistas para otros stacks.
-
-### Dependencias
-
-La fase cinco debe estar completa porque los agentes usan el SDK y el contrato.
-
-### Entregables
-
-System prompt del Agente Orquestador documentado y versionado. Comando maestro-cli new que genera CLAUDE.md automáticamente. CLAUDE.md funcional para Node.js con Express que hereda las reglas de plataforma. Guía para que los equipos creen agentes especialistas para otros stacks.
-
-### Criterios de aceptación
-
-Un desarrollador que use Claude Code con el CLAUDE.md generado recibe asistencia que cumple automáticamente con los no negociables de la plataforma. El agente se niega a generar código que viole el aislamiento de datos o implemente autenticación propia. El agente genera código con logging estructurado, manejo de errores centralizado y filtrado por tenant.
-
-### Duración estimada
-
-Dos a tres semanas.
-
----
-
-## Fase ocho: Observabilidad
-
-Esta fase implementa el monitoreo y las alertas.
-
-### Alcance
-
-Desplegar Prometheus, cAdvisor, Loki, Promtail y Grafana como contenedores del stack del Maestro. Configurar la recolección de métricas de todos los contenedores. Configurar la recolección de logs de todos los contenedores. Crear los dashboards ejecutivo, por instancia y del Maestro. Configurar las reglas de alertas con sus canales de notificación.
-
-### Dependencias
-
-La fase tres debe estar completa porque se necesitan instancias reales que monitorear.
-
-### Entregables
-
-Stack de observabilidad funcional con todos los componentes desplegados. Dashboards de Grafana configurados. Alertas configuradas con notificaciones a Slack y email. Métricas clave visibles y por debajo de sus umbrales saludables.
-
-### Criterios de aceptación
-
-Se puede ver el uso de CPU y memoria de cada instancia en Grafana en tiempo real. Se pueden buscar y filtrar los logs de cualquier instancia por texto, nivel de severidad y rango de tiempo. Las alertas se disparan correctamente cuando se simula una condición de error. Los dashboards se actualizan en tiempo real con latencia menor a treinta segundos.
-
-### Duración estimada
-
-Dos semanas.
+### Exit criteria de la fase 03
+- Todos los sprints completos y mergeados.
+- Tests unitarios y de integración pasando.
+- Sin vulnerabilidades CRITICAL/HIGH abiertas.
+- Cobertura mínima recomendada: 80% statements, 70% branches.
+- Convenciones de código cumplidas.
+- Issues cerrados en GitHub.
 
 ---
 
-## Fase nueve: Optimización y hardening
+## Fase 04 — Delivery (≈ 1-2 semanas)
 
-Esta fase afina el rendimiento y refuerza la seguridad antes de considerar la plataforma como producción-ready.
-
-### Alcance
-
-Implementar el mecanismo de instancias dormidas con cold start gestionado. Configurar la caché de Redis para validación de tokens. Optimizar las imágenes Docker del template. Ajustar los límites de rate limiting basados en datos reales. Ejecutar una auditoría de seguridad completa. Documentar los runbooks operativos.
-
-### Dependencias
-
-Todas las fases anteriores deben estar completas.
+### Objetivo
+Empaquetar, configurar CI/CD y preparar el sistema para deployment al VPS.
 
 ### Entregables
+- Dockerfile multi-stage del Maestro, non-root, con HEALTHCHECK.
+- `docker-compose.yml` con Traefik + Maestro API + Maestro DB + Redis (opcional) + observabilidad.
+- `docker-compose.dev.yml` para entorno local.
+- Pipeline CI/CD en `.github/workflows/` (validate, security, build, integration_tests, register).
+- Configuración Traefik: TLS Let's Encrypt, redirect HTTP→HTTPS, HSTS, rate limiting (sin ForwardAuth).
+- Branch protection en `main`.
+- Scripts de deployment a VPS (`scripts/deploy.sh` o equivalente). El VPS lo gestiona el humano.
+- ENV vars obligatorias documentadas en `.env.example`: `DATABASE_URL`, `MAESTRO_ENCRYPTION_KEY`, `JWT_SECRET`, `SUPERADMIN_INITIAL_PASSWORD`.
 
-Instancias dormidas funcionales con cold start menor a quince segundos. Caché de tokens en Redis con hit rate mayor al noventa por ciento. Template Docker optimizado con imagen final menor a cien megabytes para Node.js. Auditoría de seguridad completada con todos los hallazgos remediados. Runbooks operativos para los escenarios más comunes.
+### Exit criteria
+- `docker compose up -d` levanta el stack completo localmente.
+- CI corre verde en main.
+- Smoke tests pasan post-deploy.
+- Documentación de deployment lista en `docs/deployment.md`.
 
-### Criterios de aceptación
+---
 
-Las instancias sin tráfico se duermen automáticamente después del periodo configurado. Las instancias dormidas se despiertan correctamente cuando reciben un request. La latencia de ForwardAuth con caché activa es menor a diez milisegundos. La auditoría de seguridad no encuentra vulnerabilidades críticas ni altas sin remediar. Los runbooks cubren al menos los siguientes escenarios: instancia no responde, VPS sin espacio en disco, certificado TLS no se renueva, base de datos del Maestro no responde, y cómo hacer rollback de una aplicación.
+## Fase 05 — Seeding (≈ 2-3 días)
 
-### Duración estimada
+### Objetivo
+Garantizar que el Maestro arranca con un superadmin operativo en cada deployment.
 
-Dos semanas.
+### Entregables
+- Seeder idempotente del superadmin (`admin@llyasoc.com`).
+- Lectura de `SUPERADMIN_INITIAL_PASSWORD` con validación de fortaleza.
+- Creación/verificación de rol `superadmin` con todos los permisos.
+- Hook en pipeline de deploy: `docker compose exec maestro-api <cmd_seed>` post-migrations.
+- Tests del seeder (no seteo, password débil, primer run, segundo run, asignación de rol faltante, login exitoso).
+
+### Exit criteria
+- El seeder cumple las reglas de `framework-agentico/phases/05-seeding.md`.
+- Re-ejecutar el seeder NO duplica datos ni cambia password existente.
+- Login del superadmin funciona post-deploy.
+- Logs sin password ni hash.
+
+---
+
+## Fase 06 — Operations (≈ 1-2 semanas)
+
+### Objetivo
+Preparar el sistema para operar en producción con observabilidad y protocolos de respuesta.
+
+### Entregables
+- Stack de observabilidad desplegado: Prometheus, Loki, Grafana, alertmanager.
+- Dashboards (6 dashboards mínimos según `10-OBSERVABILIDAD.md`).
+- Reglas de alerta provisioned en Prometheus.
+- Runbooks operativos (12 mínimos según `10-OBSERVABILIDAD.md`).
+- Audit log centralizado y consultable desde el portal.
+- Política de backups operativa: cron diario, cifrado, externo al VPS, retención ≥ 30 días.
+- Logs estructurados JSON con `request_id`, `deployment_id`, `actor_user_id` (sin `company_id`).
+- Documentación de tech debt en `docs/tech-debt.md`.
+
+### Exit criteria
+- Métricas clave alimentando Grafana.
+- Alertas críticas configuradas y probadas.
+- Al menos un backup diario ejecutado y verificado.
+- Runbooks revisados con el equipo.
+
+---
+
+## Fase 07 — Retrospective (≈ 3-5 días)
+
+### Objetivo
+Cerrar el proyecto con retrospectiva, documentación consolidada y mejora continua.
+
+### Entregables
+- `docs/retrospective.md` con: qué funcionó, qué no, qué mejorar.
+- `docs/final-report.md` con reporte ejecutivo (premisa, alcance, métricas, costos del proyecto).
+- README del proyecto actualizado.
+- Índice maestro de documentación.
+- Lecciones aprendidas registradas en memoria del framework agéntico (si aplican a futuros proyectos).
+
+### Exit criteria
+- Retrospectiva completada.
+- Reporte ejecutivo entregado al PO.
+- Documentación final consolidada.
+- PR final epic → main aprobado y mergeado **por el PM** (ver `framework-agentico/core/RULES.md` sección `git_workflow.permisos_de_merge`).
+- Proyecto marcado `completed` en `framework-agentico/projects/<id>/PROJECT.md` y en `framework-agentico/checkpoints/GLOBAL.md`.
+- Transacciones compactadas (`COMPACTED_TRANSACTIONS.md` por rama).
+
+---
+
+## Estimación total
+
+| Fase | Duración estimada |
+|---|---|
+| 00 — Setup | 1-2 días |
+| 01 — Discovery | 1-2 semanas |
+| 02 — Planning | 2-3 semanas |
+| 03 — Development | 2-3 meses |
+| 04 — Delivery | 1-2 semanas |
+| 05 — Seeding | 2-3 días |
+| 06 — Operations | 1-2 semanas |
+| 07 — Retrospective | 3-5 días |
+| **Total** | **~4-5 meses** |
+
+Estimación para un equipo de 2-3 devs full-time + 1 PM/PO + soporte de agentes IA. Ajustar según realidad del equipo.
+
+---
+
+## Dependencias entre fases
+
+```
+00-setup ──→ 01-discovery ──→ 02-planning ──→ 03-development ──→ 04-delivery ──→ 05-seeding ──→ 06-operations ──→ 07-retrospective
+```
+
+- Cada fase depende estrictamente de la anterior.
+- 05-seeding puede solaparse parcialmente con 04-delivery (el seeder se desarrolla durante delivery, se prueba en una fase dedicada).
+- 06-operations puede iniciar la observabilidad en paralelo durante 04-delivery (instrumentación de métricas en código).
+
+---
+
+## Hitos de revisión con el PO
+
+Recomendados:
+
+- **Post-01**: revisión de requisitos.
+- **Post-02**: revisión de ADRs y modelo de datos.
+- **Post-Sprint 1, 4, 7 (durante 03)**: demos parciales.
+- **Post-04**: review de la imagen Docker y CI/CD.
+- **Post-06**: walkthrough de dashboards y runbooks.
+- **Post-07**: presentación del reporte ejecutivo.
+
+---
+
+## Riesgos y mitigaciones
+
+| Riesgo | Probabilidad | Impacto | Mitigación |
+|---|---|---|---|
+| Underestimación de complejidad del provisioner | Media | Alto | Spike técnico en 02 con prototipo de Docker API directa |
+| Cambios de regulación (GDPR/SOC) durante el proyecto | Baja | Medio | Reunión trimestral con compliance-analyst |
+| Compromiso de credenciales en CI | Baja | Alto | gitleaks + cosign desde 04-delivery |
+| Rotación de equipo durante 03-development | Media | Medio | Documentación obligatoria por sprint, ADRs actualizados |
+| Dependencias upstream (Tailwise, Traefik) con vulnerabilidades | Media | Medio | Updates regulares, trivy scan en CI |
+| Performance del provisioning peor que objetivo (60s) | Baja | Bajo | Profiling early; cache de imágenes Docker en el VPS |
+
+---
+
+## Criterios de éxito del proyecto
+
+Al cierre del proyecto:
+
+1. ✅ La Web Maestro está desplegada en el VPS y accesible vía HTTPS.
+2. ✅ El superadmin (`admin@llyasoc.com`) puede loguearse en el portal.
+3. ✅ Una app huésped puede registrarse exitosamente vía `POST /api/v2/apps/register`.
+4. ✅ Un admin puede provisionar un deployment de la app para una empresa, y la app queda accesible en su URL pública.
+5. ✅ El click en la app desde el portal abre la URL en `target="_blank"` y la app pide login propio.
+6. ✅ El deployment responde a `/maestro/branding` correctamente y el branding se cachea.
+7. ✅ Los hooks salientes funcionan: el Maestro envía `on_user_added` y la app valida la firma HMAC.
+8. ✅ Los dashboards muestran métricas reales del Maestro y los deployments.
+9. ✅ Las alertas críticas se disparan correctamente en simulación.
+10. ✅ El backup diario corre y se almacena externo al VPS.
+11. ✅ El audit log captura todas las operaciones administrativas y es inmutable.
+12. ✅ Los runbooks resuelven los 12 escenarios documentados.
+
+---
+
+## Referencias normativas
+
+- `01-PREMISAS-Y-NO-NEGOCIABLES.md` — base constitucional.
+- `02-MODELO-DE-DATOS.md` — schema a implementar.
+- `03-AUTENTICACION-Y-AUTORIZACION.md` — endpoints de auth a construir.
+- `04-INFRAESTRUCTURA-DOCKER.md` — provisioning a implementar.
+- `05-PORTAL-Y-RENDERIZADO.md` — frontend a construir.
+- `06-CONTRATO-MAESTRO-YAML.md` — JSON Schema a publicar y endpoint de registro.
+- `07-SISTEMA-AGENTICO.md` — cómo el framework agéntico v4 ejecuta este plan.
+- `08-CICD-Y-GOBERNANZA.md` — pipelines a configurar.
+- `09-SEGURIDAD.md` — threat model a mitigar.
+- `10-OBSERVABILIDAD.md` — stack y métricas a implementar.
+- `framework-agentico/phases/00-setup.md` … `07-retrospective.md` — templates operativos del framework.
+- `framework-agentico/agents/presets/maestro-platform/PRESET.md` — preset activo durante este proyecto.
+
+---
+
+## Historial de revisiones
+
+| Versión | Fecha | Cambio |
+|---|---|---|
+| 4.0.0 | 2026-05-07 | Versión inicial v4. Plan alineado al modelo registry+redirector+provisioner del Maestro v4. 8 fases con dependencias, entregables, exit criteria y estimaciones. Reemplaza al v1 (legacy en `legacy/v3/PremisaWebMaestro/11-PLAN-DE-IMPLEMENTACION.md`). |

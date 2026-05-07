@@ -1,85 +1,94 @@
-# Maestro Platform — Índice Maestro de Arquitectura
+# Web Maestro — Índice Maestro de Arquitectura
+
+> **Versión:** v4 (framework agéntico v4 / contrato `maestro.platform/v2`)
+> **Última revisión:** 2026-05-07
+> **Estado:** vigente
+> **Reemplaza a:** `legacy/v3/PremisaWebMaestro/00-INDICE-MAESTRO.md` (modelo v1).
+
+---
 
 ## Qué es este conjunto de documentos
 
-Este conjunto de archivos markdown constituye la especificación arquitectónica completa de Maestro Platform. Están redactados íntegramente en lenguaje natural para que un agente de inteligencia artificial pueda interpretarlos sin ambigüedad y tomar decisiones de implementación alineadas con la visión, las premisas y los límites aquí definidos.
+Este conjunto de archivos markdown constituye la **especificación arquitectónica completa** de la Web Maestro (= Web Anfitriona = plataforma Maestro = Maestro). Están redactados íntegramente en lenguaje natural para que un agente de IA pueda interpretarlos sin ambigüedad y tomar decisiones de implementación alineadas con la visión, las premisas y los límites aquí definidos.
 
 Cada archivo es autónomo en su dominio pero interdependiente con los demás. Un agente que reciba estos documentos debe leerlos todos antes de generar código, tomar decisiones de diseño o proponer alternativas. Ningún archivo individual contiene la verdad completa; la arquitectura emerge de la lectura conjunta.
 
+## Sinónimos que el PO puede usar
+
+El PO (= Project Owner = Product Owner = dueño del producto) usa sinónimos intercambiables para varios conceptos. Todos los agentes deben reconocerlos correctamente:
+
+- **Web Maestro** = Web Anfitriona = plataforma Maestro = Maestro = anfitriona (la plataforma orquestadora descrita en estos documentos).
+- **Aplicación huésped** = app huésped = aplicación genérica = app genérica = aplicación tool = app tool (las apps que corren en deployments dentro de la Web Maestro).
+- **PO** = Project Owner = Product Owner.
+
+NO forzar un único término canónico; responder usando el término que el PO usó. Detalle en `framework-agentico/core/RULES.md` sección `glosario_de_sinonimos`.
+
 ## Orden de lectura obligatorio
 
-El agente debe leer los archivos en el siguiente orden porque cada uno construye sobre los conceptos del anterior:
+El agente debe leer los archivos en este orden porque cada uno construye sobre los conceptos del anterior:
 
-El primer archivo que debe leerse es este mismo índice, el archivo 00-INDICE-MAESTRO.md, porque establece el contexto general, la visión del producto y las reglas de interpretación que aplican a todos los demás documentos.
+**Primero**: este mismo índice (`00-INDICE-MAESTRO.md`), porque establece contexto general, sinónimos y reglas de interpretación.
 
-El segundo archivo es 01-PREMISAS-Y-NO-NEGOCIABLES.md. Este es el documento más importante de todo el conjunto. Contiene los axiomas y los límites duros del sistema. Cualquier decisión técnica que contradiga lo establecido aquí es inválida, sin excepciones. El agente debe internalizar este archivo como su constitución antes de proceder con cualquier otro.
+**Segundo**: `01-PREMISAS-Y-NO-NEGOCIABLES.md`. Es el documento más importante de todo el conjunto: los axiomas y los límites duros del sistema. Cualquier decisión técnica que contradiga lo establecido allí es inválida. El agente debe internalizar ese archivo como su constitución antes de proceder.
 
-El tercer archivo es 02-MODELO-DE-DATOS.md. Define todas las entidades, sus atributos, las relaciones entre ellas, las reglas de integridad y las restricciones de negocio. Un agente no puede generar código de base de datos, APIs ni lógica de negocio sin haber procesado este archivo.
+**Tercero**: `02-MODELO-DE-DATOS.md`. Define las entidades del Maestro (`companies`, `applications`, `deployments`, `api_keys`, `webhook_secrets`, `audit_log`, `admin_users`, `admin_roles`, `admin_permissions`) y sus relaciones. Necesario para entender qué se persiste, dónde y cómo.
 
-El cuarto archivo es 03-AUTENTICACION-Y-AUTORIZACION.md. Describe el sistema de identidad centralizado, el flujo completo de autenticación, la estructura de tokens, el mecanismo de ForwardAuth y los niveles de autorización. Este archivo es crítico porque la autenticación es la capa más sensible de toda la plataforma.
+**Cuarto**: `03-AUTENTICACION-Y-AUTORIZACION.md`. Define cómo se autentican los admins del Maestro (login propio), cómo se autentican los requests server-to-server entre Maestro y apps huésped (`X-Maestro-Api-Key`, `X-Maestro-Webhook-Secret`) y por qué el Maestro NO autentica usuarios finales.
 
-El quinto archivo es 04-INFRAESTRUCTURA-DOCKER.md. Detalla la topología de redes Docker, el ciclo de vida de las instancias, los mecanismos de aislamiento, los límites de recursos, las instancias dormidas y la estrategia de escalado progresivo.
+**Quinto**: `04-INFRAESTRUCTURA-DOCKER.md`. Topología de redes Docker, provisioning de deployments (un contenedor + una BD por par app+empresa), ciclo de vida (provisioning → healthy → degraded → suspended → destroyed → purged), límites de recursos.
 
-El sexto archivo es 05-PORTAL-Y-RENDERIZADO.md. Explica cómo el portal React renderiza las aplicaciones dentro de iframes, el protocolo de comunicación postMessage, la seguridad del iframe, el manejo de estados de error y los principios de experiencia de usuario.
+**Sexto**: `05-PORTAL-Y-RENDERIZADO.md`. Cómo el portal del Maestro renderiza el catálogo de apps disponibles para sus admins, cómo cambia el contexto de empresa, y por qué el click en una app abre la URL en `target="_blank"` (sin iframes, sin transferencia de identidad).
 
-El séptimo archivo es 06-SDK-Y-CONTRATO.md. Especifica el contrato maestro.yaml que toda aplicación debe cumplir, los SDKs por lenguaje, las validaciones del CLI y la estructura de repositorios esperada para cada aplicación.
+**Séptimo**: `06-CONTRATO-MAESTRO-YAML.md`. Estructura del archivo `maestro.yaml` v2 que cada app huésped declara en la raíz de su repo. Campos obligatorios y opcionales, JSON Schema, validación CLI, endpoint `POST /api/v2/apps/register`.
 
-El octavo archivo es 07-SISTEMA-AGENTICO.md. Define la jerarquía de agentes de inteligencia artificial, el agente orquestador, los agentes especialistas por tecnología, el flujo de creación de nuevas aplicaciones y las reglas que todo agente debe heredar de la plataforma.
+**Octavo**: `07-SISTEMA-AGENTICO.md`. Cómo el framework agéntico v4 (con preset `maestro-platform` activo) construye la Web Maestro a través de las 8 fases (00-setup → 07-retrospective).
 
-El noveno archivo es 08-CICD-Y-GOBERNANZA.md. Describe los pipelines de integración continua, las fases de validación, la estructura de repositorios, las protecciones del código del Maestro y el flujo de despliegue de nuevas versiones.
+**Noveno**: `08-CICD-Y-GOBERNANZA.md`. Pipelines CI/CD del Maestro y de las apps huésped, branch protection, self-registration de apps desde su CI, scans de imagen Docker.
 
-El décimo archivo es 09-SEGURIDAD.md. Presenta la estrategia de defensa en profundidad con todas las capas de seguridad, las configuraciones de headers, las políticas de secretos, los escaneos de vulnerabilidades y las reglas de auditoría.
+**Décimo**: `09-SEGURIDAD.md`. Estrategia de defensa en profundidad. Threat model. Pre-commit hooks, CI deep scans, audit log inmutable.
 
-El undécimo archivo es 10-OBSERVABILIDAD.md. Cubre el stack de monitoreo, las métricas clave con sus umbrales, el sistema de alertas, los dashboards y la estrategia de logging centralizado.
+**Undécimo**: `10-OBSERVABILIDAD.md`. Stack (Prometheus + Loki + Grafana), métricas clave del Maestro y por deployment, dashboards, alertas, runbooks.
 
-El duodécimo y último archivo es 11-PLAN-DE-IMPLEMENTACION.md. Establece las fases de construcción ordenadas cronológicamente, con sus dependencias, entregables y criterios de aceptación.
+**Duodécimo**: `11-PLAN-DE-IMPLEMENTACION.md`. Fases cronológicas para construir la Web Maestro v4, dependencias, entregables y criterios de aceptación.
 
-## Visión del producto
+## Reglas de interpretación
 
-Maestro Platform es una plataforma multi-tenant de clase empresarial cuyo propósito es alojar, orquestar y gobernar múltiples aplicaciones dockerizadas bajo un portal web unificado con autenticación centralizada. La plataforma resuelve el problema de fragmentación que enfrentan las organizaciones que operan múltiples herramientas internas: cada herramienta tiene su propio login, su propia gestión de usuarios, su propia infraestructura y su propia deuda técnica de seguridad.
+1. **Las premisas son axiomas**; los no-negociables son límites duros verificables. Una decisión que cumple una premisa pero viola un no-negociable es inválida.
+2. **Si dos documentos contradicen**, prevalece `01-PREMISAS-Y-NO-NEGOCIABLES.md` sobre todos los demás.
+3. **Si un concepto no está en estos documentos**, el agente NO lo inventa: escala al PO o consulta `framework-agentico/core/RULES.md`.
+4. **El framework agéntico v4** (`framework-agentico/`) es el meta-sistema que orquesta la construcción de la Web Maestro. Estos documentos describen QUÉ se construye; el framework describe CÓMO.
+5. **El preset activo cuando se construye la Web Maestro** es `maestro-platform` (ver `framework-agentico/agents/presets/maestro-platform/PRESET.md`). Cuando se construye una app huésped, el preset activo es `web-maestro` (ver `framework-agentico/core/PRESET_WEB_MAESTRO.md`). Ver `framework-agentico/core/RULES.md` sección `activacion_de_preset`.
 
-Con Maestro, un usuario inicia sesión una única vez y accede a todas las aplicaciones que su empresa tiene licenciadas. Los desarrolladores publican aplicaciones dockerizadas siguiendo un contrato estándar, y la plataforma se encarga de todo lo demás: provisionamiento de infraestructura, aislamiento de datos, autenticación, monitoreo y gestión del ciclo de vida.
+## Mapa rápido del conjunto
 
-La metáfora más precisa es pensar en Maestro como un sistema operativo para aplicaciones internas. Así como un sistema operativo gestiona procesos, memoria, seguridad y la interfaz de usuario mientras las aplicaciones se enfocan en su propósito específico, Maestro gestiona contenedores, bases de datos, identidad y el portal web mientras cada aplicación alojada se enfoca exclusivamente en su lógica de negocio.
+| # | Archivo | Tema | Audiencia |
+|---|---|---|---|
+| 00 | `00-INDICE-MAESTRO.md` | Este índice | Toda |
+| 01 | `01-PREMISAS-Y-NO-NEGOCIABLES.md` | Constitución | Toda (lectura obligatoria) |
+| 02 | `02-MODELO-DE-DATOS.md` | Schema de la BD del Maestro | Backend, DBA, agentes data-architect |
+| 03 | `03-AUTENTICACION-Y-AUTORIZACION.md` | Auth de admins + server-to-server | Backend, security-auditor |
+| 04 | `04-INFRAESTRUCTURA-DOCKER.md` | Provisioning, redes, ciclo de vida | DevOps, agentes devops-engineer |
+| 05 | `05-PORTAL-Y-RENDERIZADO.md` | Frontend del portal del Maestro | Frontend, agentes ux-designer/frontend-developer |
+| 06 | `06-CONTRATO-MAESTRO-YAML.md` | Contrato de integración con apps | Toda app huésped, CI/CD, agentes |
+| 07 | `07-SISTEMA-AGENTICO.md` | Framework agéntico v4 aplicado al Maestro | PM, orquestadores, agentes |
+| 08 | `08-CICD-Y-GOBERNANZA.md` | Pipelines, repos, deploy | DevOps, agentes ci-cd-specialist |
+| 09 | `09-SEGURIDAD.md` | Defensa en profundidad, threat model | Security-auditor, todos los agentes |
+| 10 | `10-OBSERVABILIDAD.md` | Stack de monitoreo, métricas, alertas | Observability-engineer, operaciones |
+| 11 | `11-PLAN-DE-IMPLEMENTACION.md` | Fases cronológicas y entregables | PO, PM |
 
-## Contexto técnico existente
+## Referencias normativas
 
-La plataforma Maestro ya existe en una versión inicial con las siguientes características que deben preservarse y extenderse:
+- `framework-agentico/CHANGELOG.md` — historial de cambios entre versiones del framework.
+- `framework-agentico/core/RULES.md` — reglas generales del framework v4 (glosario, versionado, persistencia, activación de preset).
+- `framework-agentico/core/PRESET_WEB_MAESTRO.md` — preset que aplica al construir apps huésped.
+- `framework-agentico/agents/presets/maestro-platform/PRESET.md` — preset que aplica al construir la Web Maestro.
+- `docs/APP_HUESPED_SPEC.md` — contrato `maestro.platform/v2` lado app.
+- `legacy/v3/PremisaWebMaestro/` — versiones v1 (legacy, deprecadas).
 
-El backend está desarrollado en Laravel. Este es un hecho inmutable; no se migrará a otro framework. Las extensiones y mejoras deben construirse sobre Laravel.
+---
 
-El frontend está desarrollado con React y Tailwind CSS. Igualmente inmutable. El portal se extiende con estos mismos frameworks.
+## Historial de revisiones
 
-La aplicación está dockerizada y corre en un VPS en Azure. La infraestructura base es Docker sobre una máquina virtual en la nube de Microsoft Azure.
-
-La autenticación ya soporta usuario y contraseña además de Microsoft Authentication. Estos dos métodos de autenticación deben preservarse y extenderse con capacidades OAuth2 server para emitir tokens a las aplicaciones alojadas.
-
-La estructura de permisos existente ya contempla que muchas empresas tienen muchos usuarios, que muchos usuarios pertenecen a muchas empresas, que muchas empresas tienen muchas aplicaciones, y que muchas aplicaciones tienen muchos usuarios. Estas cuatro relaciones many-to-many son el corazón del modelo de datos y no pueden simplificarse.
-
-## Reglas de interpretación para el agente
-
-Cuando el agente encuentre la palabra "debe" o "obligatorio" en cualquier documento, significa que no hay alternativa. El agente no puede proponer una solución diferente ni omitir ese requisito.
-
-Cuando el agente encuentre la palabra "nunca" o "jamás" o "prohibido", significa que esa acción está completamente vedada. El agente no puede encontrar excepciones ni justificaciones para violar esa restricción.
-
-Cuando el agente encuentre la frase "no negociable", significa que ese requisito tiene la máxima prioridad. Si entra en conflicto con una preferencia del desarrollador, con una limitación de tiempo o con cualquier otra presión, el no negociable prevalece siempre.
-
-Cuando el agente encuentre la palabra "recomendado" o "preferible", significa que es la opción por defecto pero puede modificarse con justificación técnica documentada.
-
-Cuando el agente encuentre la palabra "configurable" o "parametrizable", significa que el valor puede ser ajustado por el administrador de la plataforma sin modificar código.
-
-Cuando el agente necesite tomar una decisión que no está cubierta explícitamente por estos documentos, debe aplicar los siguientes principios en orden de prioridad: primero, seguridad y aislamiento de datos entre tenants; segundo, experiencia de usuario fluida; tercero, simplicidad operativa; cuarto, rendimiento; quinto, elegancia del código.
-
-## Stakeholders del sistema
-
-Las personas y roles que interactúan con la plataforma son cinco grupos distintos con necesidades diferentes.
-
-Las empresas, también llamadas tenants, son las organizaciones clientes que contratan licencias de aplicaciones. Su necesidad principal es tener acceso unificado a sus herramientas con seguridad, control de costos y visibilidad sobre el uso que sus empleados hacen de cada aplicación.
-
-Los usuarios finales son los empleados de las empresas que usan las aplicaciones día a día. Su necesidad principal es una experiencia fluida con un solo login, transiciones rápidas entre aplicaciones y una interfaz consistente que no los obligue a aprender un sistema de navegación diferente para cada herramienta.
-
-Los desarrolladores de aplicaciones son los equipos que crean las aplicaciones que se alojan en la plataforma. Su necesidad principal es un SDK claro, un contrato estándar bien documentado, un pipeline de CI/CD automatizado y un agente de IA que los asista en el cumplimiento de las reglas de la plataforma.
-
-Los administradores de Maestro son el equipo que opera la plataforma. Su necesidad principal es tener observabilidad completa sobre todas las instancias, gobernanza sobre licencias y accesos, y herramientas para escalar la plataforma sin tiempo de inactividad.
-
-La dirección o C-Level son los tomadores de decisiones. Su necesidad principal es ver el retorno de inversión, el cumplimiento de normativas y reportes ejecutivos sobre el uso y la salud de la plataforma.
+| Versión | Fecha | Cambio |
+|---|---|---|
+| 4.0.0 | 2026-05-07 | Versión inicial v4. Reemplaza al índice v1 (legacy en `legacy/v3/PremisaWebMaestro/00-INDICE-MAESTRO.md`). |

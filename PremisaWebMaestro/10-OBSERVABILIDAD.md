@@ -1,107 +1,412 @@
 # Observabilidad y Monitoreo
 
+> **Versión:** v4 (framework agéntico v4 / contrato `maestro.platform/v2`)
+> **Última revisión:** 2026-05-07
+> **Estado:** vigente
+> **Reemplaza a:** `legacy/v3/PremisaWebMaestro/10-OBSERVABILIDAD.md` (modelo v1).
+
+---
+
 ## Propósito de este documento
 
-Este documento describe el stack de observabilidad de Maestro Platform, las métricas clave con sus umbrales, el sistema de alertas, los dashboards y la estrategia de logging centralizado. Sin observabilidad, la plataforma es ingobernable: no se puede operar lo que no se puede ver.
+Este documento describe el stack de observabilidad de la **Web Maestro** v4: las métricas clave con sus umbrales, el sistema de alertas, los dashboards, la estrategia de logging centralizado y los runbooks operativos. Sin observabilidad, la plataforma es ingobernable: no se puede operar lo que no se puede ver.
+
+Audiencia: equipos de plataforma, observability-engineers, agentes `observability-engineer` y `incident-manager`.
+
+---
+
+## Cambio respecto a v1
+
+En v1 los logs y métricas incluían `company_id` (consecuencia de la multi-tenancy lógica). En v4, con single-tenant físico:
+
+- Logs **NO** incluyen `company_id` en el contexto base. Cuando se loguea contexto de un deployment específico, se loguea `deployment_id` (que ya implica empresa+app).
+- Métricas se agrupan por `deployment_id`, no por `company_id`.
+
+El stack tecnológico (Prometheus + Loki + Grafana) se mantiene igual, ajustado a las nuevas métricas y filtros.
 
 ---
 
 ## Stack de observabilidad
 
-La observabilidad se implementa con herramientas open source que se despliegan como contenedores adicionales dentro del stack del Maestro.
+### Componentes
 
-### Prometheus y cAdvisor para métricas
+| Componente | Rol | Despliegue |
+|---|---|---|
+| **Prometheus** | Métricas time-series | Contenedor `obs-prometheus` |
+| **Promtail** | Agente de log shipping | Contenedor `obs-promtail` (lee logs de Docker) |
+| **Loki** | Almacenamiento y búsqueda de logs | Contenedor `obs-loki` |
+| **Grafana** | Dashboards y alertas | Contenedor `obs-grafana` |
+| **cAdvisor** (opcional) | Métricas de contenedores | Contenedor `obs-cadvisor` |
+| **node-exporter** | Métricas del host | Daemon en el VPS |
+| **alertmanager** | Routing de alertas | Contenedor `obs-alertmanager` |
 
-Prometheus es el sistema de recolección y almacenamiento de métricas. Funciona mediante un modelo pull donde Prometheus consulta periódicamente los endpoints de métricas de los componentes monitoreados.
+### Topología
 
-cAdvisor se ejecuta como un contenedor con acceso al socket de Docker y recolecta métricas de todos los contenedores en ejecución. Las métricas que recolecta incluyen uso de CPU por contenedor expresado como porcentaje del límite asignado, uso de memoria RAM por contenedor en bytes, tráfico de red entrante y saliente por contenedor, uso de disco por contenedor, y el número de procesos activos dentro de cada contenedor.
+```
+┌───────────────────────────────────────────────────┐
+│              maestro-net + obs-net                  │
+│                                                     │
+│  ┌──────────┐   ┌──────────┐   ┌──────────┐        │
+│  │ maestro- │   │ deployment│   │ deployment│        │
+│  │  api      │   │     A     │   │     B     │        │
+│  └─────┬────┘   └─────┬────┘   └─────┬────┘        │
+│        │              │              │              │
+│        │ /metrics    │ stdout       │ stdout        │
+│        │              │              │              │
+│  ┌─────▼─────┐  ┌────▼────┐    ┌────▼────┐         │
+│  │ prometheus│  │ promtail │    │ promtail │         │
+│  │  scrape    │  └────┬────┘    └────┬────┘         │
+│  └─────┬─────┘       │              │              │
+│        │              └──────┬──────┘              │
+│        │                     │                     │
+│        │              ┌──────▼─────┐                │
+│        │              │    loki     │                │
+│        │              └──────┬─────┘                │
+│        │                     │                     │
+│  ┌─────▼─────────────────────▼─────┐               │
+│  │             grafana             │               │
+│  │   (dashboards + alertmanager)    │               │
+│  └─────────────────────────────────┘               │
+└───────────────────────────────────────────────────┘
+```
 
-Prometheus almacena estas métricas con una retención de quince días. Para datos históricos de más largo plazo, se exportan a almacenamiento externo.
+### Acceso a Grafana
 
-### Loki y Promtail para logs
-
-Loki es el sistema de almacenamiento y consulta de logs. A diferencia de sistemas como Elasticsearch, Loki indexa los logs por etiquetas y no por contenido, lo que lo hace más eficiente en recursos.
-
-Promtail es el agente que recolecta logs de los contenedores Docker y los envía a Loki. Se configura para recolectar los logs de todos los contenedores etiquetando cada entrada con el nombre del contenedor, la aplicación, la empresa y la instancia.
-
-Los logs de Traefik proporcionan visibilidad sobre todos los requests HTTP: IP de origen, ruta solicitada, código de respuesta, tiempo de respuesta, y headers relevantes. Los logs del Maestro proporcionan visibilidad sobre operaciones administrativas, provisionamiento de instancias, validaciones de tokens, y errores internos. Los logs de las aplicaciones proporcionan visibilidad sobre la lógica de negocio de cada app, errores de aplicación, y eventos relevantes del dominio.
-
-### Grafana para dashboards y alertas
-
-Grafana es la interfaz de visualización que consume datos de Prometheus y Loki para presentar dashboards y ejecutar reglas de alertas.
-
-Grafana está configurada con autenticación propia pero accesible solo desde la red interna o a través de una VPN. Los administradores de la plataforma son los únicos usuarios de Grafana. Los tenants no tienen acceso directo a Grafana; sus métricas y logs se les presentan a través del panel de administración del Maestro si es aplicable.
-
----
-
-## Métricas clave y umbrales
-
-Las siguientes métricas son las más importantes para la operación de la plataforma. Cada una tiene un umbral saludable y una acción recomendada cuando se supera.
-
-### Tiempo de respuesta de ForwardAuth en percentil noventa y cinco
-
-Esta métrica mide cuánto tarda el endpoint de validación de tokens del Maestro en responder a Traefik. Es crítica porque afecta la latencia de todos los requests a todas las aplicaciones. El umbral saludable es menos de cincuenta milisegundos. Si se supera consistentemente, indica que la base de datos del Maestro o Redis están bajo carga excesiva. La acción es investigar queries lentos en la base de datos del Maestro, verificar que la caché de Redis está funcionando correctamente, y evaluar si la conexión pooling de PostgreSQL necesita ajuste.
-
-### Tiempo de cold start de instancias dormidas
-
-Esta métrica mide cuánto tiempo pasa desde que se solicita despertar una instancia dormida hasta que pasa su primer health check exitoso. Es importante para la experiencia del usuario que espera que la aplicación se cargue. El umbral saludable es menos de quince segundos. Si se supera, indica que la imagen Docker de la aplicación es demasiado grande, que la aplicación tiene un arranque lento, o que el VPS está bajo carga. La acción es optimizar la imagen Docker con multi-stage builds, investigar el proceso de arranque de la aplicación, y evaluar si el VPS tiene suficientes recursos.
-
-### Health checks fallidos por hora por instancia
-
-Esta métrica mide la estabilidad de cada instancia. El umbral saludable es menos de cinco fallos por hora por instancia. Si se supera, indica que la aplicación tiene problemas intermitentes de estabilidad. El sistema automáticamente reinicia instancias con tres fallos consecutivos y alerta al administrador con cinco fallos. La acción es revisar los logs de la instancia para identificar la causa raíz, evaluar si la aplicación necesita más recursos, y contactar al equipo de desarrollo de la app.
-
-### Uso de RAM del VPS
-
-Esta métrica mide el consumo total de memoria del servidor. El umbral saludable es menos del ochenta por ciento de la RAM total. Si se supera, el servidor empieza a usar swap lo que degrada el rendimiento de todo el sistema. La acción es activar el dormido de instancias más agresivamente, reduciendo el timeout de inactividad, evaluar si alguna instancia está consumiendo más memoria de la esperada, y planificar la migración a un VPS más grande o la transición a múltiples nodos.
-
-### Errores HTTP 5xx por hora por aplicación
-
-Esta métrica mide los errores internos de servidor de cada aplicación. El umbral saludable es menos de diez errores por hora. Si se supera, indica un problema en la aplicación que está causando fallos. La acción es notificar al equipo de desarrollo de la app, revisar los logs de la instancia para identificar la causa, y evaluar si es necesario hacer rollback a una versión anterior.
-
-### Tiempo de login en percentil noventa y cinco
-
-Esta métrica mide la latencia del proceso de inicio de sesión, desde que el usuario envía sus credenciales hasta que recibe el token JWT. El umbral saludable es menos de dos segundos. Si se supera, indica problemas en el rendimiento de Laravel Passport o en la base de datos del Maestro. La acción es optimizar las queries de autenticación, verificar el rendimiento de bcrypt con el costo factor actual, y evaluar el caching de sesiones.
-
-### Espacio en disco del VPS
-
-Esta métrica mide el uso del sistema de archivos del VPS incluyendo las imágenes Docker, los volúmenes de las bases de datos de las instancias, y los logs. El umbral saludable es menos del setenta por ciento de ocupación. Si se supera, la acción es purgar imágenes Docker no utilizadas, limpiar logs antiguos, y evaluar si las instancias destruidas que están en período de retención pueden purgarse anticipadamente.
+- Dominio: `grafana.<base_domain>` o subpath del Maestro.
+- TLS terminado por Traefik.
+- Auth: integración con login del Maestro (admins del Maestro pueden acceder a Grafana con su sesión).
+- Permisos: `observability.read` para ver, `observability.admin` para configurar.
 
 ---
 
-## Sistema de alertas
+## Métricas clave
 
-Las alertas se configuran en Grafana y se envían a través de canales de notificación configurables. Los canales recomendados son un canal de Slack dedicado para alertas operativas y email al equipo de plataforma.
+### Del Maestro mismo
 
-Las alertas se clasifican en tres niveles de severidad.
+| Métrica | Tipo | Etiquetas | Umbral verde | Umbral amarillo | Umbral rojo |
+|---|---|---|---|---|---|
+| `maestro_login_total` | counter | `result=success/failure/locked` | — | — | failure rate >5% |
+| `maestro_login_failure_per_admin` | counter | `admin_id` | <3/h | 3-5/h | >5/h (bloqueo automático) |
+| `maestro_api_request_duration_seconds` | histogram | `endpoint, method, status` | p95 <100ms | p95 100-300ms | p95 >300ms |
+| `maestro_api_request_total` | counter | `endpoint, method, status` | — | — | 5xx rate >1% |
+| `maestro_db_query_duration_seconds` | histogram | `query_type` | p95 <50ms | p95 50-200ms | p95 >200ms |
+| `maestro_audit_log_writes_total` | counter | `action_category` | — | — | >100/min (sospechoso) |
 
-Las alertas críticas requieren acción inmediata. Incluyen el VPS con más del noventa por ciento de RAM usada, más de tres instancias en estado FAILED simultáneamente, Traefik no responde o no puede validar tokens, la base de datos del Maestro no responde, y los certificados TLS expiran en menos de siete días.
+### Del provisioning
 
-Las alertas de advertencia requieren atención dentro de las próximas horas. Incluyen una instancia con más de cinco health checks fallidos en la última hora, el VPS con más del ochenta por ciento de RAM usada, más de cincuenta errores 5xx en la última hora agregados entre todas las apps, y un backup diario que falló.
+| Métrica | Tipo | Etiquetas | Umbral verde | Umbral rojo |
+|---|---|---|---|---|
+| `maestro_deployment_provisioning_duration_seconds` | histogram | `application_id` | p95 <60s | p95 >120s |
+| `maestro_deployment_provisioning_total` | counter | `result=success/failure` | — | failure rate >5% |
+| `maestro_deployment_count` | gauge | `status` | — | `provisioning_failed` >0 |
+| `maestro_deployment_destroy_total` | counter | — | — | spike inusual |
 
-Las alertas informativas se revisan en la siguiente revisión programada. Incluyen una nueva versión de aplicación registrada, una instancia desplegada o destruida, un tier de recursos cercano al límite en alguna instancia, y una licencia que expira en menos de treinta días.
+### Del consumo de branding
+
+| Métrica | Tipo | Etiquetas | Umbral verde | Umbral rojo |
+|---|---|---|---|---|
+| `maestro_branding_fetch_total` | counter | `deployment_id, status=ok/unauthorized/timeout/server_error` | ok rate >95% | ok rate <90% |
+| `maestro_branding_fetch_duration_seconds` | histogram | `deployment_id` (con cache) | p95 <50ms | p95 >200ms |
+| `maestro_branding_consecutive_failures` | gauge | `deployment_id` | 0 | ≥3 (deployment marcado degraded) |
+
+### De hooks salientes
+
+| Métrica | Tipo | Etiquetas | Umbral verde | Umbral rojo |
+|---|---|---|---|---|
+| `maestro_hook_dispatch_total` | counter | `event_type, deployment_id, status=success/failed/retry/abandoned` | success rate >99% | success rate <95% |
+| `maestro_hook_dispatch_duration_seconds` | histogram | `event_type` | p95 <2s | p95 >5s |
+| `maestro_hook_signature_invalid_total` | counter | `deployment_id` | 0 | >0 (alerta crítica) |
+
+### De los deployments (apps huésped)
+
+| Métrica | Tipo | Etiquetas | Umbral verde | Umbral rojo |
+|---|---|---|---|---|
+| `app_health_check_status` | gauge | `deployment_id` | 1 (healthy) | 0 (unhealthy) |
+| `app_health_check_consecutive_failures` | gauge | `deployment_id` | 0 | ≥10 (suspended) |
+| `app_container_memory_usage_bytes` | gauge | `deployment_id` | <80% del límite | >95% del límite |
+| `app_container_cpu_usage_percent` | gauge | `deployment_id` | <70% del límite | >90% del límite |
+| `app_container_restart_total` | counter | `deployment_id, reason` | <1/día | >5/hora |
+
+### De seguridad
+
+| Métrica | Tipo | Umbral alerta |
+|---|---|---|
+| `maestro_admin_account_locked_total` | counter | >3 en 24h |
+| `maestro_login_failure_total` (sin admin específico) | counter | >50/h global |
+| `maestro_api_key_invalid_total` | counter (`/maestro/branding`) | >10/h por deployment |
+| `maestro_webhook_signature_invalid_total` | counter | >0 (apps no validando firma) |
+| `maestro_csrf_violation_total` | counter | >0 |
+
+### De backup
+
+| Métrica | Tipo | Umbral |
+|---|---|---|
+| `maestro_backup_success_total` | counter | (verificar daily ≥1) |
+| `maestro_backup_failure_total` | counter | >0 (alerta crítica) |
+| `maestro_backup_duration_seconds` | histogram | p95 <30min |
+| `maestro_backup_size_bytes` | gauge | (monitorear crecimiento) |
+
+---
+
+## Logs estructurados
+
+### Formato base
+
+Todos los logs en JSON a stdout/stderr (los recoge Promtail → Loki):
+
+```json
+{
+  "timestamp": "2026-05-07T14:30:22.123Z",
+  "level": "info",
+  "message": "deployment provisioning completed",
+  "service": "maestro-api",
+  "request_id": "uuid",
+  "deployment_id": "uuid",
+  "actor_user_id": "uuid",
+  "duration_ms": 42500
+}
+```
+
+**Campos comunes**:
+- `timestamp` (ISO-8601 UTC con ms).
+- `level` (`debug | info | warn | error | fatal`).
+- `message` (string corto).
+- `service` (`maestro-api`, `maestro-portal`, `maestro-provisioner`, `obs-*`).
+- `request_id` (UUID por request HTTP, propagado entre servicios via header `X-Request-Id`).
+- `deployment_id` (cuando aplique; identifica unívocamente app+empresa).
+- `actor_user_id` (cuando aplique; admin del Maestro).
+- `duration_ms` (en logs de operaciones).
+
+### NO incluir en logs
+
+- Passwords, hashes, JWTs propios.
+- `MAESTRO_API_KEY`, `MAESTRO_WEBHOOK_SECRET`, `SUPERADMIN_INITIAL_PASSWORD`, `MAESTRO_ENCRYPTION_KEY`.
+- Cookies de sesión completas, headers `Authorization`.
+- Bodies de request con datos sensibles (PII, secretos).
+- `company_id` del usuario final de las apps (artefacto v3 deprecado).
+
+### Sampling
+
+- Logs `debug` solo en development (filtrados en producción).
+- Logs `info` muestreados al 10% para endpoints de alta frecuencia (ej: health checks).
+- Logs `warn`, `error`, `fatal` siempre completos.
 
 ---
 
 ## Dashboards
 
-### Dashboard ejecutivo global
+### Dashboard 1: Ejecutivo del Maestro
 
-Este dashboard muestra una vista de alto nivel de toda la plataforma. Incluye el número total de instancias activas, dormidas y detenidas, el uso agregado de recursos del VPS como porcentaje de CPU y RAM, el número de requests por minuto agregado, la tasa de errores global, y el uptime de la plataforma en los últimos treinta días.
+Panel único, refresh 30s. Para C-Level y operaciones generales.
 
-### Dashboard por instancia
+- Total de empresas activas.
+- Total de applications registradas.
+- Total de deployments por estado (gauge: healthy / degraded / suspended).
+- Hooks success rate últimas 24h (gauge con umbrales).
+- Branding fetch success rate últimas 24h.
+- Backup status (semáforo verde/rojo).
+- API uptime últimos 30 días (de Prometheus blackbox).
+- Cost trend (si se integra con cost-analyst del framework agéntico).
 
-Este dashboard muestra las métricas detalladas de una instancia específica. Incluye el uso de CPU y memoria del contenedor de la app, el uso de disco de la base de datos, la tasa de requests por minuto, la distribución de códigos de respuesta HTTP, el tiempo de respuesta en percentiles cincuenta, noventa y noventa y cinco, y el historial de health checks con fallos marcados.
+### Dashboard 2: Salud de deployments
 
-### Dashboard del Maestro
+Lista de todos los deployments con detalle por fila:
 
-Este dashboard muestra las métricas internas del propio Maestro. Incluye el tiempo de respuesta de ForwardAuth, el hit rate de la caché de Redis para tokens, el número de tokens activos, el throughput de la cola de jobs, y el espacio usado por la base de datos central.
+- `deployment_id` + nombre del par app+empresa.
+- Estado (color por status).
+- CPU/memoria actual (% del límite).
+- Health check status + último check.
+- Branding fetch status + último fetch.
+- Hooks last 24h (success/failed counts).
+
+Filtros: por status, por empresa, por application. Click abre Dashboard 3.
+
+### Dashboard 3: Detalle de un deployment
+
+Para troubleshooting de un deployment específico.
+
+- Métricas de container (CPU, memoria, network I/O, restart count) últimas 24h.
+- Health check status timeline.
+- Branding fetch timeline.
+- Hooks dispatch timeline.
+- Logs filtrados por `deployment_id` (vista Loki integrada).
+- Audit log filtrado por `resource_id = deployment_id`.
+
+### Dashboard 4: Performance del Maestro API
+
+- Request rate por endpoint.
+- Latencia p50/p95/p99 por endpoint.
+- Error rate (4xx/5xx) por endpoint.
+- DB query duration por query type.
+- Cache hit rate (si Redis está activo).
+
+### Dashboard 5: Seguridad
+
+- Login attempts (success/failure/locked) últimas 24h.
+- Bloqueos de cuenta.
+- API key invalidations / rotations.
+- Webhook signature failures.
+- CSRF violations.
+- Logs de seguridad recientes (filter `level >= warn`).
+- Acciones críticas del audit log (action prefix `*.destroy`, `*.purge`, `password.change`, `role.granted`, `role.revoked`).
+
+### Dashboard 6: Capacidad
+
+- Uso CPU/memoria/disco del VPS.
+- Tendencia de crecimiento (últimos 30 días).
+- Proyección de capacidad (gráfica con línea de proyección lineal).
+- Alertas: VPS con <20% disco libre, etc.
+
+---
+
+## Alertas
+
+### Severidades
+
+| Severidad | Acción | Canal |
+|---|---|---|
+| **CRITICAL** | Atención inmediata, llamada/SMS/Slack | PagerDuty + Slack #alerts-critical + email |
+| **HIGH** | Atención en horario laboral | Slack #alerts-high + email |
+| **MEDIUM** | Revisar próxima jornada | Slack #alerts-medium |
+| **LOW** | Loguear, revisar en retrospectiva semanal | Solo log, sin notificación |
+
+### Reglas de alerta clave
+
+```yaml
+# Ejemplo simplificado de reglas Prometheus
+
+groups:
+  - name: maestro_critical
+    rules:
+      - alert: MaestroAPIDown
+        expr: up{job="maestro-api"} == 0
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: "Maestro API is down"
+
+      - alert: MaestroDBDown
+        expr: up{job="maestro-db"} == 0
+        for: 30s
+        labels: { severity: critical }
+        annotations:
+          summary: "Maestro DB unreachable"
+
+      - alert: MaestroBackupFailed
+        expr: increase(maestro_backup_failure_total[1d]) > 0
+        labels: { severity: critical }
+        annotations:
+          summary: "Backup failed in last 24h"
+
+      - alert: TLSCertExpiringSoon
+        expr: probe_ssl_earliest_cert_expiry - time() < 30 * 86400
+        labels: { severity: high }
+        annotations:
+          summary: "TLS cert expires in less than 30 days"
+
+      - alert: DeploymentSuspended
+        expr: maestro_deployment_count{status="suspended"} > 0
+        labels: { severity: high }
+        annotations:
+          summary: "{{ $labels.deployment_id }} is suspended"
+
+      - alert: HighLoginFailureRate
+        expr: rate(maestro_login_total{result="failure"}[5m]) > 0.5
+        for: 5m
+        labels: { severity: high }
+        annotations:
+          summary: "Possible bruteforce: login failures rate {{ $value }}/s"
+
+      - alert: BrandingFetchFailing
+        expr: maestro_branding_consecutive_failures >= 3
+        labels: { severity: medium }
+        annotations:
+          summary: "Branding fetch failing for {{ $labels.deployment_id }}"
+
+      - alert: HookDispatchFailureRate
+        expr: rate(maestro_hook_dispatch_total{status="abandoned"}[1h]) > 0.01
+        labels: { severity: medium }
+        annotations:
+          summary: "Hooks abandoned rate above 1%"
+
+      - alert: VPSDiskLow
+        expr: node_filesystem_avail_bytes / node_filesystem_size_bytes < 0.20
+        labels: { severity: high }
+        annotations:
+          summary: "VPS disk usage above 80%"
+```
+
+---
+
+## Runbooks operativos
+
+Documentos paso-a-paso para incidentes comunes. Cada runbook tiene:
+
+- **Síntoma**: lo que ve el operador (alerta, comportamiento del usuario).
+- **Diagnóstico inicial**: comandos para verificar el estado.
+- **Acciones correctivas**: pasos en orden, con condiciones.
+- **Verificación post-acción**: cómo confirmar que se resolvió.
+- **Escalation**: a quién contactar si no se resuelve.
+
+### Runbooks mínimos a producir en fase 06-operations
+
+1. **MaestroAPIDown**: Maestro API no responde.
+2. **MaestroDBDown**: BD del Maestro caída.
+3. **DeploymentNotResponding**: deployment health check falla repetidamente.
+4. **DeploymentRestoreFromBackup**: restaurar deployment destruido.
+5. **TLSCertNotRenewing**: cert TLS no renueva automáticamente.
+6. **HighLoginFailureRate**: posible bruteforce contra login.
+7. **BackupFailed**: backup diario falló.
+8. **VPSDiskLow**: VPS sin espacio.
+9. **APIKeyCompromised**: api_key filtrada o comprometida.
+10. **WebhookSecretCompromised**: webhook_secret filtrado.
+11. **AuditLogTamperingAttempt**: detección de intento de UPDATE/DELETE en audit_log.
+12. **MigrationRollback**: rollback de una migración del Maestro fallida.
+
+Estos runbooks se generan en la fase 06-operations del proyecto Maestro y se mantienen en `docs/runbook.md` (o split por tema en `docs/runbooks/`).
 
 ---
 
 ## Retención de datos de observabilidad
 
-Las métricas de Prometheus se retienen durante quince días con resolución completa. Después de quince días, se compactan a resolución de una hora y se retienen durante noventa días.
+| Tipo | Retención |
+|---|---|
+| Métricas Prometheus | 30 días local + 1 año en cold storage (Thanos o equivalente) |
+| Logs Loki | 14 días local + 90 días en cold storage |
+| Audit log | Indefinido (parte del backup) |
+| Hooks log | 90 días local |
+| Dashboards | Versionados en git (Grafana provisioning) |
 
-Los logs en Loki se retienen durante treinta días. Después de treinta días se eliminan automáticamente. Los logs de auditoría, que son diferentes de los logs operativos, se retienen indefinidamente en la tabla audit_logs de la base de datos del Maestro.
+Cumplimiento con regulaciones (GDPR): logs con PII se anonimizan tras 90 días.
 
-Los datos de alertas y sus resoluciones se retienen durante noventa días para análisis de patrones.
+---
+
+## Integración con cost-analyst del framework agéntico
+
+El framework agéntico v4 (ver `framework-agentico/core/RULES.md` sección `monitoreo_de_costos`) registra costos por agente/Agent() call. Estos datos se pueden visualizar en un Dashboard 7: Costos del proyecto Maestro.
+
+- Total cost USD acumulado por proyecto.
+- Cost trend semanal/mensual.
+- Distribución por fase (00-setup → 07-retrospective).
+- Distribución por modelo (opus/sonnet/haiku).
+- Retry cost ratio.
+- PM overhead ratio.
+
+---
+
+## Referencias normativas
+
+- `01-PREMISAS-Y-NO-NEGOCIABLES.md` — premisa 9 (observabilidad y recuperabilidad).
+- `02-MODELO-DE-DATOS.md` — tabla `audit_log` y triggers de inmutabilidad.
+- `04-INFRAESTRUCTURA-DOCKER.md` — health checks y máquina de estados de deployments.
+- `09-SEGURIDAD.md` — métricas y alertas de seguridad.
+- `framework-agentico/phases/06-operations.md` — fase de la cual surgen runbooks y dashboards.
+- `framework-agentico/core/RULES.md` sección `monitoreo_de_costos` — auto-reporte de agentes.
+
+---
+
+## Historial de revisiones
+
+| Versión | Fecha | Cambio |
+|---|---|---|
+| 4.0.0 | 2026-05-07 | Versión inicial v4. Stack Prometheus/Loki/Grafana adaptado a single-tenant físico (sin `company_id` en logs). Métricas centradas en deployments y registry. Reemplaza al v1 (legacy en `legacy/v3/PremisaWebMaestro/10-OBSERVABILIDAD.md`). |

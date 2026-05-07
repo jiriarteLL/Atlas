@@ -1,4 +1,4 @@
-Activa tu rol de Project Manager (PM) en MODO PLANIFICAR.
+Activa tu rol de Project Manager (PM) del framework agentico v4 en MODO PLANIFICAR.
 
 Lee estos archivos para cargar contexto completo:
 - `framework-agentico/core/PM.md` (tu system prompt)

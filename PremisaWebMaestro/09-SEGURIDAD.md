@@ -1,127 +1,306 @@
 # Seguridad: Defensa en Profundidad
 
+> **Versión:** v4 (framework agéntico v4 / contrato `maestro.platform/v2`)
+> **Última revisión:** 2026-05-07
+> **Estado:** vigente
+> **Reemplaza a:** `legacy/v3/PremisaWebMaestro/09-SEGURIDAD.md` (modelo v1).
+
+---
+
 ## Propósito de este documento
 
-Este documento presenta la estrategia de seguridad completa de Maestro Platform organizada en capas de defensa redundantes. El principio rector es que si una capa de seguridad falla o es comprometida, las capas restantes contienen la amenaza. Un agente de IA que implemente componentes de seguridad, configure infraestructura o revise código debe usar este documento como checklist de seguridad.
+Este documento presenta la estrategia de seguridad completa de la **Web Maestro** v4 organizada en capas de defensa redundantes. El principio rector es que **si una capa de seguridad falla o es comprometida, las capas restantes contienen la amenaza**. Un agente de IA que implemente componentes de seguridad, configure infraestructura o revise código debe usar este documento como checklist y como threat model de referencia.
 
 ---
 
-## Capas de seguridad
+## Cambio respecto a v1
 
-La seguridad se implementa en ocho capas que van desde el perímetro externo hasta los datos en reposo.
+En v1 la seguridad estaba centrada en el modelo IdP del Maestro: ForwardAuth, headers `X-Auth-*`, multi-tenancy lógica con filtrado de queries por `company_id`. En v4 la responsabilidad se distribuyó:
 
-### Capa perimetral
-
-La capa perimetral es la primera línea de defensa. Traefik, actuando como reverse proxy, es el único componente expuesto a internet. Todo el tráfico pasa por Traefik antes de llegar a cualquier otro componente.
-
-Las medidas de esta capa incluyen la terminación TLS con certificados automáticos de Let's Encrypt, asegurando que toda comunicación externa está cifrada. La redirección forzosa de HTTP a HTTPS elimina la posibilidad de que un usuario accidentalmente envíe datos por una conexión no cifrada. El header HSTS con duración de un año instruye a los navegadores a nunca intentar conectarse por HTTP. El rate limiting por dirección IP previene ataques de fuerza bruta limitando el número de requests por segundo que una IP puede hacer. El rate limiting por tenant previene que una empresa con muchos usuarios sature la plataforma.
-
-Los headers de seguridad que Traefik inyecta en todas las respuestas incluyen X-Content-Type-Options con valor nosniff que previene que el navegador interprete contenido con un tipo MIME diferente al declarado. X-Frame-Options no se usa globalmente porque los iframes son parte de la arquitectura, pero se reemplaza con Content-Security-Policy con la directiva frame-ancestors que restringe qué dominios pueden embeber las páginas como iframes, permitiendo solamente el dominio del portal Maestro. Referrer-Policy con valor strict-origin-when-cross-origin controla qué información de referrer se envía en requests entre orígenes. X-XSS-Protection con valor 1 y mode block habilita el filtro de XSS del navegador.
-
-### Capa de autenticación
-
-La capa de autenticación verifica la identidad de quien hace cada request. El mecanismo central es ForwardAuth en Traefik que delega la validación de tokens al Maestro.
-
-Los tokens JWT están firmados con RSA SHA-256 usando un par de claves asimétricas. La clave privada está almacenada exclusivamente en el Maestro y nunca se expone. La clave pública está disponible para verificación pero no es necesaria para las aplicaciones porque la verificación se hace centralizadamente.
-
-Los tokens tienen expiración de una hora. Los refresh tokens tienen expiración de treinta días. Cuando un usuario cierra sesión, tanto el access token como el refresh token se revocan inmediatamente en Redis y en la base de datos.
-
-Las contraseñas de usuarios se almacenan hasheadas con bcrypt con un costo factor de doce. Nunca se almacenan en texto plano ni se transmiten en texto plano.
-
-La autenticación de Microsoft utiliza el flujo Authorization Code de OAuth2 con PKCE, que es la variante más segura del flujo OAuth2.
-
-### Capa de autorización
-
-La capa de autorización verifica que la identidad autenticada tiene permiso para acceder al recurso solicitado. Opera en cuatro niveles como se describe en el documento de Autenticación y Autorización: validación de plataforma, validación de licencia, validación de acceso a la aplicación, y validación de permisos internos.
-
-El principio rector es denegar por defecto. Si un request no tiene un token válido, se deniega. Si el usuario no tiene una licencia activa para la app, se deniega. Si el usuario no tiene un registro de acceso para esa app en esa empresa, se deniega. Solo cuando todas las verificaciones pasan explícitamente, el request se permite.
-
-### Capa de aislamiento
-
-La capa de aislamiento previene la fuga de datos entre tenants y la interferencia entre instancias.
-
-Las redes Docker separadas por instancia garantizan que un contenedor comprometido no puede alcanzar los contenedores de otras instancias a nivel de red. El contenedor de base de datos de cada instancia solo es accesible desde su propio contenedor de aplicación.
-
-Las bases de datos dedicadas por instancia con credenciales únicas garantizan que incluso si se filtran las credenciales de una instancia, no se puede acceder a los datos de otra instancia.
-
-Los límites de recursos por contenedor previenen que una instancia con alta carga consuma toda la CPU o memoria del servidor, afectando a las demás.
-
-### Capa de contenedor
-
-La capa de contenedor asegura que los contenedores individuales no sean vectores de ataque.
-
-La prohibición de ejecución como root significa que incluso si un atacante logra ejecutar código dentro del contenedor, no tendrá privilegios de root y no podrá escalar a root dentro del contenedor.
-
-La prevención de escalada de privilegios a nivel de Docker impide que un proceso dentro del contenedor cambie a un usuario más privilegiado.
-
-El sistema de archivos de solo lectura, donde sea posible según el stack tecnológico, previene que un atacante escriba archivos maliciosos dentro del contenedor. Los directorios que necesitan escritura, como los de logs o uploads temporales, se montan explícitamente como volúmenes de escritura.
-
-El escaneo de imágenes Docker por vulnerabilidades en el pipeline de CI/CD detecta dependencias con vulnerabilidades conocidas antes de que la imagen llegue a producción.
-
-### Capa de datos
-
-La capa de datos protege la información en reposo y en tránsito.
-
-Los campos sensibles en la base de datos del Maestro, específicamente las credenciales de base de datos y las variables de entorno de las instancias, están cifrados con AES-256 usando la clave de aplicación de Laravel. Estos campos se descifran solo en memoria cuando se necesitan y se descartan inmediatamente después.
-
-Los backups de base de datos se cifran antes de subirse al almacenamiento en la nube. La clave de cifrado de backups es diferente de la clave de la aplicación y se almacena de forma separada.
-
-Las conexiones a las bases de datos dentro de las redes Docker, aunque no están expuestas al exterior, usan autenticación con contraseña. No se permiten conexiones anónimas ni trust-based.
-
-### Capa de auditoría
-
-La capa de auditoría garantiza trazabilidad y detección de intrusiones.
-
-El audit log inmutable registra toda acción administrativa con suficiente detalle para reconstruir qué pasó, quién lo hizo, cuándo y desde dónde. La inmutabilidad se garantiza a nivel de aplicación y de base de datos, previniendo que un atacante que comprometa la aplicación pueda borrar sus huellas.
-
-Los access logs de Traefik registran todos los requests HTTP con timestamp, IP de origen, ruta, código de respuesta y latencia. Estos logs se envían al sistema centralizado de logging para análisis.
-
-Los logs de las aplicaciones se centralizan en el stack de observabilidad, lo que permite correlacionar eventos entre diferentes componentes para detectar patrones de ataque que cruzan fronteras entre servicios.
-
-### Capa de supply chain
-
-La capa de supply chain protege contra ataques a la cadena de suministro de software.
-
-El escaneo de vulnerabilidades de imágenes Docker en el pipeline de CI/CD detecta dependencias con CVEs conocidos antes de que lleguen a producción.
-
-La generación de Software Bill of Materials permite inventariar todas las dependencias de cada aplicación y verificar que no contienen componentes con licencias incompatibles o vulnerabilidades conocidas.
-
-El pinning de dependencias en los archivos de lock del gestor de paquetes, ya sea package-lock.json, requirements.txt, composer.lock u otro, garantiza que las builds sean reproducibles y que no se introduzcan versiones nuevas de dependencias sin revisión.
-
-El uso de imágenes Docker base oficiales y el pinning de sus versiones por digest, no por tag, previene que un cambio en la imagen base introduzca vulnerabilidades o comportamiento malicioso.
+- La Web Maestro asegura **su propia perimetría** (TLS, login propio de admins, rotación de api keys, audit log inmutable).
+- Cada app huésped asegura **su propia auth** (login propio, password storage, tokens propios).
+- El **aislamiento físico** (single-tenant) reemplaza al aislamiento lógico (multi-tenant con `company_id`), simplificando significativamente la superficie de ataque.
 
 ---
 
-## Gestión de secretos
+## Capas de defensa
 
-Los secretos de la plataforma se clasifican en tres categorías según su alcance.
+### Capa 1: Perimetro de red
 
-### Secretos de plataforma
+**TLS obligatorio** (No-negociable 11):
+- Traefik termina TLS 1.2+ (preferiblemente 1.3) en el puerto 443.
+- Certificados gestionados automáticamente por Let's Encrypt vía ACME.
+- Redirect automático HTTP (80) → HTTPS (443).
+- Header HSTS con `max-age=31536000` (1 año) e `includeSubDomains`.
+- Sin tráfico HTTP plano expuesto al exterior.
 
-Son secretos que pertenecen a la infraestructura del Maestro. Incluyen la clave de aplicación de Laravel, las credenciales de la base de datos del Maestro, la clave privada para firmar tokens JWT, el client secret de la aplicación de Microsoft Entra ID, las credenciales del registry de Docker, y la clave de cifrado de backups.
+**Headers de seguridad** (Traefik los inyecta en cada respuesta):
+- `Strict-Transport-Security: max-age=31536000; includeSubDomains; preload`
+- `X-Content-Type-Options: nosniff`
+- `X-Frame-Options: DENY` (para el portal del Maestro; las apps huésped pueden definir su propia política)
+- `Content-Security-Policy`: estricta para el portal (script-src 'self'; style-src 'self' 'unsafe-inline' por Tailwise; etc.)
+- `Referrer-Policy: strict-origin-when-cross-origin`
+- `Permissions-Policy`: bloqueo de features peligrosas (camera, microphone, etc.) salvo declaración explícita.
 
-Estos secretos se almacenan en variables de entorno del contenedor del Maestro. Se cargan desde un archivo de entorno que está excluido del repositorio de git y que solo es accesible por el administrador del servidor. En una fase posterior de madurez, estos secretos se migrarán a Azure Key Vault.
+**Rate limiting** (Traefik o middleware):
+- Default global: 100 req/min/IP.
+- `/api/v2/auth/login`: 5 req/min/IP (anti-bruteforce).
+- `/api/v2/apps/register`: 10 req/hora/token.
+- `/maestro/branding` consumido por Maestro: sin rate limit por IP del Maestro (es un IP fijo o range conocido).
 
-### Secretos de instancia
+**Egress policy**:
+- Los contenedores de apps huésped pueden hacer requests salientes a internet (necesario para integraciones).
+- El contenedor de la BD del Maestro **NO** tiene acceso a internet (sólo accesible desde `maestro-net`).
+- Recomendado: bloqueo del metadata endpoint de cloud (Azure: `169.254.169.254`) desde apps huésped, para prevenir SSRF a metadata del VPS.
 
-Son secretos específicos de cada instancia de aplicación. Incluyen las credenciales de base de datos de la instancia y las variables de entorno sensibles declaradas en el contrato de la app.
+### Capa 2: Aislamiento de contenedores
 
-Estos secretos se generan automáticamente durante el provisionamiento, se almacenan cifrados en la base de datos del Maestro, y se inyectan como variables de entorno en el contenedor de la app en el momento del despliegue. Nunca se persisten en disco dentro del contenedor.
+**No-root obligatorio** (No-negociable 7):
+- Validación estática del Dockerfile en CI: presencia de instrucción `USER` con UID ≠ 0.
+- Validación dinámica en runtime: si el contenedor se levanta y `whoami` devuelve `root`, alerta crítica.
 
-### Secretos de CI/CD
+**`--security-opt=no-new-privileges`** en todos los contenedores: previene escalada vía setuid binaries.
 
-Son secretos usados por los pipelines de GitHub Actions. Incluyen el token de acceso al registry de Docker y el token de autenticación para el endpoint de registro del Maestro.
+**Aislamiento de redes Docker**:
+- Cada deployment en su propia red dedicada `app-<slug>-<empresa>-net`.
+- Sin tráfico inter-deployment a nivel red.
+- Comunicación inter-apps solo via API Gateway del Maestro (audit logged).
 
-Estos secretos se almacenan en GitHub Secrets a nivel de organización y se inyectan automáticamente en los workflows.
+**Volúmenes restringidos**:
+- Apps huésped: solo `/app/storage` (configurable por la app).
+- **Prohibido**: montar `/var/run/docker.sock` (excepto el provisioner del Maestro mismo, que lo necesita).
+- **Prohibido**: montar paths del filesystem del host arbitrarios.
+
+**`--privileged` prohibido** absolutamente.
+
+**Recursos limitados** (No-negociable 9):
+- `--memory` y `--cpus` aplicados según declaración del `maestro.yaml`.
+- Excesos matados por el OOM Killer / throttled por scheduler.
+
+### Capa 3: Autenticación y autorización
+
+#### Auth de admins del Maestro
+- bcrypt cost ≥ 12 o argon2id para `password_hash`.
+- Comparación timing-constant de hash.
+- Bloqueo de cuenta tras 5 intentos fallidos durante 15 min.
+- Cookies de sesión `HttpOnly + Secure + SameSite=Lax` o JWT con expiración corta + refresh token.
+- Rotación de session/refresh tokens recomendada.
+- MFA recomendado para `superadmin` (a definir como ADR en fase 02-planning del proyecto Maestro).
+
+#### Auth server-to-server entre Maestro y apps
+- `X-Maestro-Api-Key`: secret aleatorio ≥ 32 chars, cifrado AES-256 en BD, rotable cada 90 días, audit logged.
+- `X-Maestro-Webhook-Signature`: HMAC-SHA256 con timestamp, anti-replay window de 300s, idempotencia por `event_id`.
+- Comparación timing-safe en ambos casos.
+
+#### Auth de usuarios finales
+- **Responsabilidad de cada app huésped**, no del Maestro.
+- Ver `03-AUTENTICACION-Y-AUTORIZACION.md` plano 3.
+
+#### RBAC
+- Permisos granulares (`companies.create`, `deployments.destroy`, `audit_log.read`, etc.).
+- Rol `superadmin` (de sistema, no editable) con TODOS los permisos.
+- Roles operativos definibles: `operator`, `viewer`, etc.
+
+### Capa 4: Cifrado y manejo de secretos
+
+**Secretos cifrados en BD del Maestro**:
+- `api_keys.key_hash`: cifrado AES-256.
+- `webhook_secrets.secret_hash`: cifrado AES-256.
+- Clave maestra `MAESTRO_ENCRYPTION_KEY` en ENV var del Maestro (NO en BD, NO en código).
+- Descifrado solo al inyectar la key en el contenedor de la app.
+
+**Secretos NO en código** (No-negociable 8):
+- Pre-commit hook con `gitleaks` antes de cada commit local.
+- CI deep scan de **todo el historial de git** en cada PR.
+- Image scan de la imagen Docker construida (busca secretos en layers).
+- Detección bloquea push/merge sin excepción.
+
+**Secretos NO en logs**:
+- `security-auditor` valida en cada PR que el código no loguee:
+  - Passwords, hashes, JWTs propios.
+  - `MAESTRO_API_KEY`, `MAESTRO_WEBHOOK_SECRET`, `SUPERADMIN_INITIAL_PASSWORD`.
+  - Cookies de sesión, headers `Authorization`.
+  - Bodies de request con datos sensibles.
+
+**Rotación**:
+- API keys del Maestro hacia apps: cada 90 días automático (cronjob).
+- Webhook secrets: cada 90 días automático.
+- JWT secret del Maestro: rotación manual con audit log; tras rotación, sesiones existentes se invalidan.
+- Password de admins: política mínima 12 chars + complejidad + no en blacklist; recomendado cambio cada 90 días (no obligatorio).
+- Password del superadmin (`SUPERADMIN_INITIAL_PASSWORD`): después del primer login, el superadmin debe cambiarla via UI; el seeder no la toca de nuevo.
+
+### Capa 5: Validación de input y output
+
+**Input validation**:
+- Toda entrada en la API del Maestro valida contra schemas (JSON Schema, OpenAPI, Zod, Joi, según stack).
+- Parametrized queries / ORM con prepared statements para prevenir SQL injection.
+- Sanitización de slugs y nombres con regex estrictos.
+- Tamaño máximo de body (default 1MB; `maestro.yaml` registrado max 50KB).
+
+**Output sanitization**:
+- Frontend del portal usa framework con escaping automático (React, Vue).
+- API responses en JSON con `Content-Type: application/json; charset=utf-8`.
+- Errores no exponen stack traces ni paths internos.
+- Errores de auth NO distinguen "user not found" vs "wrong password" (mensaje genérico para no enumerar usuarios).
+
+### Capa 6: Auditoría e integridad
+
+**Audit log inmutable** (No-negociable 12):
+- Tabla `audit_log` con triggers SQL que rechazan UPDATE/DELETE.
+- Captura: timestamp ms, actor, IP, action, resource, payload before/after.
+- Retención: indefinida (parte del backup diario).
+
+**Backup automatizado** (No-negociable 13):
+- Diario, cifrado AES-256, almacenamiento externo al VPS.
+- Retención mínima 30 días, no reducible.
+- BD del Maestro: backup adicional antes de migraciones.
+
+**Persistencia entre versiones** (No-negociable 14):
+- Migraciones del framework v3 → v4 → v5 NO truncan datos.
+- Cambios destructivos requieren confirmación PO + audit log.
+
+### Capa 7: CI/CD y supply chain
+
+- Imágenes Docker firmadas con `cosign`.
+- Provenance + SBOM generados en cada build.
+- Trivy o equivalente para scan de vulnerabilidades (CRITICAL/HIGH bloquean el push).
+- Tags inmutables (no se reescriben).
+- Tag `:latest` prohibido en producción.
+- `FROM` con digest `@sha256:...` recomendado, mínimo `<imagen>:<tag-fijo>`.
+- Imágenes base oficiales firmadas (Docker Official Images, MCR, distroless de Google).
+
+### Capa 8: Observabilidad de seguridad
+
+Métricas relevantes (más detalle en `10-OBSERVABILIDAD.md`):
+- Login failures por IP/admin (ratio de bruteforce).
+- Bloqueos de cuenta.
+- API key invalida en `/maestro/branding` (intentos no autorizados).
+- Webhook signature inválida (apps no rechazan correctamente).
+- Container restarts inesperados.
+- Health check failures consecutivos.
+
+Alertas críticas:
+- Bruteforce detectado.
+- Login exitoso desde IP nueva (recomendado).
+- Rotación de api_key/webhook_secret fallida.
+- Backup fallido.
+- Cert TLS no renueva (30 días antes de expiración).
 
 ---
 
-## Respuesta ante incidentes
+## Threat model detallado
 
-Cuando se detecta un incidente de seguridad, el procedimiento de respuesta es el siguiente.
+### Amenazas externas
 
-Para una instancia comprometida: el Maestro puede detener inmediatamente una instancia específica a través de la API de administración, cortando todo el tráfico y deteniendo el contenedor. Los logs de la instancia se preservan para análisis forense. La base de datos de la instancia se marca como potencialmente comprometida y se notifica al tenant.
+#### T1: Bruteforce contra `/api/v2/auth/login` del portal del Maestro
+- **Mitigaciones**: rate limiting estricto (5 req/min/IP), bloqueo de cuenta tras 5 fallos, MFA recomendado para `superadmin`, alerta a admin tras 3 bloqueos en 24h.
 
-Para una filtración de credenciales: si se detecta que las credenciales de una instancia fueron filtradas, el Maestro puede rotar las credenciales generando unas nuevas, actualizando la base de datos con las nuevas credenciales y reiniciando la instancia con las nuevas variables de entorno. Todo el proceso es automatizable.
+#### T2: Filtración de `MAESTRO_REGISTRATION_TOKEN` de un repo de app
+- **Mitigaciones**: token por owner único, audit log de cada uso, rate limiting (N registros/hora), revocación rápida desde portal, scope acotado (solo registra apps con `metadata.name` permitido).
 
-Para un compromiso del Maestro: si el propio Maestro es comprometido, lo que constituiría el escenario más severo, el procedimiento incluye aislar el VPS de la red, restaurar desde el último backup verificado, rotar todos los secretos de plataforma incluyendo la clave JWT y la clave de la aplicación, y rotar todas las credenciales de instancia.
+#### T3: Filtración de `MAESTRO_API_KEY` de un deployment
+- **Mitigaciones**: cifrado AES-256 en BD, rotación cada 90 días automática, audit log de uso, alerta si key revocada se sigue usando, opción de invalidar inmediatamente.
+
+#### T4: Replay attack contra hooks salientes (Maestro → app)
+- **Mitigaciones**: timestamp en firma + anti-replay window 300s, idempotencia por `event_id`.
+
+#### T5: SSRF desde una app huésped a metadata del cloud (`169.254.169.254`)
+- **Mitigaciones**: egress policy bloquea esa IP desde redes de deployment.
+
+#### T6: Compromise de una app huésped y pivote a otras apps
+- **Mitigaciones**: aislamiento físico (red Docker dedicada por deployment, BD propia), sin conectividad inter-deployment, App A no puede ver App B aunque corran en el mismo VPS.
+
+#### T7: Inyección SQL en endpoints del Maestro
+- **Mitigaciones**: ORM con prepared statements, input validation contra schemas, code review obligatorio.
+
+#### T8: XSS en portal del Maestro
+- **Mitigaciones**: framework con escaping automático, CSP estricta, cookies HttpOnly (token no accesible vía JS), `X-Content-Type-Options: nosniff`.
+
+#### T9: CSRF en operaciones admin (ej: destruir deployment)
+- **Mitigaciones**: tokens CSRF en formularios, `SameSite=Lax` en cookies, double-submit cookie pattern para APIs.
+
+#### T10: Exfiltración de audit log
+- **Mitigaciones**: permisos granulares (`audit_log.read` solo para roles autorizados), exportación logueada en sí misma, alertas si se exporta más del N% del audit log en una sesión.
+
+### Amenazas internas
+
+#### T11: Admin malicioso modifica datos arbitrarios
+- **Mitigaciones**: audit log inmutable (admin malicioso NO puede borrar evidencia), separación de deberes (`superadmin` único es escaso, las acciones críticas requieren `superadmin`), revisión periódica del audit log por seguridad.
+
+#### T12: Admin malicioso destruye datos masivamente
+- **Mitigaciones**: confirmación explícita para operaciones destructivas (DROP TABLE, TRUNCATE, mass DELETE), retención de 90 días post-destroy de deployments, backups diarios cifrados externos al VPS.
+
+#### T13: Compromiso del VPS (hipotético)
+- **Mitigaciones**: backups externos (Azure Blob, S3), claves de cifrado backed-up también externamente, audit log replicado, recovery documentado en runbook.
+
+### Amenazas a la cadena de suministro
+
+#### T14: Imagen Docker base comprometida
+- **Mitigaciones**: imágenes oficiales firmadas, trivy scan en CI, anclaje a digest `@sha256:...`.
+
+#### T15: Dependencia npm/composer/pip comprometida
+- **Mitigaciones**: lock files commiteados, `npm audit` / `composer audit` en CI, scan de SBOM, actualización regular pero controlada.
+
+#### T16: Pipeline CI comprometido (ej: token de GitHub robado)
+- **Mitigaciones**: secrets de GitHub Actions usan `id-token` (OIDC) cuando sea posible, rotación de tokens, scoping a repos específicos, revisión de logs de Actions.
+
+---
+
+## Pre-commit hooks recomendados
+
+```yaml
+# .pre-commit-config.yaml
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.0
+    hooks:
+      - id: gitleaks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: detect-private-key
+      - id: detect-aws-credentials
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-yaml
+      - id: check-added-large-files
+        args: ['--maxkb=500']
+```
+
+Cada repo (Maestro y apps huésped) **DEBERÍA** tener pre-commit configurado.
+
+---
+
+## CI security checks obligatorios
+
+```yaml
+# Resumen del checklist
+- gitleaks deep scan (todo el historial de git)
+- trivy scan de imagen Docker (CRITICAL, HIGH bloquean)
+- npm audit / composer audit / pip-audit
+- maestro-cli validate (para apps huésped)
+- Schema validation del maestro.yaml
+- Lint de código (eslint, phpcs, etc.)
+- Type checking (TypeScript, mypy, etc.)
+- Unit tests
+- Integration tests (cuando aplique)
+```
+
+---
+
+## Referencias normativas
+
+- `01-PREMISAS-Y-NO-NEGOCIABLES.md` — premisas 7 (mínimo privilegio), 8 (cifrado); no-negociables 7, 8, 9, 10, 11, 12, 13, 14.
+- `03-AUTENTICACION-Y-AUTORIZACION.md` — detalle de auth en sus tres planos.
+- `04-INFRAESTRUCTURA-DOCKER.md` — aislamiento de redes y contenedores.
+- `08-CICD-Y-GOBERNANZA.md` — pipelines con seguridad integrada.
+- `framework-agentico/validation/validators/security-auditor.md` — checklist del validador transversal.
+- `framework-agentico/core/RULES.md` sección `politica_de_persistencia_de_datos` — confirmación PO para destructivo.
+
+---
+
+## Historial de revisiones
+
+| Versión | Fecha | Cambio |
+|---|---|---|
+| 4.0.0 | 2026-05-07 | Versión inicial v4. Defensa en profundidad alineada al modelo registry+redirector+provisioner. Threat model explícito con 16 amenazas. Reemplaza al v1 (legacy en `legacy/v3/PremisaWebMaestro/09-SEGURIDAD.md`). |

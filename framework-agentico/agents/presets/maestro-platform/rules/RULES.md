@@ -1,168 +1,188 @@
 # Reglas Preset Maestro Platform
 
-> **Aplican cuando:** El preset `maestro-platform` está activo
-> **Extienden:** Las reglas generales del framework (nunca las contradicen)
-> **Relación con `web-maestro/rules/RULES.md`:** Son duales. Lo que allí es "prohibido" aquí es "obligatorio"; lo que allí es "obligatorio en la app" aquí es "obligatorio que el Maestro lo provea/valide/imponga".
+> **Aplican cuando:** El preset `maestro-platform` está activo (ver `framework-agentico/core/RULES.md` seccion `activacion_de_preset`).
+> **Framework agéntico:** v4
+> **Reemplaza a:** `legacy/v3/framework-agentico/agents/presets/maestro-platform/rules/RULES.md` (reglas v1 con Maestro como IdP).
+> **Extienden:** Las reglas generales del framework v4 (`framework-agentico/core/RULES.md`).
+> **Relación con `web-maestro` v4:** Son duales. Lo que en `web-maestro` v4 es "obligatorio en la app", aqui es "obligatorio que la Web Maestro lo provea, valide o consuma".
 
 ---
 
 ```yaml
 obligatorio:
   portabilidad_y_dev_experience:
-    - TODO runtime se ejecuta dentro de contenedores Docker; ningun PHP/Node/psql/composer se instala en el host del dev
-    - prerequisitos locales unicos y absolutos: Docker, Docker Compose, git, IDE
-    - docker-compose.dev.yml en la raiz del repo arranca el stack completo del Maestro con `docker compose up -d` sin pasos previos
-    - comandos de toolchain se invocan siempre via `docker compose run --rm <servicio> <comando>` (ej: `docker compose run --rm php composer install`)
-    - documento docs/CONVENCIONES_PLATAFORMA.md versionado en el repo con naming, puertos, redes, volumenes y env vars que evitan colisiones entre Maestro y apps huesped
-    - cada app huesped que se agregue al entorno dev respeta las convenciones de ese documento sin modificar el Maestro
-    - variables de entorno sensibles en .env (gitignored) con .env.example versionado como plantilla
-    - scripts make/just o composer-scripts documentados como atajos de los comandos docker compose run mas comunes
+    - TODO runtime se ejecuta dentro de contenedores Docker; ningun PHP/Node/psql/composer en el host del dev
+    - prerequisitos locales: Docker, Docker Compose, git, IDE
+    - docker-compose.dev.yml en la raiz arranca el stack completo del Maestro v2 con `docker compose up -d`
+    - comandos de toolchain via `docker compose run --rm <servicio> <comando>`
+    - documento docs/CONVENCIONES_PLATAFORMA.md versionado en el repo (deliverable de fase 02)
+    - variables de entorno sensibles en .env (gitignored) con .env.example versionado
 
-  autenticacion_y_autorizacion:
-    - Laravel Passport configurado como servidor OAuth2 emisor de JWT
-    - endpoint POST /api/auth/login acepta email + password y retorna JWT
-    - flujo OAuth2 con Microsoft Entra ID que emite JWT del Maestro tras éxito
-    - endpoint GET /api/auth/validate consumido por Traefik ForwardAuth retorna 200 con headers X-Auth-* o 401
-    - endpoint POST /api/auth/refresh para renovar tokens con refresh_token
-    - endpoint POST /api/auth/logout revoca el token en la BD
-    - headers emitidos exactamente: X-Auth-User-Id, X-Auth-User-Email, X-Auth-Company-Id, X-Auth-Roles, X-Auth-Permissions
-    - JWT expira en 1 hora por defecto (configurable); refresh tokens con expiración mayor
-    - cambio de empresa activa emite un JWT nuevo con X-Auth-Company-Id actualizado
+  registry_y_catalogo:
+    - tabla `companies` con: id (UUID), nombre, slug (regex `^[a-z0-9][a-z0-9-]{2,49}[a-z0-9]$`), estado (active|suspended), created_at, updated_at
+    - tabla `applications` con: id (UUID), nombre, slug, version (semver), maestro_yaml_hash, descripcion, estado (active|deprecated), created_at
+    - tabla `deployments` (uno por app + empresa) con: id (UUID), application_id, company_id, container_name (`app-<slug>-<empresa>`), db_container_name (`db-<slug>-<empresa>`), network_name, app_url, app_port, estado (provisioning|healthy|degraded|suspended|destroyed), created_at, last_health_check_at
+    - tabla `api_keys` con: deployment_id, key_hash (cifrado AES-256), created_at, rotated_at, expires_at
+    - tabla `webhook_secrets` con: deployment_id, secret_hash (cifrado AES-256), created_at, rotated_at
+    - tabla `audit_log` INMUTABLE: id, timestamp, actor_user_id, actor_ip, action, resource_type, resource_id, payload_before, payload_after — triggers DB rechazan UPDATE/DELETE
+    - cada deployment recibe MAESTRO_API_KEY y MAESTRO_WEBHOOK_SECRET unicos al provisionarse
+    - rotacion de api_key disponible via UI o API (sin downtime)
 
-  modelo_de_datos:
-    - tabla canónica users con soft delete
-    - tabla canónica companies con soft delete
-    - tabla canónica applications con soft delete
-    - tabla pivote company_user con roles y permisos
-    - tabla pivote application_company con licencia (tier, activa, expira_en)
-    - tabla pivote application_user con roles dentro de la app
-    - tablas OAuth de Passport (oauth_access_tokens, oauth_refresh_tokens, oauth_clients)
-    - tabla instances con estado, empresa, aplicación, red docker, credenciales BD cifradas
-    - tabla audit_log INMUTABLE (solo INSERT; triggers DB rechazan UPDATE y DELETE)
-    - campos sensibles cifrados con AES-256 (credenciales BD, tokens externos, webhook secrets)
+  auth_de_admins_del_maestro:
+    - El Maestro v2 mismo tiene login propio para sus administradores (cumple preset web-maestro v4 a si mismo)
+    - tabla `admin_users` con: id, email UNIQUE, password_hash (bcrypt cost >= 12 o argon2id), name, is_active, last_login_at, created_at
+    - tablas `admin_roles`, `admin_permissions`, pivots
+    - rol `superadmin` con TODOS los permisos
+    - usuario `admin@llyasoc.com` creado por seeder idempotente (fase 05-seeding) con SUPERADMIN_INITIAL_PASSWORD
+    - middleware de auth propio: cookies HttpOnly+Secure+SameSite o JWT
+    - audit log de eventos: login (exitoso/fallido), logout, password_change, role_change
 
-  infraestructura_y_provisioning:
-    - Traefik corriendo en contenedor dentro de maestro-network
-    - Traefik termina TLS con Let's Encrypt (ACME) para el dominio del Maestro
-    - Traefik redirige automáticamente HTTP (80) a HTTPS (443)
-    - middleware ForwardAuth aplicado a todas las rutas protegidas sin excepción
-    - headers de seguridad inyectados: HSTS (1 año + includeSubDomains), CSP, X-Frame-Options, X-Content-Type-Options
-    - rate limiting 100 req/min/IP por defecto (configurable)
-    - motor de provisioning como servicio Laravel que consume Docker API
-    - cada instancia recibe su propia red Docker dedicada privada
-    - cada instancia recibe su propia BD con usuario dedicado y password >=32 chars aleatorios
-    - límites Docker aplicados por instancia (--memory, --cpus) según maestro.yaml de la app
-    - contenedores creados con --security-opt no-new-privileges
-    - Dockerfile del Maestro mismo multi-stage, non-root, con HEALTHCHECK
+  endpoints_publicos:
+    - GET /health -> 200 sin auth
+    - POST /api/v2/auth/login (login de admins del Maestro)
+    - POST /api/v2/auth/logout
+    - POST /api/v2/apps/register (auth con token de registro de la app)
 
-  health_checks_y_ciclo_de_vida:
-    - health checks ejecutados periódicamente contra el endpoint declarado en maestro.yaml de la app
-    - tras 3 health checks fallidos consecutivos: restart automático del contenedor
-    - tras 5: notificación al administrador
-    - tras 10: suspensión de la instancia y marca de intervención manual requerida
-    - máquina de estados del ciclo de vida completa: provisioning → starting → healthy → degraded → suspended → destroyed → purged (tras 90 días)
+  endpoints_admin:
+    - GET/POST/PUT/DELETE /api/v2/companies
+    - GET/POST/PUT/DELETE /api/v2/applications
+    - GET/POST/PUT/DELETE /api/v2/deployments
+    - POST /api/v2/deployments/{id}/provision
+    - POST /api/v2/deployments/{id}/suspend
+    - POST /api/v2/deployments/{id}/destroy
+    - POST /api/v2/deployments/{id}/rotate-api-key
+    - GET /api/v2/branding/{deployment_id}
+    - POST /api/v2/branding/{deployment_id}/refresh
 
-  contrato_y_sdk:
-    - JSON Schema oficial de maestro.yaml publicado y versionado
-    - CLI maestro-cli con comandos validate y new funcionales
-    - SDK @maestro/sdk-node publicado en npm con middleware auth, filtro tenant, helpers permisos
-    - endpoint POST /api/apps/register que recibe metadata desde CI/CD de apps y las registra
-    - template repository en GitHub listo para maestro-cli new
-    - generación automática de CLAUDE.md para apps huésped (hereda reglas de la plataforma)
+  endpoints_para_apps_huesped:
+    - POST /api/v2/apps/register: la app envia metadata + maestro.yaml hash + commit sha; recibe deployment_id (si la empresa ya licencio la app) o queda pending
+    - GET /api/v2/inventory/context (opcional): la app puede consultar contexto de la empresa que la opera
 
-  portal_y_frontend:
-    - shell React con barra superior, sidebar, área de contenido principal
-    - selector de empresa activa que emite JWT nuevo al cambiar
-    - renderizado de apps huésped en iframes sandbox
-    - protocolo postMessage para transferencia de token al iframe
-    - pantalla de carga durante cold start con tiempo estimado
-    - pantalla de bienvenida para usuarios sin apps licenciadas
-    - manejo visual de errores: app caída, licencia expirada, token expirado, sin conexión
-    - portal funcional en desktop, tablet y mobile
+  consumo_de_branding:
+    - Job periodico (configurable, default cada 6 horas) consume GET <app_url>/maestro/branding de cada deployment activo
+    - Header obligatorio en el request: X-Maestro-Api-Key: <api_key del deployment>
+    - Si responde 200 con JSON valido (company_name + logo_url): cachear en BD
+    - Si responde 401: alertar admin (api_key invalida o desincronizada)
+    - Si responde 5xx: contar fallos; tras 3 fallos consecutivos, marcar deployment como degraded y alertar
+    - El portal del Maestro consume el cache (no llama directo a la app)
+    - Endpoint POST /api/v2/branding/{deployment_id}/refresh permite forzar refresh manual
 
-  gateway_inter_apps:
-    - API Gateway que actúa como intermediario en toda comunicación entre apps del mismo tenant
-    - verificación de permisos en cada request inter-app
-    - registro de toda comunicación inter-apps en audit log
+  redireccion_a_apps:
+    - El portal del Maestro NO usa iframes ni reverse proxy
+    - Cuando el usuario hace click en una app, el portal genera un link <a target="_blank" href="<app_url>"> que abre en pestana nueva
+    - El Maestro NO transfiere identidad ni token al click — la app solicita login propio
+    - El portal puede mostrar un mensaje "Vas a abrir <nombre_app>. Te pedira login propio de la app."
 
   hooks_salientes:
-    - hooks on_user_added y on_user_removed disparados hacia apps huésped cuando sea relevante
-    - hooks firmados con HMAC-SHA256 usando secret único por aplicación
-    - header X-Maestro-Webhook-Secret en cada hook
+    - hooks on_user_added, on_user_removed, on_company_license_granted, on_company_license_revoked se disparan cuando aplican
+    - cada hook firmado con HMAC-SHA256: header X-Maestro-Webhook-Signature: t=<unix_ts>,v1=<hex_hmac>
+    - secret usado: MAESTRO_WEBHOOK_SECRET del deployment destino
+    - reintento con backoff exponencial: 3 intentos, max 10 min entre reintentos
+    - cada hook lleva un event_id UUIDv4 unico para idempotencia
+    - audit log de cada disparo (success/failure)
+
+  infraestructura_y_provisioning:
+    - Traefik en contenedor dentro de maestro-network, termina TLS con Let's Encrypt
+    - Traefik redirige HTTP (80) a HTTPS (443) automaticamente
+    - SIN middleware ForwardAuth (no aplica en v2)
+    - headers de seguridad: HSTS, CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy
+    - rate limiting global y por endpoint
+    - motor de provisioning como servicio que consume Docker API
+    - cada deployment tiene su red Docker dedicada `app-<slug>-<empresa>-net`
+    - BD dedicada con usuario y password >= 32 chars aleatorios
+    - limites Docker: --memory y --cpus segun maestro.yaml
+    - --security-opt=no-new-privileges en todos los contenedores
+    - Dockerfile del Maestro v2: multi-stage, non-root, con HEALTHCHECK
+
+  health_checks_y_ciclo_de_vida:
+    - health checks contra el endpoint health.endpoint del maestro.yaml de cada app
+    - estados de deployment: provisioning -> starting -> healthy -> degraded -> suspended -> destroyed -> purged (>90 dias)
+    - tras 3 fallos consecutivos: restart automatico
+    - tras 5: notificacion al admin
+    - tras 10: marcar suspended y requerir intervencion manual
+
+  contrato_y_validacion:
+    - JSON Schema oficial de maestro.yaml v2 publicado y versionado
+    - maestro-cli con comandos `validate` (verifica apiVersion v2 + auth.mode=own + branding.url + seeding) y `new` (genera template v4)
+    - endpoint POST /api/v2/apps/register valida el maestro.yaml contra el schema antes de aceptar el registro
+    - rechazar apps con apiVersion v1 (solo se acepta v2)
 
   seguridad:
-    - HTTPS obligatorio sin excepciones (TLS 1.2 mínimo, preferir 1.3)
+    - HTTPS obligatorio sin excepciones
     - secretos cifrados con AES-256 en BD del Maestro
-    - credenciales inyectadas como env vars en runtime, nunca persistidas en disco del contenedor
-    - pre-commit hook con escáner de secretos
-    - escaneo profundo de secretos en CI/CD (historial completo de git)
-    - scan de vulnerabilidades de imágenes Docker en CI/CD
-    - audit log inmutable con: timestamp (ms), user_id, IP, action, data_before, data_after
+    - api_keys y webhook_secrets nunca en logs ni en respuestas API
+    - pre-commit hook con escaner de secretos
+    - escaneo profundo del historial git en CI
+    - scan de vulnerabilidades de imagenes Docker en CI
+    - audit log inmutable
 
   observabilidad:
-    - Prometheus, cAdvisor, Loki, Promtail, Grafana desplegados
-    - métricas de CPU, memoria, latencia, health status por instancia
-    - logs centralizados filtrables por company_id y nivel de severidad
-    - dashboards: ejecutivo, por instancia, del Maestro
-    - alertas con canales Slack y email configurados
-    - runbooks documentados para: instancia no responde, VPS sin espacio, cert TLS no renueva, BD Maestro caída, rollback de app
+    - Prometheus, Loki, Grafana desplegados
+    - metricas: salud del registry, latencia de provisioning, latencia de consumo de /maestro/branding, hooks success/failure rate, deployments por estado
+    - logs centralizados con user_id (admin) y request_id (NO company_id en logs del Maestro mismo, salvo cuando se loguea contexto de un deployment)
+    - dashboards: ejecutivo, por deployment, por empresa
+    - alertas configuradas
 
   backups:
-    - backups diarios automáticos entre 2-4am (configurable)
-    - cifrados antes de subir
-    - almacenados en Azure Blob Storage separado del VPS
-    - retención mínima 30 días (no reducible)
-    - BD del Maestro respaldada antes de cada migración de schema
+    - backups diarios automaticos cifrados
+    - almacenados externos al VPS (Azure Blob, S3, GCS, etc.)
+    - retencion minima 30 dias
+    - BD del Maestro respaldada antes de cada migracion
 
 prohibido:
-  - instalar PHP, Node.js, Composer, clientes de BD u otros runtimes en el host del dev
-  - hardcodear versiones de runtime en scripts que dependan de binarios del host
-  - modificar el Maestro para que una app huesped encaje (la app se adapta a las convenciones, no al reves)
-  - bypass de ForwardAuth en cualquier ruta protegida
-  - endpoints de app huésped accesibles sin pasar por validación del Maestro
-  - tráfico HTTP plano expuesto al exterior
-  - UPDATE o DELETE sobre audit_log (a nivel de aplicación Y de BD)
-  - compartir BD entre instancias de distintos tenants
-  - conectividad de red directa entre contenedores de distintos tenants
-  - secretos en código fuente, en historial git o en imágenes Docker
+  - implementar tabla `users` global con usuarios de apps huesped (eso lo hace cada app)
+  - inyectar headers X-Auth-* a las apps huesped (deprecado en v2)
+  - usar middleware ForwardAuth de Traefik para validar identidad en apps huesped (no aplica en v2)
+  - reverse proxy con inyeccion de identidad hacia apps huesped (apps tienen auth propia)
+  - iframes para mostrar apps huesped en el portal (abrir URL en target="_blank")
+  - consumir /maestro/branding sin X-Maestro-Api-Key
+  - consumir hooks sin verificar X-Maestro-Webhook-Signature en la app destino
+  - guardar api_keys o webhook_secrets en texto plano en BD
+  - UPDATE o DELETE sobre audit_log (a nivel app y a nivel BD)
+  - compartir BD entre deployments
+  - conectividad de red directa entre contenedores de distintos deployments
+  - secretos en codigo, en historial git, o en imagenes Docker
   - contenedores corriendo como root o con --privileged
-  - montaje de /var/run/docker.sock en contenedores de apps huésped
   - puertos expuestos al exterior distintos de 80 y 443
-  - rutas que permitan acceso al metadata endpoint de Azure (169.254.169.254) desde apps huésped
-  - reducción de la retención mínima de backups por debajo de 30 días
-  - reducción de la expiración máxima de JWT por encima de 24 horas
-  - comunicación directa entre apps huésped sin pasar por el gateway del Maestro
-  - hard-delete de instancias antes de los 90 días de retención
+  - reduccion de retencion de backups por debajo de 30 dias
+  - aceptar maestro.yaml con apiVersion v1 en /api/v2/apps/register
 
 recomendado:
-  - cache Redis para validación de tokens (objetivo cache hit rate >90%)
-  - imágenes Docker del Maestro optimizadas <200MB
-  - preferir TLS 1.3 cuando el cliente lo soporte
-  - documentar todo ADR con formato estándar (contexto, decisión, alternativas, consecuencias)
-  - tests de integración end-to-end del flujo login → ForwardAuth → app huésped
-  - pruebas de carga con 50 usuarios concurrentes como SLA objetivo de V1
+  - cache de branding por deployment con TTL razonable (ej: 6 horas) + invalidacion via refresh
+  - imagenes Docker del Maestro optimizadas <200MB
+  - preferir TLS 1.3
+  - documentar todo ADR con formato estandar
+  - tests de integracion del flujo: register app -> license to company -> provision -> consume branding -> click portal
+  - rotacion automatica de api_keys cada 90 dias
 
-validacion_json_schema_maestro_yaml:
-  name: "regex ^[a-z0-9][a-z0-9-]{2,49}$, único en catálogo del Maestro"
-  version: "SemVer válido (X.Y.Z)"
-  requires.database: "enum: postgres, mysql, mongo, sqlite, none"
-  requires.ports.app: "entero entre 1024 y 65535"
-  health.endpoint: "debe comenzar con /"
-  health.timeout_seconds: "máximo 5"
-  auth.mode: "exactamente header"
-  auth.headers: "nombres estándar exactos X-Auth-*"
-  resources.memory: "formato válido, máximo 4g"
-  resources.cpu: "float entre 0.25 y 4.0"
-  hooks.endpoints: "rutas que comienzan con /"
+validacion_json_schema_maestro_yaml_v2:
+  apiVersion: 'exactamente "maestro.platform/v2"'
+  kind: 'exactamente "Application"'
+  metadata.name: 'regex ^[a-z0-9][a-z0-9-]{2,49}$, unico en catalogo'
+  metadata.version: 'SemVer valido'
+  requires.database: 'enum: postgres, mysql, mongo, sqlite, none'
+  requires.ports.app: 'entero entre 1024 y 65535'
+  health.endpoint: 'comienza con /'
+  health.timeout_seconds: 'maximo 5'
+  auth.mode: 'exactamente "own"'
+  auth.login_path: 'comienza con /, obligatorio'
+  auth.logout_path: 'comienza con /, opcional'
+  branding.url: 'comienza con /, obligatorio'
+  resources.memory: 'enum: 256m, 512m, 1g, 2g, 4g'
+  resources.cpu: 'float entre 0.25 y 4.0'
+  seeding.superadmin_email: 'email valido, default admin@llyasoc.com'
+  seeding.additional_users: 'array opcional con {email, role}'
+  hooks.endpoints: 'rutas que comienzan con /'
+  env: 'array opcional, nombres regex ^[A-Z][A-Z0-9_]*$, no en prefijos reservados'
 
-objetivos_cuantitativos_v1:
-  usuarios_concurrentes: 50
-  latencia_forwardauth_p95_ms: 50
-  cold_start_max_seconds: 15
-  cache_hit_rate_validacion_tokens: 0.90
+objetivos_cuantitativos_v1_del_maestro_v2:
+  latencia_redireccion_ms: 200
+  tiempo_provisioning_deployment_seconds_max: 60
+  tiempo_consumo_branding_con_cache_ms: 50
   retencion_backups_dias_min: 30
-  retencion_instancia_destruida_dias: 90
+  retencion_deployment_destruido_dias: 90
   cobertura_tests_statements_min: 0.80
   cobertura_tests_branches_min: 0.70
   vulnerabilidades_critical_high_bloqueantes: true
+  hooks_success_rate_min: 0.99
 ```

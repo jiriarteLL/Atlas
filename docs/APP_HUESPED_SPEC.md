@@ -1,391 +1,284 @@
 # Especificación Técnica de Aplicación Huésped — Maestro Platform
 
-> **Documento normativo.** Vincula a todo equipo, interno o externo, que pretenda registrar una aplicación genérica en Maestro Platform.
+> **Documento normativo.** Vincula a todo equipo, interno o externo, que pretenda registrar una aplicación huésped (= app generica / app tool) en la plataforma Web Maestro.
 >
-> **Versión del contrato:** `maestro.platform/v1`
-> **Última revisión:** 2026-04-28
+> **Versión del contrato:** `maestro.platform/v2`
+> **Framework agéntico:** v4
+> **Última revisión:** 2026-05-07
 > **Audiencia:** desarrolladores, tech leads, responsables de plataforma de equipos integradores.
-> **Predecesores normativos:** `PremisaWebMaestro/01-PREMISAS-Y-NO-NEGOCIABLES.md`, `PremisaWebMaestro/06-SDK-Y-CONTRATO.md`, `docs/CONVENCIONES_PLATAFORMA.md`, `docs/schemas/maestro.yaml.schema.json`.
-> **Documento complementario:** `docs/APP_HUESPED_BEST_PRACTICES.md` (no normativo; recomendaciones de industria).
+> **Reemplaza a:** `legacy/v3/docs/APP_HUESPED_SPEC.md` (contrato `maestro.platform/v1`, framework v3) — deprecado.
+> **Documento complementario:** `docs/APP_HUESPED_BEST_PRACTICES.md` (no normativo).
+> **Stack agnóstico:** los requisitos se expresan en términos de HTTP, headers, schemas y ENV vars; ningún stack específico es obligatorio (cualquier stack containerizable con Docker es válido).
 
 ---
 
 ## 0. Marco de cumplimiento
 
-Las palabras clave **DEBE / NO DEBE / DEBERÍA / NO DEBERÍA / PUEDE** en este documento se interpretan según RFC 2119 / RFC 8174:
+Las palabras clave **DEBE / NO DEBE / DEBERÍA / NO DEBERÍA / PUEDE** se interpretan según RFC 2119 / RFC 8174.
 
-| Término | Significado | Consecuencia de incumplimiento |
+| Término | Significado | Consecuencia |
 |---|---|---|
-| **DEBE** / **OBLIGATORIO** / **REQUERIDO** | Requisito absoluto. | Bloqueo automático en `maestro-cli validate` o en `POST /api/v1/apps/register`. La app **no se provisiona**. |
-| **NO DEBE** / **PROHIBIDO** | Prohibición absoluta. | Igual al anterior. Detectable estática o dinámicamente. |
-| **DEBERÍA** / **RECOMENDADO** | Implementación esperada salvo justificación documentada. | Genera *warning* no bloqueante en CI. Puede bloquear en revisión de código. |
-| **NO DEBERÍA** / **NO RECOMENDADO** | Práctica desaconsejada. | Igual al anterior. |
-| **PUEDE** / **OPCIONAL** | Implementación a discreción del equipo de la app. | Sin consecuencia. |
+| **DEBE** / **OBLIGATORIO** | Requisito absoluto. | Bloqueo en `maestro-cli validate` o en registro contra el Maestro. |
+| **NO DEBE** / **PROHIBIDO** | Prohibición absoluta. | Igual al anterior. |
+| **DEBERÍA** / **RECOMENDADO** | Práctica esperada salvo justificación documentada. | Warning no bloqueante. |
+| **PUEDE** / **OPCIONAL** | A discreción del equipo. | Sin consecuencia. |
 
-Las secciones se etiquetan en su encabezado con **[OBLIGATORIO]**, **[DESEABLE]** o **[NEGOCIABLE]** para clasificar de un vistazo.
-
-> **Regla de precedencia:** ante conflicto, prevalece `PremisaWebMaestro/01-PREMISAS-Y-NO-NEGOCIABLES.md` > este documento > `docs/CONVENCIONES_PLATAFORMA.md` > `docs/APP_HUESPED_BEST_PRACTICES.md` > convención local del equipo.
+> **Precedencia:** ante conflicto, prevalece este documento > `docs/CONVENCIONES_PLATAFORMA.md` > `docs/APP_HUESPED_BEST_PRACTICES.md` > convención local del equipo.
 
 ---
 
-## 1. Requisitos OBLIGATORIOS
+## 1. Cambios principales respecto a v1
 
-Esta sección lista **todo** lo que el `maestro-cli validate` y el endpoint de registro verifican antes de permitir el despliegue. Su incumplimiento bloquea la app sin posibilidad de *waiver*.
+| Area | v1 | v2 |
+|---|---|---|
+| Tenancy | Multi-tenant con `company_id` por fila | Single-tenant fisico (un contenedor = una empresa) |
+| Auth de usuarios | Headers `X-Auth-*` inyectados por Traefik ForwardAuth | Login propio de la app (users + roles + permissions + tokens propios) |
+| Tabla `users` | Prohibida | Obligatoria |
+| Maestro -> App (usuario) | Inyecta headers + maneja sesion | Solo abre la URL de la app en `target="_blank"` |
+| Maestro -> App (server) | `X-Maestro-Webhook-Secret` para hooks | + `X-Maestro-Api-Key` para `/maestro/branding` |
+| `apiVersion` en `maestro.yaml` | `maestro.platform/v1` | `maestro.platform/v2` |
+| Superadmin | N/A | `admin@llyasoc.com` creado por seed idempotente en fase 05-seeding |
 
-### 1.1 Contrato `maestro.yaml` en la raíz del repositorio [OBLIGATORIO]
+Detalle completo en `framework-agentico/CHANGELOG.md`.
 
-- El repositorio **DEBE** contener un archivo `maestro.yaml` en la raíz (no en subdirectorios).
-- El archivo **DEBE** validar contra `https://maestro.llyasoc.com/schemas/maestro.yaml.schema.json` (versión `maestro.platform/v1`).
-- El archivo **NO DEBE** contener claves desconocidas (`additionalProperties: false`).
-- El campo `apiVersion` **DEBE** ser exactamente `"maestro.platform/v1"`.
-- El campo `kind` **DEBE** ser exactamente `"Application"`.
-- La estructura completa se documenta en la **Sección 4**.
+---
 
-### 1.2 Dockerfile en la raíz del repositorio [OBLIGATORIO]
+## 2. Requisitos OBLIGATORIOS
 
-- El repositorio **DEBE** contener un `Dockerfile` en la raíz.
-- El Dockerfile **DEBE** declarar una instrucción `USER` con un usuario **no-root** (UID ≠ 0). En multi-stage builds, esta instrucción se verifica en la **etapa final**.
-- El Dockerfile **DEBE** declarar al menos un `EXPOSE` cuyo puerto coincida exactamente con `requires.ports.app` del contrato.
-- La imagen final **NO DEBE** ejecutar como root (`whoami` durante runtime no debe devolver `root`).
-- La imagen final **NO DEBE** superar **500 MB** comprimida (warning a 350 MB).
-- La imagen **NO DEBE** incluir secretos, claves privadas, archivos `.env` ni historiales de git.
+### 2.1 Contrato `maestro.yaml` en la raíz [OBLIGATORIO]
 
-### 1.3 Endpoint de health check [OBLIGATORIO]
+- El repositorio **DEBE** contener un `maestro.yaml` en la raíz.
+- El campo `apiVersion` **DEBE** ser exactamente `"maestro.platform/v2"`.
+- El campo `kind` **DEBE** ser `"Application"`.
+- Estructura completa en §5.
 
-- La app **DEBE** exponer una ruta HTTP **sin autenticación** declarada en `health.endpoint`.
-- La ruta **DEBE** comenzar con `/`.
-- La ruta **DEBE** responder `HTTP 200` con `Content-Type: application/json` y un cuerpo que contenga al menos `{"status":"ok"}`.
-- La respuesta **DEBE** llegar en **≤ 5 segundos** (límite duro `health.timeout_seconds`, default 3).
-- La ruta **NO DEBE** ejecutar lógica de negocio pesada, consultas a servicios externos críticos ni operaciones de escritura.
-- La ruta **DEBERÍA** verificar la conectividad a la BD propia con un `SELECT 1` (≤ 200 ms) antes de retornar `ok`.
-- La ruta **NO DEBE** estar protegida por el middleware ForwardAuth de Traefik (Maestro la consulta directamente desde la red Docker privada del worker de health).
+### 2.2 Dockerfile en la raíz [OBLIGATORIO]
 
-### 1.4 Autenticación por headers ForwardAuth [OBLIGATORIO]
+- `Dockerfile` en la raíz.
+- Multi-stage build.
+- `USER` no-root (UID ≠ 0) en la etapa final.
+- `EXPOSE` con puerto coincidente con `requires.ports.app`.
+- Imagen final ≤ 500 MB comprimida (warning a 350 MB).
+- Sin secretos, claves privadas, `.env` ni historial de git.
+- `HEALTHCHECK` presente apuntando a `health.endpoint`.
 
-- La app **DEBE** declarar `auth.mode = "header"`. Ningún otro modo es aceptado.
-- La app **DEBE** leer la identidad del usuario **exclusivamente** de los siguientes headers, inyectados por Traefik tras validar el token con el Maestro:
+### 2.3 Endpoint de health check [OBLIGATORIO]
 
-| Header | Tipo | Cardinalidad | Ejemplo |
-|---|---|---|---|
-| `X-Auth-User-Id` | UUID v4 string | 1 | `b3a8c0e8-2a3a-4d27-9c1c-5a8a3f8b7e21` |
-| `X-Auth-User-Email` | RFC 5322 email | 1 | `aviera@llyasoc.com` |
-| `X-Auth-Company-Id` | UUID v4 string | 1 | `7e2b1f12-8b3a-4d77-bc1c-90c3bfb0a112` |
-| `X-Auth-Roles` | CSV de slugs | 0..N | `admin,editor` |
-| `X-Auth-Permissions` | CSV de slugs | 0..N | `users.read,users.write` |
+- Ruta HTTP **sin auth** declarada en `health.endpoint` (default `/health`).
+- Responde `HTTP 200` con `Content-Type: application/json` y cuerpo que contenga al menos `{"status":"ok"}`.
+- Tiempo de respuesta ≤ 5 s (`health.timeout_seconds`, default 3).
+- **NO DEBE** ejecutar logica de negocio pesada.
+- **DEBERÍA** verificar conectividad a la BD propia (`SELECT 1` ≤ 200 ms).
 
-- La app **DEBE** declarar en `auth.headers` el subconjunto de headers que realmente consume (mínimo 3 distintos, máximo 5).
-- La app **NO DEBE** implementar formularios de login, registro de usuarios, recuperación de contraseña, emisión propia de JWT/sessions, ni almacenar contraseñas o factor segundo.
-- La app **NO DEBE** confiar en ningún otro mecanismo (cookies de sesión propias, JWTs propios, query strings, basic auth) para identificar al usuario.
-- Si los headers no llegan, la app **DEBE** responder `HTTP 401` (significaría que el request no pasó por Traefik y por lo tanto es interno o falsificado).
-- La app **DEBE** validar siempre el `X-Auth-Company-Id` contra los datos consultados antes de devolver información (filtrado obligatorio, ver §1.5).
+### 2.4 Auth propia de la app [OBLIGATORIO]
 
-### 1.5 Aislamiento de datos por tenant [OBLIGATORIO]
+- La app **DEBE** declarar `auth.mode = "own"`. El modo `header` (v1) NO es valido en v2.
+- La app **DEBE** implementar:
+  - `POST {auth.login_path}` (default `/login`): valida credenciales, emite token (cookie HttpOnly o JWT).
+  - `POST {auth.logout_path}` (default `/logout`): invalida el token.
+  - Middleware que valida tokens propios en endpoints protegidos.
+  - Tablas `users`, `roles`, `permissions` con pivots (estructura sugerida en §3, no obligatoria).
+- La app **NO DEBE** leer headers `X-Auth-*` (deprecados; el Maestro v2 no los inyecta).
+- La app **DEBE** rechazar con `HTTP 401` cualquier request sin auth válida en endpoints protegidos.
 
-- Toda fila de toda tabla que contenga datos de tenant **DEBE** incluir una columna `company_id` (o equivalente FK al tenant).
-- Toda consulta de lectura/escritura **DEBE** filtrar por `company_id = X-Auth-Company-Id`.
-- La app **DEBE** rechazar (con `HTTP 403`) cualquier request que intente acceder a datos cuyo `company_id` no coincida con el header.
-- Cuando se use el SDK oficial (Node, Python, PHP-Laravel, Go), el filtrado **DEBE** delegarse al middleware/scope del SDK; el desarrollador **NO DEBE** desactivar este filtrado.
-- Las migraciones de BD **DEBEN** crear índice sobre `company_id` en tablas con > 1.000 filas esperadas.
+#### 2.4.1 Password storage
 
-### 1.6 Base de datos dedicada [OBLIGATORIO]
+- Hash con **bcrypt (cost ≥ 12)** o **argon2id**.
+- **NO DEBE** almacenarse en texto plano.
+- **NO DEBE** usarse `md5` / `sha1` / `sha256` directo.
 
-- Si la app declara `requires.database != "none"`, recibe una BD dedicada provisionada por el Maestro.
-- La app **DEBE** leer la cadena de conexión exclusivamente de la variable de entorno `DATABASE_URL`. No puede hardcodear hostnames, usuarios ni contraseñas.
-- La app **NO DEBE** intentar conectarse a la BD de otra instancia, a la BD del Maestro, ni a ninguna BD que no le haya sido inyectada.
-- Motores soportados (`requires.database`): `postgres`, `mysql`, `mongo`, `sqlite`, `none`.
-- Las migraciones idempotentes **DEBEN** ejecutarse en el hook `post_provision` o en el arranque (idempotente, ver §2.3).
+#### 2.4.2 Sesiones / tokens
 
-### 1.7 Aislamiento de red [OBLIGATORIO]
+- Cookies con `HttpOnly`, `Secure`, `SameSite=Lax` (o `Strict` si aplica).
+- **O** JWT con expiración corta + refresh token.
+- Almacenar tokens propios de la app es **PERMITIDO** (es el modelo v2).
 
-- La app **NO DEBE** crear conexiones de red salientes a otras apps huésped por su nombre de contenedor o IP de red privada.
-- Toda comunicación inter-apps **DEBE** pasar por `https://<maestro>/api/v1/gateway/<app-destino>/<ruta>` (ADR-007).
-- La app **NO DEBE** intentar escanear la red Docker, descubrir contenedores vecinos ni resolver nombres `app-*-*` ajenos.
-- La app **NO DEBE** abrir puertos al host (no hay `ports:` en el compose de instancias; Traefik enruta todo).
-- La app **DEBE** escuchar en el puerto declarado en `requires.ports.app` (1024 ≤ puerto ≤ 65535).
+### 2.5 Single-tenancy física [OBLIGATORIO]
 
-### 1.8 Límites de recursos declarados [OBLIGATORIO]
+- Cada contenedor sirve a UNA sola empresa.
+- El modelo de datos **NO DEBE** tener `company_id` en queries.
+- La empresa esta implícita por contenedor.
+- Logs incluyen `user_id` y `request_id` (sin `company_id`).
 
-- El bloque `resources` **DEBE** estar presente con los campos `memory` y `cpu`.
-- `resources.memory` **DEBE** ser uno de: `256m`, `512m`, `1g`, `2g`, `4g`. No se aceptan otros valores.
-- `resources.cpu` **DEBE** ser un número decimal entre `0.25` y `4.0` inclusive.
-- La app **NO DEBE** asumir más recursos que los declarados; el kernel matará el contenedor por OOM o lo throttling-eará si excede.
-- Tier inferido (informativo): ver §8.
+### 2.6 Endpoint `/maestro/branding` [OBLIGATORIO]
 
-### 1.9 Secretos fuera de código y de imagen [OBLIGATORIO]
+- La app **DEBE** exponer el path declarado en `branding.url` (default `/maestro/branding`).
+- **DEBE** requerir header `X-Maestro-Api-Key` (secret compartido, ENV var `MAESTRO_API_KEY`).
+- Sin / con api key inválida → `HTTP 401`.
+- Con api key válida → `HTTP 200` con JSON:
 
-- El repositorio, su historial de git completo y la imagen Docker resultante **NO DEBEN** contener:
-  - Contraseñas, tokens API, claves privadas (RSA/EC/SSH), cadenas de conexión, claves de cifrado, claves de servicio (GCP/AWS/Azure), webhooks firmados.
-  - Archivos `.env`, `secrets.json`, `credentials.json`, `*.pem`, `*.p12`, `*.kdbx`.
-- Los secretos **DEBEN** entregarse exclusivamente vía variables de entorno inyectadas por el Maestro en runtime.
-- El pipeline CI **DEBE** ejecutar `gitleaks` (o equivalente) sobre **todo el historial** de git en cada PR.
-- Si el scan detecta una coincidencia, el pipeline falla y la imagen no se publica.
+  ```json
+  {
+    "company_name": "Acme S.A.",
+    "logo_url": "https://app.example.com/storage/logo.png",
+    "primary_color": "#1F2937",
+    "favicon_url": "https://app.example.com/storage/favicon.ico"
+  }
+  ```
 
-### 1.10 TLS y zero trust [OBLIGATORIO]
+- `company_name` y `logo_url` son **obligatorios**; `primary_color` y `favicon_url` son **opcionales**.
 
-- La app **NO DEBE** servir HTTP plano. Internamente escucha en HTTP, pero **solo** en su red Docker privada; Traefik termina TLS en el borde.
-- La app **NO DEBE** desactivar verificación TLS al consumir servicios externos (`rejectUnauthorized: false` y similares están prohibidos en producción).
-- Toda llamada al API del Maestro **DEBE** usar HTTPS (`MAESTRO_API_URL` siempre comienza con `https://`).
-- Webhooks salientes/entrantes **DEBEN** firmarse con HMAC-SHA256 (ver §9).
+### 2.7 Base de datos dedicada [OBLIGATORIO si `requires.database != "none"`]
 
-### 1.11 Variables de entorno reservadas [OBLIGATORIO]
+- La app lee la cadena de conexión de `DATABASE_URL` (ENV var inyectada por el Maestro o por orquestador).
+- **NO DEBE** hardcodear hostnames, usuarios ni contraseñas.
+- Motores soportados: `postgres`, `mysql`, `mongo`, `sqlite`, `none`.
+- Migraciones idempotentes ejecutadas en arranque o post_provision.
 
-La app **NO DEBE** usar nombres de variables que coincidan con prefijos reservados:
+### 2.8 Hooks de plataforma [OBLIGATORIO si la app declara `hooks.*`]
+
+- Si la app declara `hooks.on_user_added`, `hooks.on_user_removed`, etc.:
+  - El path **DEBE** existir, aceptar `POST` y responder `HTTP 200` en ≤ 5 s.
+  - **DEBE** verificar `X-Maestro-Webhook-Signature` (HMAC-SHA256 del cuerpo, usando `MAESTRO_WEBHOOK_SECRET`).
+  - **DEBE** ser idempotente (Maestro reintenta hasta 3 veces).
+
+### 2.9 Variables de entorno obligatorias [OBLIGATORIO]
+
+La app **DEBE** leer (no hardcodear) las siguientes ENV vars:
+
+| Variable | Origen | Proposito |
+|---|---|---|
+| `DATABASE_URL` | Maestro (al provisionar) | Connection string de la BD dedicada |
+| `MAESTRO_API_KEY` | Maestro / portal | Secret compartido para autenticar requests del Maestro al endpoint `/maestro/branding` |
+| `SUPERADMIN_INITIAL_PASSWORD` | Operador / portal | Password inicial del superadmin (`admin@llyasoc.com`) consumida por la fase 05-seeding |
+| `APP_KEY` o `JWT_SECRET` (segun stack) | Operador | Secret para firmar tokens propios |
+
+### 2.10 Seeding del superadmin [OBLIGATORIO]
+
+- La app **DEBE** implementar un seeder idempotente (ver fase 05-seeding del framework agéntico v4).
+- El seeder lee `SUPERADMIN_INITIAL_PASSWORD` y crea (si no existe) el usuario `admin@llyasoc.com` con rol `superadmin` y todos los permisos definidos por la app.
+- Idempotente: si el usuario ya existe, NO toca password; si le falta el rol, lo asigna.
+- Logs sin password ni hash.
+- Si `SUPERADMIN_INITIAL_PASSWORD` no existe o es debil (< 12 chars / blacklisted), el seeder **DEBE** fallar con exit code != 0 sin crear nada.
+
+### 2.11 Variables de entorno reservadas [OBLIGATORIO]
+
+La app **NO DEBE** usar nombres con prefijos reservados:
 
 | Prefijo / nombre | Reservado para |
 |---|---|
-| `MAESTRO_*` | Inyección de plataforma (URL del Maestro, secret de la app, feature flags). |
-| `X_AUTH_*` | Datos de autenticación (no son env vars; son headers HTTP, pero el prefijo está reservado para evitar colisión). |
-| `DATABASE_URL` | Cadena de conexión a la BD provisionada. |
+| `MAESTRO_*` | Inyección de plataforma |
+| `DATABASE_URL` | Cadena de conexión a la BD provisionada |
+| `SUPERADMIN_*` | Seeding del superadmin |
 
-- El campo `env` del contrato **DEBE** listar solo variables que no caigan bajo estos prefijos.
-- Los nombres **DEBEN** seguir la regex `^[A-Z][A-Z0-9_]*$`.
+Custom env vars **DEBEN** seguir regex `^[A-Z][A-Z0-9_]*$` y no caer en prefijos reservados.
 
-### 1.12 Webhooks de plataforma [OBLIGATORIO si la app declara `hooks.*`]
+### 2.12 TLS y zero trust [OBLIGATORIO]
 
-- Si la app declara `hooks.on_user_added`, `hooks.on_user_removed`, `hooks.on_company_license_granted` u `hooks.on_company_license_revoked`:
-  - La ruta declarada **DEBE** existir, aceptar `POST` y responder `HTTP 200` en ≤ 5 s.
-  - La app **DEBE** verificar el header `X-Maestro-Webhook-Signature` (HMAC-SHA256 del cuerpo, usando `MAESTRO_APP_SECRET`).
-  - La app **DEBE** ser **idempotente**: el Maestro reintenta hasta 3 veces con backoff exponencial.
-  - La app **DEBE** procesar el webhook en `≤ 5 s`. Para trabajo pesado, encolar y responder 200 inmediato (`202 Accepted` también es válido si la app declara una cola).
+- App escucha HTTP en su red privada; Traefik termina TLS en el borde.
+- **NO DEBE** desactivar verificación TLS al consumir servicios externos.
+- Llamadas al API del Maestro **DEBEN** usar HTTPS.
+- Webhooks salientes/entrantes **DEBEN** firmarse con HMAC-SHA256.
 
-### 1.13 Restricción del `Dockerfile`: capas y cache [OBLIGATORIO]
+### 2.13 Secretos fuera de código y de imagen [OBLIGATORIO]
 
-- El Dockerfile **DEBE** usar imágenes base oficiales firmadas (Docker Official Images, Microsoft Container Registry, distroless de Google).
-- El Dockerfile **NO DEBE** usar `FROM` con tag `latest` ni con tag mutable. Las bases **DEBEN** anclarse a un digest (`@sha256:...`) o, como mínimo, a una versión menor (`node:22.13-alpine`).
-- El Dockerfile **NO DEBE** ejecutar `apt-get upgrade` ni mecanismos equivalentes (rompe reproducibilidad).
-- El Dockerfile **NO DEBE** llamar a `curl | sh` ni instalar binarios desde URLs sin verificación de hash.
-
-### 1.14 Health check del Dockerfile [DESEABLE → OBLIGATORIO desde v1.1 del contrato]
-
-- El Dockerfile **DEBERÍA** incluir una instrucción `HEALTHCHECK` que invoque la misma ruta declarada en `health.endpoint`. Esto facilita debugging local; el Maestro usa su propio mecanismo de health check vía Traefik.
+- Repositorio, historial git e imagen Docker **NO DEBEN** contener secretos.
+- Pre-commit + CI con `gitleaks` (o equivalente) sobre todo el historial.
 
 ---
 
-## 2. Requisitos DESEABLES
+## 3. Estructura sugerida de tablas (NO obligatoria)
 
-Las siguientes prácticas **DEBERÍAN** seguirse. CI emite *warnings* si no se cumplen pero permite el despliegue. La revisión de código del integrador es la última línea de defensa para estas reglas.
+El framework v4 sugiere (no impone) la siguiente estructura para users/roles/permissions:
 
-### 2.1 Uso del SDK oficial [DESEABLE]
+```
+users(id, email UNIQUE, password_hash, name, is_active, last_login_at, created_at, updated_at)
+roles(id, name UNIQUE, description, is_system)
+permissions(id, key UNIQUE, description, group)
+user_roles(user_id, role_id)
+role_permissions(role_id, permission_id)
+```
 
-- Si la app está escrita en Node, Python, PHP-Laravel o Go, **DEBERÍA** usar el SDK oficial:
-  - `@maestro/sdk-node` (npm)
-  - `maestro-sdk` (pip)
-  - `maestro/sdk-laravel` (composer)
-  - `github.com/maestro/sdk-go` (go mod)
-- El SDK abstrae el parseo de `X-Auth-*`, el filtrado por `company_id`, y la firma HMAC de webhooks. Reescribir esta lógica a mano es propenso a errores de seguridad.
+Cada app **PUEDE** modelarla diferente si lo justifica como ADR. Lo único obligatorio:
 
-### 2.2 Definición de `config_schema` [DESEABLE]
-
-- Si la app expone parámetros configurables por empresa (ej.: política de retención, color de marca, integraciones externas), **DEBERÍA** declararlos en `config_schema` para que el portal Maestro genere automáticamente el formulario de configuración.
-- Cada parámetro **DEBERÍA** tener: `name`, `type` (`string|number|boolean|select`), `default`, `description`, y `required` (boolean).
-
-### 2.3 Migraciones idempotentes y backward-compatible [DESEABLE]
-
-- Las migraciones **DEBERÍAN** ser idempotentes (ejecutarlas dos veces no rompe).
-- Migraciones que rompen compatibilidad (drop column, rename) **DEBERÍAN** dividirse en **dos releases** (expand-then-contract): primero agregar el campo nuevo y dual-write; luego, en una versión posterior, dropear el viejo.
-
-### 2.4 Logs estructurados [DESEABLE]
-
-- La app **DEBERÍA** emitir logs en JSON a `stdout`/`stderr` (los recoge Promtail → Loki).
-- Cada log **DEBERÍA** incluir: `timestamp` (ISO-8601 UTC), `level` (`debug|info|warn|error|fatal`), `message`, `tenant_id` (== `X-Auth-Company-Id`), `user_id` (== `X-Auth-User-Id`), `request_id`, `app_version`.
-- La app **NO DEBERÍA** loguear PII bruta (emails completos, nombres, identificadores fiscales). Use hash o truncado.
-- La app **NO DEBE** loguear secretos, headers `X-Auth-*` completos, ni cuerpos de request con datos sensibles.
-
-### 2.5 Trazas distribuidas con OpenTelemetry [DESEABLE]
-
-- La app **DEBERÍA** emitir spans OpenTelemetry vía OTLP al colector del Maestro (env var `MAESTRO_OTLP_ENDPOINT` cuando esté disponible).
-- Cada span **DEBERÍA** incluir attributes: `tenant.id`, `app.slug`, `app.version`.
-
-### 2.6 Multi-stage build y mínima superficie [DESEABLE]
-
-- El Dockerfile **DEBERÍA** usar multi-stage build separando build-deps (compiladores, devDependencies) de runtime.
-- La imagen final **DEBERÍA** basarse en una imagen mínima (`alpine`, `slim`, `distroless`) salvo que el stack lo impida.
-
-### 2.7 Reintentos idempotentes en clientes HTTP [DESEABLE]
-
-- Toda llamada saliente **DEBERÍA** implementar timeout, reintentos con backoff exponencial y jitter, y circuit breaker.
-- Solo se reintentan métodos idempotentes (`GET`, `PUT`, `DELETE`) o requests con `Idempotency-Key`.
-
-### 2.8 Documentación mínima [DESEABLE]
-
-- El repositorio **DEBERÍA** incluir:
-  - `README.md` con quickstart, arquitectura y cómo correr `docker-compose.dev.yml`.
-  - `RUNBOOK.md` con incidentes comunes y comandos de debug.
-  - `CHANGELOG.md` siguiendo Keep a Changelog.
-  - `SECURITY.md` con canal de reporte de vulnerabilidades.
-
-### 2.9 `docker-compose.dev.yml` con mock del Maestro [DESEABLE]
-
-- El repositorio **DEBERÍA** incluir un `docker-compose.dev.yml` que arranque la app + su BD + un mock que simule los headers `X-Auth-*` para desarrollo local sin Maestro real.
-- El mock recomendado: imagen `ghcr.io/llyasoc-digital/maestro-dev-mock:latest` (provista por el equipo de plataforma).
+- Existe alguna forma de identificar usuarios por email único.
+- Existe un rol `superadmin` (o equivalente) con TODOS los permisos.
+- El superadmin `admin@llyasoc.com` existe tras el seeding.
 
 ---
 
-## 3. Requisitos NEGOCIABLES
-
-Esta sección lista las decisiones que **PUEDEN** tomarse libremente; la plataforma no impone preferencia.
-
-### 3.1 Stack tecnológico [NEGOCIABLE]
-
-Cualquier lenguaje y framework que pueda containerizarse. Stacks reconocidos por el sistema agéntico (que les asigna especialista preconfigurado): `node-express`, `node-fastify`, `node-nestjs`, `python-django`, `python-flask`, `python-fastapi`, `php-laravel`, `go-gin`, `go-fiber`, `java-spring`, `dotnet-aspnet`, `rust-actix`. Otros stacks funcionan pero sin agente especializado.
-
-### 3.2 Motor de base de datos [NEGOCIABLE dentro del enum]
-
-`postgres | mysql | mongo | sqlite | none`. **PUEDE** elegirse el que mejor se adapte. Recomendación: PostgreSQL salvo justificación técnica explícita.
-
-### 3.3 Variables de entorno custom [NEGOCIABLE]
-
-Cualquier variable que no caiga bajo prefijos reservados (`MAESTRO_*`, `X_AUTH_*`, `DATABASE_URL`). Declararlas en `env`.
-
-### 3.4 Layout interno del repositorio [NEGOCIABLE bajo restricciones]
-
-La estructura de directorios internos (`src/`, `app/`, `pkg/`, `internal/`, etc.) es libre siempre que se respeten los archivos en raíz exigidos por §1 y §6.
-
-### 3.5 Idioma de UI [NEGOCIABLE]
-
-La app **PUEDE** servir UI en cualquier idioma. Para multi-idioma, leer el header `Accept-Language` o exponer un selector. Maestro **NO** impone un idioma.
-
-### 3.6 Estrategia de testing [NEGOCIABLE]
-
-Maestro no exige cobertura mínima. Recomendación industria: ≥ 70 % en lógica de negocio. Ver `APP_HUESPED_BEST_PRACTICES.md` §6.
-
-### 3.7 Modelo de licenciamiento de la app [NEGOCIABLE]
-
-La app puede ser propietaria o open-source. La plataforma no impone licencia; sí exige que el repositorio incluya un archivo `LICENSE` legible.
-
----
-
-## 4. Estructura de datos del contrato `maestro.yaml`
-
-### 4.1 Esqueleto canónico
+## 4. Variables de entorno estándar
 
 ```yaml
-apiVersion: maestro.platform/v1
+required:
+  DATABASE_URL: "URL de conexion a la BD del contenedor"
+  MAESTRO_API_KEY: "Secret compartido con el Maestro para /maestro/branding"
+  SUPERADMIN_INITIAL_PASSWORD: "Password inicial del superadmin (>= 12 chars)"
+
+required_per_stack:
+  Laravel:
+    APP_KEY: "Key generada por php artisan key:generate"
+  Node/Express o frameworks JS:
+    JWT_SECRET: "Secret para firmar tokens JWT"
+  Python/Django:
+    SECRET_KEY: "Django secret key"
+
+optional:
+  MAESTRO_WEBHOOK_SECRET: "Secret para validar hooks (si la app declara hooks)"
+  LOG_LEVEL: "info | warn | error"
+```
+
+---
+
+## 5. Estructura de datos del contrato `maestro.yaml`
+
+### 5.1 Esqueleto canónico v2
+
+```yaml
+apiVersion: maestro.platform/v2
 kind: Application
 metadata:
-  name: <slug>
+  name: <slug>                    # regex ^[a-z0-9][a-z0-9-]{2,49}$
   version: <semver>
-  description: <texto libre, ≤ 500 chars>
+  description: <texto, ≤ 500 chars>
 requires:
   database: postgres | mysql | mongo | sqlite | none
   ports:
     app: <int 1024–65535>
 health:
   endpoint: /health
-  timeout_seconds: 3        # opcional, 1–5, default 3
+  timeout_seconds: 3              # 1–5, default 3
 auth:
-  mode: header
-  headers:                  # subconjunto de los 5 estándar, mínimo 3
-    - X-Auth-User-Id
-    - X-Auth-User-Email
-    - X-Auth-Company-Id
-    - X-Auth-Roles
-    - X-Auth-Permissions
+  mode: own                       # v2: solo "own" es valido
+  login_path: /login              # ruta del formulario de login
+  logout_path: /logout            # opcional
+branding:
+  url: /maestro/branding          # endpoint autenticado con X-Maestro-Api-Key
 resources:
   memory: 256m | 512m | 1g | 2g | 4g
   cpu: <float 0.25–4.0>
-hooks:                      # opcional
+seeding:
+  superadmin_email: admin@llyasoc.com   # default; PO puede sobreescribir en planning
+  additional_users: []                   # opcional, decisión del PO
+hooks:                            # opcional
   on_user_added: /hooks/user-added
-  on_user_removed: /hooks/user-removed
-  on_company_license_granted: /hooks/license-granted
-  on_company_license_revoked: /hooks/license-revoked
-env:                        # opcional, lista de nombres custom
+  # ... otros hooks
+env:                              # opcional, lista de nombres custom
   - SMTP_HOST
   - REDIS_URL
-  - FEATURE_FLAGS_API_KEY
 ```
 
-### 4.2 Diccionario de campos
+### 5.2 Diccionario de campos (cambios respecto a v1)
 
-| Campo | Tipo | Obligatorio | Validación | Descripción |
-|---|---|---|---|---|
-| `apiVersion` | string | Sí | enum `["maestro.platform/v1"]` | Versión del contrato. |
-| `kind` | string | Sí | enum `["Application"]` | Tipo de recurso. |
-| `metadata.name` | string | Sí | regex `^[a-z0-9][a-z0-9-]{2,49}$` | Slug único, 3–50 chars. **Inmutable** una vez registrado. |
-| `metadata.version` | string | Sí | regex `^\d+\.\d+\.\d+$` | SemVer estricto, sin prefijo `v` ni sufijo. |
-| `metadata.description` | string | No | ≤ 500 chars | Mostrado en catálogo del portal. |
-| `requires.database` | string | Sí | enum `[postgres, mysql, mongo, sqlite, none]` | Motor a provisionar. |
-| `requires.ports.app` | integer | Sí | 1024 ≤ x ≤ 65535 | Puerto interno donde escucha la app. **DEBE** coincidir con `EXPOSE` del Dockerfile. |
-| `health.endpoint` | string | Sí | regex `^/.*` | Ruta HTTP sin auth. |
-| `health.timeout_seconds` | integer | No | 1–5, default 3 | Timeout del health check. |
-| `auth.mode` | string | Sí | enum `["header"]` | Único modo soportado. |
-| `auth.headers` | array | Sí | minItems 3, uniqueItems, valores del enum X-Auth-* | Subconjunto de headers consumidos. |
-| `resources.memory` | string | Sí | enum `[256m, 512m, 1g, 2g, 4g]` | Tier de memoria. |
-| `resources.cpu` | number | Sí | 0.25 ≤ x ≤ 4.0 | Fracción de core. |
-| `hooks.on_user_added` | string | No | regex `^/.*` | POST que recibe evento. |
-| `hooks.on_user_removed` | string | No | regex `^/.*` | POST que recibe evento. |
-| `hooks.on_company_license_granted` | string | No | regex `^/.*` | POST que recibe evento. |
-| `hooks.on_company_license_revoked` | string | No | regex `^/.*` | POST que recibe evento. |
-| `env` | array | No | strings regex `^[A-Z][A-Z0-9_]*$`, no reservados, uniqueItems | Vars de entorno custom. |
+| Campo | Tipo | Obligatorio | Cambio v1 -> v2 |
+|---|---|---|---|
+| `apiVersion` | string | Sí | `"maestro.platform/v2"` (era `v1`) |
+| `auth.mode` | string | Sí | enum `["own"]` (antes `["header"]`) |
+| `auth.login_path` | string | Sí | NEW: ruta del formulario de login (regex `^/.*`) |
+| `auth.logout_path` | string | No | NEW: opcional |
+| `auth.headers` | array | — | ELIMINADO (no aplica en v2) |
+| `branding.url` | string | Sí | NEW: endpoint de branding (regex `^/.*`) |
+| `seeding.superadmin_email` | string | Sí | NEW: default `admin@llyasoc.com` |
+| `seeding.additional_users` | array | No | NEW: usuarios adicionales decididos por el PO |
 
-### 4.3 Restricciones cruzadas
+Resto de campos (metadata, requires, health, resources, hooks, env) sin cambios respecto a v1.
 
-- Si `requires.database = "none"`, la variable `DATABASE_URL` **NO** se inyecta y la app **NO DEBE** intentar leerla.
-- El puerto `requires.ports.app` **DEBE** coincidir con al menos un `EXPOSE` del Dockerfile (verificación estática del CLI).
-- `auth.headers` **DEBE** declarar al menos `X-Auth-User-Id`, `X-Auth-Company-Id` y uno más. Apps que solo lean roles sin user-id son arquitectónicamente inválidas.
-- `resources.memory` y `resources.cpu` **DEBEN** estar dentro del mismo tier (ver §8). El CLI no permite combinaciones cruzadas (ej.: `memory: 4g` + `cpu: 0.25`).
+### 5.3 Restricciones cruzadas
 
-### 4.4 Compatibilidad de versiones del contrato
-
-- `maestro.platform/v1` es la única versión soportada.
-- Cuando el equipo de plataforma libere `v2`, las apps en `v1` seguirán funcionando durante un período de gracia mínimo de **12 meses**.
-- La migración a `v2` se documentará en una guía dedicada y herramienta `maestro-cli migrate-contract`.
-
----
-
-## 5. Estructura de headers de autenticación
-
-### 5.1 Flujo de inyección
-
-```
-Browser → Traefik:443
-Traefik → ForwardAuth → Maestro (POST /api/v1/auth/verify)
-Maestro → Traefik (200 + headers JSON)
-Traefik → App-container (request original + headers X-Auth-* añadidos)
-```
-
-Los headers **siempre** se inyectan por Traefik, **nunca** por el cliente. Si la app recibe un request sin headers `X-Auth-*`, **DEBE** asumir que es un bypass del proxy y rechazar (`401`).
-
-### 5.2 Definición canónica de headers
-
-```http
-X-Auth-User-Id:        b3a8c0e8-2a3a-4d27-9c1c-5a8a3f8b7e21
-X-Auth-User-Email:     aviera@llyasoc.com
-X-Auth-Company-Id:     7e2b1f12-8b3a-4d77-bc1c-90c3bfb0a112
-X-Auth-Roles:          admin,editor
-X-Auth-Permissions:    users.read,users.write,reports.export
-```
-
-- Todos los headers son **case-insensitive** según RFC 7230 §3.2 (Maestro emite siempre en *Pascal-Case-Kebab*).
-- Los CSV (`Roles`, `Permissions`) **NO** contienen espacios alrededor de las comas.
-- `X-Auth-Roles` puede estar vacío (string vacío) si el usuario no tiene roles asignados en esta app.
-- `X-Auth-Permissions` puede estar vacío. Una app **NO DEBERÍA** depender solo de roles; las decisiones finas se hacen sobre permisos.
-
-### 5.3 Reglas de derivación
-
-A partir de los headers, la app construye internamente un `User`:
-
-```ts
-type User = {
-  id: string;            // X-Auth-User-Id
-  email: string;         // X-Auth-User-Email
-  companyId: string;     // X-Auth-Company-Id
-  roles: string[];       // X-Auth-Roles split(",").filter(Boolean)
-  permissions: string[]; // X-Auth-Permissions split(",").filter(Boolean)
-};
-```
-
-- La app **DEBE** considerar los headers como **autoritativos**. No puede consultar al Maestro para "verificar" la identidad en cada request (ya lo hizo Traefik).
-- La app **PUEDE** consultar al Maestro vía API REST (`GET /api/v1/users/{id}`) si necesita campos adicionales (foto, locale, último login). Estas llamadas **DEBEN** firmar con `MAESTRO_APP_SECRET` (HMAC).
-
-### 5.4 Headers prohibidos
-
-La app **NO DEBE** confiar en los siguientes headers para identidad o autorización:
-
-- `Authorization` (lo consume y descarta Traefik tras ForwardAuth).
-- `Cookie` (Traefik no lo retransmite a la app huésped salvo configuración explícita).
-- `X-Forwarded-User` o variantes legacy (no se inyectan).
-- Cualquier header custom que no comience por `X-Auth-`.
+- Si `requires.database = "none"`, `DATABASE_URL` no se inyecta y la app NO debe leerla.
+- `requires.ports.app` DEBE coincidir con un `EXPOSE` del Dockerfile.
+- `resources.memory` y `resources.cpu` DEBEN estar dentro de tier coherente.
+- Si `auth.mode = own`, `auth.login_path` es obligatorio.
 
 ---
 
@@ -395,467 +288,126 @@ La app **NO DEBE** confiar en los siguientes headers para identidad o autorizaci
 
 ```
 .
-├── maestro.yaml             [OBLIGATORIO]   Contrato (§1.1, §4)
-├── Dockerfile               [OBLIGATORIO]   USER no-root + EXPOSE (§1.2)
-├── docker-compose.dev.yml   [DESEABLE]      Mock del Maestro (§2.9)
-├── README.md                [DESEABLE]      Quickstart (§2.8)
-├── CHANGELOG.md             [DESEABLE]      Keep a Changelog
-├── SECURITY.md              [DESEABLE]      Canal de reporte
-├── LICENSE                  [DESEABLE]      Licencia de la app
-├── CLAUDE.md                [DESEABLE]      Especialista IA (ver 07-SISTEMA-AGENTICO.md)
-├── .github/
-│   └── workflows/
-│       └── deploy.yml       [OBLIGATORIO]   CI/CD (§10, §best-practices)
-├── .dockerignore            [DESEABLE]      Excluir node_modules, .env, .git
-├── .gitignore               [OBLIGATORIO]   Excluir secretos y artefactos
-├── .gitleaks.toml           [DESEABLE]      Configuración del secret scanner
-├── src/                     [NEGOCIABLE]    Código fuente
-├── tests/                   [DESEABLE]      Suite de tests
-└── migrations/              [DESEABLE]      Migraciones de BD
+├── maestro.yaml             [OBLIGATORIO]
+├── Dockerfile               [OBLIGATORIO]
+├── docker-compose.dev.yml   [DESEABLE]
+├── README.md                [DESEABLE]
+├── CHANGELOG.md             [DESEABLE]
+├── SECURITY.md              [DESEABLE]
+├── LICENSE                  [DESEABLE]
+├── CLAUDE.md                [DESEABLE]
+├── .github/workflows/deploy.yml  [OBLIGATORIO]
+├── .dockerignore            [DESEABLE]
+├── .gitignore               [OBLIGATORIO]
+└── (estructura interna libre del stack)
 ```
 
-### 6.2 Archivos prohibidos en el repo
+### 6.2 Archivos prohibidos
 
-| Patrón | Motivo |
+| Patron | Motivo |
 |---|---|
-| `.env`, `.env.*` (excepto `.env.example`) | Secretos en código (§1.9). |
-| `*.pem`, `*.key`, `*.p12`, `*.pfx`, `*.kdbx` | Claves privadas. |
-| `id_rsa`, `id_ed25519`, `*.ppk` | Llaves SSH. |
-| `secrets.json`, `credentials.json` | Secretos. |
-| `.aws/`, `.gcp/`, `.azure/` | Credenciales cloud. |
-| `node_modules/`, `vendor/` (excepto en mono-repos justificados) | Bloat. |
-
-`.gitleaks.toml` puede usarse para alowlistear falsos positivos puntualmente (con justificación en PR).
+| `.env`, `.env.*` (excepto `.env.example`) | Secretos en codigo |
+| `*.pem`, `*.key`, `*.p12` | Claves privadas |
+| `secrets.json`, `credentials.json` | Secretos |
+| `.aws/`, `.gcp/`, `.azure/` | Credenciales cloud |
 
 ---
 
-## 7. Restricciones de red, puertos, naming
+## 7. Validacion CLI
 
-### 7.1 Naming de contenedores y volúmenes (impuesto por Maestro)
+`maestro-cli validate` (v2) verifica en orden:
 
-Estos nombres **NO** los elige la app; el Maestro los genera al provisionar. La app **DEBE** asumir que `db-<app_slug>-<company_slug>` es el hostname interno de su BD.
+1. `maestro.yaml` valida contra JSON Schema v2.
+2. Dockerfile USER no-root.
+3. Health endpoint declarado.
+4. Recursos declarados con tier coherente.
+5. Secret-scan completo del historial.
+6. `auth.mode = own` y `auth.login_path` presente.
+7. `branding.url` presente.
+8. `seeding.superadmin_email` presente.
+9. Puerto coincide con EXPOSE.
+10. Env vars no colisionan con prefijos reservados.
 
-| Recurso | Patrón | Ejemplo |
-|---|---|---|
-| Contenedor app | `app-<app_slug>-<company_slug>` | `app-contabilidad-llyasoc` |
-| Contenedor BD | `db-<app_slug>-<company_slug>` | `db-contabilidad-llyasoc` |
-| Red privada | `app-<app_slug>-<company_slug>-net` | `app-contabilidad-llyasoc-net` |
+---
 
-- `app_slug` y `company_slug` cumplen `^[a-z0-9][a-z0-9-]{2,49}[a-z0-9]$`.
-- Longitud total ≤ 63 chars (límite Linux hostname).
+## 8. Anti-patrones que bloquean despliegue
 
-### 7.2 Namespaces reservados [PROHIBIDO usarlos]
-
-La app **NO DEBE** crear contenedores, redes ni volúmenes con prefijos:
-
-- `maestro-*` (core de la plataforma).
-- `app-*` (apps huésped, gestionadas solo por el Maestro).
-- `db-*` (BDs huésped).
-- `obs-*` (stack de observabilidad).
-
-### 7.3 Puertos
-
-| Tipo | Permitido |
+| Anti-patron | Bloquea |
 |---|---|
-| Bind al host del VPS | **NO PERMITIDO** (solo Traefik bindea 80/443). |
-| Listen interno declarado | Sí, único, en `requires.ports.app`, 1024 ≤ x ≤ 65535. |
-| Conexión saliente | Permitida solo a `MAESTRO_API_URL`, al hostname `db-<slug>-<company>` (su BD), y a internet si la app lo necesita (sujeto a egress policy futura). |
-
-### 7.4 DNS interno
-
-- Dentro de la red privada: la BD se resuelve por nombre `db-<app_slug>-<company_slug>`.
-- Dentro de `maestro-network`: se puede resolver `maestro-api` (URL completa siempre proviene de `MAESTRO_API_URL`).
-- La app **NO DEBE** intentar resolver nombres que no le pertenezcan.
-
-### 7.5 Imágenes Docker
-
-| Patrón | Uso |
-|---|---|
-| `ghcr.io/<owner>/<app_slug>:<semver>` | Imagen de la app (canónico). |
-| `ghcr.io/<owner>/<app_slug>:<commit_sha>` | Imagen anclada a commit (también válida; usada por Maestro para rollbacks). |
-| `*:latest` | **PROHIBIDO** en producción. Permitido solo en `docker-compose.dev.yml`. |
-
-Tags inmutables: una imagen publicada **NO** se re-pushea con el mismo tag.
+| Lectura de headers `X-Auth-*` (modelo v1) | Sí |
+| Filtros por `company_id` en queries | Sí |
+| Falta de tabla `users` o equivalente | Sí |
+| Password storage en texto plano | Sí |
+| `MAESTRO_API_KEY` hardcodeada | Sí |
+| `SUPERADMIN_INITIAL_PASSWORD` hardcodeada o debil | Sí |
+| Endpoint `/maestro/branding` sin api key | Sí |
+| Endpoint `/maestro/branding` ausente | Sí |
+| Tag `:latest` en `FROM` o como imagen final | Sí |
+| Ejecutar como root | Sí |
+| Secreto en `git log` | Sí |
+| `rejectUnauthorized: false` en cliente HTTPS | Sí en producción |
+| Login + auth headers (mezclar v1 y v2) | Sí |
 
 ---
 
-## 8. Tiers de recursos
+## 9. Comportamiento standalone (estado transitorio)
 
-| Tier | CPU | Memoria | Storage BD | Casos típicos |
-|---|---|---|---|---|
-| `micro` | 0.25 core | `256m` | 1 GB | API simples, dashboards, lectores. |
-| `standard` | 0.5 core | `512m` | 5 GB | Mayoría de apps típicas. |
-| `professional` | 1.0 core | `1g` | 20 GB | Cargas medias, ETL liviano. |
-| `enterprise` | 2.0 core | `2g`–`4g` | 50 GB | Alta carga, procesamiento intensivo. |
+Mientras el Maestro v2 no esta desplegado, las apps v4 **PUEDEN** funcionar standalone:
 
-- El tier se **infiere** a partir de `resources.memory` y `resources.cpu` declarados.
-- Combinaciones inválidas (ej.: `cpu: 4.0` con `memory: 256m`) se rechazan en validación.
-- Cambiar de tier requiere bump de versión del contrato y redespliegue.
+- El usuario navega directamente a la URL de la app.
+- Hace login en `auth.login_path`.
+- Opera normalmente.
 
----
+El endpoint `/maestro/branding` puede consultarse manualmente con la api key compartida, pero ningun consumidor automatizado lo hara hasta que el Maestro v2 lo registre.
 
-## 9. Webhooks y firma HMAC
-
-### 9.1 Eventos emitidos por el Maestro
-
-| Evento | Cuándo se emite | Payload |
-|---|---|---|
-| `on_user_added` | Usuario agregado a una empresa con licencia activa de esta app. | `{user_id, email, company_id, roles, timestamp, event_id}` |
-| `on_user_removed` | Usuario removido o licencia individual revocada. | `{user_id, company_id, timestamp, event_id}` |
-| `on_company_license_granted` | Empresa adquiere licencia de esta app. | `{company_id, plan, max_users, timestamp, event_id}` |
-| `on_company_license_revoked` | Empresa pierde licencia. | `{company_id, reason, timestamp, event_id}` |
-
-### 9.2 Firma del cuerpo
-
-```
-X-Maestro-Webhook-Signature: t=<unix_ts>,v1=<hex_hmac_sha256>
-```
-
-Donde `v1 = HMAC-SHA256(secret = MAESTRO_APP_SECRET, message = "<unix_ts>.<raw_body>")`.
-
-La app **DEBE**:
-
-1. Leer el header.
-2. Verificar que `|now - t| ≤ 300` segundos (anti-replay).
-3. Recalcular el HMAC y comparar en **tiempo constante** (`crypto.timingSafeEqual` en Node, `hmac.compare_digest` en Python).
-4. Rechazar con `HTTP 401` si la firma no coincide.
-
-### 9.3 Idempotencia
-
-- Cada evento incluye `event_id` (UUID v4).
-- La app **DEBE** persistir `event_id` y rechazar duplicados con `HTTP 200` (acepta pero no reprocesa). El Maestro reintenta hasta 3 veces; sin idempotencia, el equipo de la app verá doble efecto.
+Esto NO es un permiso para implementar dual-mode (v1 + v2). La app es v4 y solo cumple el contrato v2.
 
 ---
 
-## 10. Proceso de validación CLI
+## 10. Migración v1 -> v2
 
-El comando `maestro-cli validate` ejecuta, en orden:
+Apps existentes que cumplen el contrato v1 deben migrar para operar bajo Maestro v2. Proceso:
 
-1. **Schema:** `maestro.yaml` existe en raíz y valida contra el JSON Schema.
-2. **Dockerfile USER:** instrucción `USER` presente, no-root, no UID 0 (en stage final si es multi-stage).
-3. **Health endpoint declarado:** `health.endpoint` presente, no vacío, comienza con `/`.
-4. **Recursos declarados:** `resources.memory` y `resources.cpu` presentes y dentro de tier coherente.
-5. **Secret-scan:** `gitleaks` sobre todo el historial de git.
-6. **Auth headers:** `auth.mode = header` y al menos los 3 headers mínimos declarados.
-7. **Puerto:** `requires.ports.app` coincide con un `EXPOSE` del Dockerfile.
-8. **Reservados:** ningún `env` colisiona con `MAESTRO_*`, `X_AUTH_*`, `DATABASE_URL`.
+1. PO ejecuta `/pm` en el repo de la app.
+2. Framework v4 detecta version desactualizada y propone migracion.
+3. Tras sync con upstream, se lanza `Agent(framework-migrator, opus)` que genera reporte de gaps.
+4. PO decide si abrir trabajo correctivo (issue/branch) para corregir el codigo.
 
-Si **cualquier** verificación falla, exit code ≠ 0 y el pipeline se detiene. La salida del CLI es JSON estructurado para ser leído por GitHub Actions y mostrado en el PR.
+Detalle en `framework-agentico/migration/v3-to-v4.md`.
 
 ---
 
-## 11. Anti-patrones que bloquean despliegue
+## 11. Glosario
 
-| Anti-patrón | Detección | Bloquea |
-|---|---|---|
-| Login propio (formulario, JWT, sesión cookie) | Code review + heurística CLI (busca rutas `/login`, `/register` no tras ForwardAuth). | Sí |
-| Tag `:latest` en `FROM` o como imagen final | Estática | Sí |
-| Ejecutar como root (`USER root` o sin USER) | Estática | Sí |
-| Secreto en `git log` | gitleaks | Sí |
-| Conectar a BD ajena (hostname `db-otro-tenant`) | Code review + tests | Sí |
-| Llamada directa a otra app (`http://app-otra-empresa:8080`) | Code review | Sí |
-| Bypass de filtrado por tenant (`raw query sin company_id`) | Code review + tests del SDK | Sí |
-| `rejectUnauthorized: false` en cliente HTTPS | grep estático | Sí en producción |
-| Loguear `X-Auth-*` completos | grep estático en logs estructurados | Warning + revisión |
-| `health.endpoint` que ejecuta `SELECT *` sobre tabla grande | Code review | Warning |
-| Migraciones que dropean columnas en mismo release que las introducen | Code review | Warning |
-
----
-
-## 12. Anexo A — Ejemplo end-to-end Node.js (Express + Postgres)
-
-### 12.1 `maestro.yaml`
-
-```yaml
-apiVersion: maestro.platform/v1
-kind: Application
-metadata:
-  name: inventory-manager
-  version: 1.4.2
-  description: Gestión de inventario y movimientos de stock con alertas configurables.
-requires:
-  database: postgres
-  ports:
-    app: 8080
-health:
-  endpoint: /healthz
-  timeout_seconds: 3
-auth:
-  mode: header
-  headers:
-    - X-Auth-User-Id
-    - X-Auth-User-Email
-    - X-Auth-Company-Id
-    - X-Auth-Roles
-resources:
-  memory: 512m
-  cpu: 0.5
-hooks:
-  on_user_added: /webhooks/maestro/user-added
-  on_company_license_revoked: /webhooks/maestro/license-revoked
-env:
-  - SMTP_HOST
-  - SMTP_PORT
-  - SMTP_USER
-  - SMTP_PASSWORD_REF
-```
-
-### 12.2 `Dockerfile`
-
-```dockerfile
-# syntax=docker/dockerfile:1.7
-
-FROM node:22.13-alpine@sha256:abc123... AS deps
-WORKDIR /app
-COPY package*.json ./
-RUN --mount=type=cache,target=/root/.npm \
-    npm ci --omit=dev
-
-FROM node:22.13-alpine@sha256:abc123... AS build
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci
-COPY . .
-RUN npm run build
-
-FROM node:22.13-alpine@sha256:abc123... AS runtime
-RUN addgroup -S app && adduser -S app -G app
-WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=build /app/dist ./dist
-COPY --from=build /app/package.json ./
-USER app
-EXPOSE 8080
-HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-  CMD wget -qO- http://127.0.0.1:8080/healthz || exit 1
-CMD ["node", "dist/server.js"]
-```
-
-### 12.3 Servidor mínimo con SDK
-
-```ts
-// src/server.ts
-import express from 'express';
-import { maestroAuth, maestroDb } from '@maestro/sdk-node';
-
-const app = express();
-app.use(express.json());
-
-app.get('/healthz', async (_req, res) => {
-  const ok = await maestroDb.ping();
-  res.status(ok ? 200 : 503).json({ status: ok ? 'ok' : 'degraded' });
-});
-
-app.use(maestroAuth());
-
-app.get('/items', async (req, res) => {
-  const items = await maestroDb.query(
-    'SELECT id, sku, name, qty FROM items',
-    { user: req.user }
-  );
-  res.json(items);
-});
-
-app.post('/webhooks/maestro/user-added', maestroAuth.webhook(), async (req, res) => {
-  await onUserAdded(req.body);
-  res.json({ ok: true });
-});
-
-app.listen(8080, () => console.log('listening :8080'));
-```
-
-### 12.4 Workflow CI/CD (`.github/workflows/deploy.yml`)
-
-```yaml
-name: deploy
-
-on:
-  push:
-    branches: [main]
-  pull_request:
-
-permissions:
-  contents: read
-  id-token: write
-  packages: write
-
-jobs:
-  validate:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
-      - uses: actions/setup-node@v4
-        with: { node-version: '22', cache: 'npm' }
-      - run: npm ci
-      - run: npm run lint
-      - run: npm test -- --ci
-      - run: npx -y @maestro/cli@latest validate
-      - uses: gitleaks/gitleaks-action@v2
-        env: { GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }} }
-
-  build-and-push:
-    needs: validate
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository }}:${{ github.sha }}
-            ghcr.io/${{ github.repository }}:1.4.2
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          provenance: true
-          sbom: true
-      - uses: aquasecurity/trivy-action@0.24.0
-        with:
-          image-ref: ghcr.io/${{ github.repository }}:${{ github.sha }}
-          severity: CRITICAL,HIGH
-          exit-code: '1'
-      - uses: sigstore/cosign-installer@v3
-      - run: cosign sign --yes ghcr.io/${{ github.repository }}@${{ steps.build.outputs.digest }}
-      - name: Register on Maestro
-        run: |
-          curl -fsSL -X POST "$MAESTRO_API_URL/api/v1/apps/register" \
-            -H "Authorization: Bearer $MAESTRO_REGISTRATION_TOKEN" \
-            -H "Content-Type: application/json" \
-            -d @- <<EOF
-          {
-            "name": "inventory-manager",
-            "version": "1.4.2",
-            "image": "ghcr.io/${{ github.repository }}@${{ steps.build.outputs.digest }}",
-            "commit": "${{ github.sha }}",
-            "contract_hash": "$(sha256sum maestro.yaml | cut -d' ' -f1)"
-          }
-          EOF
-        env:
-          MAESTRO_API_URL: ${{ secrets.MAESTRO_API_URL }}
-          MAESTRO_REGISTRATION_TOKEN: ${{ secrets.MAESTRO_REGISTRATION_TOKEN }}
-```
-
----
-
-## 13. Anexo B — Ejemplo end-to-end PHP/Laravel
-
-### 13.1 `maestro.yaml`
-
-```yaml
-apiVersion: maestro.platform/v1
-kind: Application
-metadata:
-  name: hr-dashboard
-  version: 0.9.0
-  description: Tablero de RRHH con KPIs y aprobaciones de tickets.
-requires:
-  database: mysql
-  ports:
-    app: 8080
-health:
-  endpoint: /up
-  timeout_seconds: 3
-auth:
-  mode: header
-  headers:
-    - X-Auth-User-Id
-    - X-Auth-User-Email
-    - X-Auth-Company-Id
-    - X-Auth-Roles
-    - X-Auth-Permissions
-resources:
-  memory: 512m
-  cpu: 0.5
-env:
-  - APP_ENV
-  - APP_KEY_REF
-  - LOG_CHANNEL
-```
-
-### 13.2 `Dockerfile` (PHP-FPM + Caddy)
-
-```dockerfile
-FROM composer:2 AS vendor
-WORKDIR /app
-COPY composer.json composer.lock ./
-RUN composer install --no-dev --no-interaction --no-progress --prefer-dist --optimize-autoloader
-
-FROM php:8.3-fpm-alpine AS runtime
-RUN apk add --no-cache caddy mysql-client \
- && docker-php-ext-install pdo_mysql opcache \
- && addgroup -S app && adduser -S app -G app
-WORKDIR /app
-COPY --from=vendor /app/vendor ./vendor
-COPY . .
-RUN chown -R app:app /app/storage /app/bootstrap/cache
-USER app
-EXPOSE 8080
-CMD ["sh", "-c", "php-fpm -D && caddy run --config /etc/caddy/Caddyfile --adapter caddyfile"]
-```
-
-### 13.3 Middleware con SDK Laravel
-
-```php
-// app/Http/Kernel.php
-protected $middlewareGroups = [
-    'web' => [
-        \Maestro\Sdk\Middleware\InjectAuthFromHeaders::class,
-        \Maestro\Sdk\Middleware\RequireTenantContext::class,
-        // ...
-    ],
-];
-
-// app/Models/Concerns/TenantAware.php (trait provisto por SDK)
-class Ticket extends Model
-{
-    use \Maestro\Sdk\Eloquent\TenantAware;
-    // El scope global agrega WHERE company_id = Auth::user()->companyId
-}
-```
-
----
-
-## 14. Glosario
-
-| Término | Definición |
+| Término | Definicion |
 |---|---|
 | **App huésped** | Aplicación de tercero o equipo interno alojada en Maestro Platform. |
-| **Instancia** | Combinación única de una app + una empresa + sus datos. Cada instancia tiene contenedor y BD propios. |
-| **Tenant / Empresa** | Cliente final identificado por `company_id`. Todo dato pertenece a un tenant. |
-| **Maestro** | Aplicación Laravel central que gestiona auth, provisionamiento, billing y orquestación. |
-| **Contrato (`maestro.yaml`)** | Archivo que la app declara para integrarse con la plataforma. |
-| **ForwardAuth** | Middleware de Traefik que valida el token con el Maestro antes de reenviar el request. |
-| **SDK oficial** | Librería provista por la plataforma para Node, Python, PHP-Laravel, Go. |
-| **Tier** | Nivel de recursos asignados (`micro`, `standard`, `professional`, `enterprise`). |
-| **Cold start** | Tiempo desde despertar una instancia dormida hasta que responde tráfico. |
+| **Maestro v2** | Plataforma orquestadora con contrato `maestro.platform/v2` (single-tenant fisico, registry + redirector). |
+| **Single-tenant fisico** | Un contenedor de aplicación = una empresa. La empresa esta implícita por contenedor; no hay `company_id`. |
+| **Auth propia** | La app emite, valida y revoca sus propios tokens. |
+| **Branding endpoint** | Endpoint autenticado que expone nombre y logos de la empresa para mostrar en el portal del Maestro. |
+| **Seeding** | Fase 05 del ciclo agéntico v4: crea el superadmin `admin@llyasoc.com` de forma idempotente. |
+| **Superadmin** | Usuario con todos los permisos definidos por la app. Email canonico: `admin@llyasoc.com`. |
+| **Contrato v2** | `maestro.platform/v2`. Reemplaza al v1. |
 
 ---
 
-## 15. Referencias normativas
+## 12. Referencias normativas
 
 | Documento | Rol |
 |---|---|
-| `PremisaWebMaestro/01-PREMISAS-Y-NO-NEGOCIABLES.md` | Constitución de la plataforma. Prevalece sobre este documento en caso de conflicto. |
-| `PremisaWebMaestro/04-INFRAESTRUCTURA-DOCKER.md` | Topología Docker, ciclo de vida de instancias, tiers. |
-| `PremisaWebMaestro/06-SDK-Y-CONTRATO.md` | Origen narrativo del contrato. Este documento es su versión normativa. |
-| `PremisaWebMaestro/08-CICD-Y-GOBERNANZA.md` | Pipelines, repos, despliegue blue-green. |
-| `PremisaWebMaestro/09-SEGURIDAD.md` | Modelo de amenazas, audit logs. |
-| `docs/CONVENCIONES_PLATAFORMA.md` | Naming, redes, puertos, vars de entorno. |
-| `docs/schemas/maestro.yaml.schema.json` | JSON Schema canónico (fuente de verdad de la validación). |
-| `docs/APP_HUESPED_BEST_PRACTICES.md` | Recomendaciones no normativas que complementan este documento. |
+| `framework-agentico/CHANGELOG.md` | Historial de cambios entre versiones del framework |
+| `framework-agentico/core/PRESET_WEB_MAESTRO.md` | Preset Web Maestro v4 (constraints por fase) |
+| `framework-agentico/phases/05-seeding.md` | Fase de seeding (incluye superadmin) |
+| `framework-agentico/migration/v3-to-v4.md` | Proceso de migración |
+| `framework-agentico/agents/presets/maestro-platform/PRESET.md` | Preset para construir la Web Maestro (lado servidor) |
+| `docs/CONVENCIONES_PLATAFORMA.md` | Naming, redes, puertos, vars de entorno |
+| `docs/APP_HUESPED_BEST_PRACTICES.md` | Recomendaciones no normativas |
 
 ---
 
-## 16. Historial de revisiones
+## 13. Historial de revisiones
 
 | Versión | Fecha | Cambio |
 |---|---|---|
-| 1.0.0 | 2026-04-28 | Versión inicial consolidada. Cubre contrato `maestro.platform/v1`. |
+| 2.0.0 | 2026-05-06 | Versión inicial. Cubre contrato `maestro.platform/v2` (single-tenant, auth propia, branding endpoint, seeding). Reemplaza a `APP_HUESPED_SPEC.md` v1. |

@@ -1,5 +1,15 @@
 # SDK y Contrato de Integración
 
+> ⚠️ **DEPRECADO** — Documento del framework v3 / contrato `maestro.platform/v1`.
+> Conservado como referencia historica. NO aplicar en proyectos nuevos.
+>
+> **Version vigente:** `PremisaWebMaestro/06-CONTRATO-MAESTRO-YAML.md` (constitucion del Maestro v4, redactada en Fase 3 del cleanup v4 con renombre). Mientras tanto, ver `docs/APP_HUESPED_SPEC.md` (contrato `maestro.platform/v2`).
+> **Razon de la deprecacion:** ver `framework-agentico/CHANGELOG.md` v4.0.
+>
+> **Cambio principal v3 -> v4:** apiVersion `maestro.platform/v1` -> `maestro.platform/v2`. `auth.mode: header` -> `auth.mode: own`. Nuevos campos `auth.login_path`, `branding.url`, `seeding.superadmin_email`. SDK opcional (no obligatorio).
+
+---
+
 ## Propósito de este documento
 
 Este documento especifica el contrato que toda aplicación debe cumplir para integrarse con Maestro Platform, los SDKs oficiales que la plataforma provee para diferentes lenguajes, las validaciones automáticas del CLI, y la estructura de repositorio esperada. Un agente de IA que genere scaffolding de nuevas aplicaciones, que implemente integraciones con la plataforma o que valide el cumplimiento del contrato debe usar este documento como referencia.

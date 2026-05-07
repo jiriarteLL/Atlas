@@ -1,5 +1,16 @@
 # Arquitectura Actual del Proyecto
-Generado: Tue Apr 14 11:14:23     2026
+
+> ⚠️ **DEPRECADO** — Snapshot historico del framework v3 (estado pre-cleanup v4).
+> Conservado como referencia historica. NO refleja el estado actual del repo.
+>
+> **Version vigente:** no aplica (es un snapshot puntual del 2026-04-14, sin reemplazo). Para la arquitectura actual ver `README.md`, `framework-agentico/`, `docs/APP_HUESPED_SPEC.md`, `docs/CONVENCIONES_PLATAFORMA.md`, `framework-agentico/agents/presets/maestro-platform/PRESET.md`.
+> **Razon de la deprecacion:** ver `framework-agentico/CHANGELOG.md` v4.0.
+>
+> **Contexto:** snapshot de la estructura de directorios al **2026-04-14**, anterior al cleanup del PR #8 (commit `ddc41fb`, 2026-05-07) que borro el codigo de la aplicacion Maestro v1 del repositorio template, y al bump del framework agentico v3 -> v4 (commit `9930d7b`, 2026-05-06). La mayoria de paths del listado de abajo ya **NO existen** en el repo actual.
+>
+> ---
+>
+> Generado: Tue Apr 14 11:14:23     2026
 
 ## Estructura de Directorios
 ```

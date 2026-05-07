@@ -1,181 +1,274 @@
-# Portal y Renderizado de Aplicaciones
+# Portal y Renderizado de Apps
+
+> **Versión:** v4 (framework agéntico v4 / contrato `maestro.platform/v2`)
+> **Última revisión:** 2026-05-07
+> **Estado:** vigente
+> **Reemplaza a:** `legacy/v3/PremisaWebMaestro/05-PORTAL-Y-RENDERIZADO.md` (modelo v1 con shell + iframes + postMessage).
+
+---
 
 ## Propósito de este documento
 
-Este documento describe cómo el portal Maestro renderiza las aplicaciones alojadas, el protocolo de comunicación entre el shell y los iframes, la seguridad del iframe, el manejo de estados de error, los principios de experiencia de usuario y los componentes del portal. Un agente de IA que implemente el frontend del portal o que necesite integrar una aplicación con el shell debe usar este documento como referencia.
+Este documento describe el portal de la **Web Maestro** v4: cómo renderiza el catálogo de apps disponibles para los admins, cómo gestiona el cambio de contexto entre empresas, cómo el click en una app abre la URL del deployment correspondiente en una pestaña nueva, y por qué se eliminaron iframes y postMessage del modelo v1. Un agente que implemente el frontend del portal o que necesite integrar visualmente el Maestro debe usar este documento como referencia.
 
 ---
 
-## Arquitectura del portal
+## Cambio fundamental respecto a v1
 
-El portal Maestro es una Single Page Application construida con React y Tailwind CSS que actúa como shell de composición. El shell provee la estructura visual permanente que incluye la barra superior, el sidebar de navegación y el área de contenido principal donde se renderizan las aplicaciones dentro de iframes.
+En v1 el portal era un shell React que:
 
-La decisión de usar iframes en lugar de micro-frontends con Module Federation o Web Components es deliberada y se basa en el requisito de agnosticismo tecnológico. Las aplicaciones alojadas pueden estar escritas en cualquier tecnología y no es viable ni deseable requerir que todas usen el mismo bundler o framework de frontend. Los iframes proporcionan aislamiento completo de CSS, JavaScript y DOM, lo que significa que una aplicación construida con Vue no puede interferir con otra construida con React ni con el shell del portal.
+- Renderizaba las apps huésped en **iframes**.
+- Transferia el token JWT del usuario al iframe vía **postMessage**.
+- Inyectaba **headers `X-Auth-*`** en el reverse proxy.
+- Manejaba la sesión del usuario centralmente.
 
----
+En v4 el portal:
 
-## Estrategias de renderizado
+- **NO usa iframes**.
+- **NO transfiere identidad** al click.
+- **Abre la URL del deployment en `target="_blank"`** (pestaña nueva).
+- Cada app huésped pide su login propio en la pestaña abierta.
 
-Existen tres estrategias de renderizado dependiendo del tipo de aplicación.
-
-### Aplicación con frontend propio
-
-Cuando la aplicación declara en su contrato maestro.yaml que tiene frontend propio con el campo has_frontend en verdadero, el portal carga la URL de la instancia directamente dentro de un iframe. La aplicación es responsable de renderizar su propia interfaz completa. El portal solo proporciona el shell que la rodea y el protocolo de comunicación para transferir la autenticación.
-
-La aplicación con frontend propio debe implementar un modo embebido que oculte su propia barra de navegación superior y su propio sistema de login si tuviera uno. Esto se activa cuando la aplicación detecta que está corriendo dentro del portal Maestro, lo cual puede determinar verificando si recibe el evento MAESTRO_AUTH a través de postMessage.
-
-### Aplicación solo API sin frontend
-
-Cuando la aplicación declara que no tiene frontend propio con el campo has_frontend en falso, el Maestro genera automáticamente una interfaz de usuario genérica basada en el schema de la API de la aplicación. Esta UI genérica se renderiza dentro del iframe y permite a los usuarios interactuar con los endpoints de la API a través de formularios auto-generados y tablas de resultados. Es similar a una interfaz tipo Swagger UI pero más refinada y orientada al usuario final en lugar de al desarrollador.
-
-Para que esta generación automática funcione, la aplicación debe exponer un endpoint de documentación de su API en formato OpenAPI o JSON Schema que el Maestro consulta durante el provisionamiento.
-
-### Aplicación con frontend embebible
-
-Algunas aplicaciones exponen un modo embebido explícito que adapta su interfaz al contexto del portal. En este modo, la aplicación oculta su propia navegación, usa un fondo transparente para integrarse visualmente con el shell, y utiliza el protocolo postMessage de forma más intensiva para sincronizar navegación y notificaciones con el portal.
+El portal del Maestro v4 es exclusivamente la **interfaz administrativa** del Maestro: gestiona empresas, applications, deployments, api_keys, webhook_secrets, audit log. No es la interfaz para los usuarios finales de las apps huésped.
 
 ---
 
-## Protocolo de comunicación postMessage
+## Audiencia del portal
 
-La comunicación entre el shell del portal y las aplicaciones dentro de los iframes utiliza el API estándar del navegador postMessage. Este API permite enviar mensajes entre ventanas de diferentes orígenes de forma segura.
+Solo **admins de la Web Maestro** se loguean al portal. Los usuarios finales de las apps huésped:
 
-Todos los mensajes siguen una estructura estandarizada. Cada mensaje es un objeto JSON con un campo type que identifica el tipo de evento y un campo payload que contiene los datos del evento. Adicionalmente, cada mensaje incluye un campo source que indica quién envía el mensaje, ya sea maestro-shell o el slug de la aplicación.
+- Reciben directamente la URL pública de su deployment (ej: `https://inventario-acme.miplataforma.com`).
+- Hacen login en esa URL con sus credenciales propias (gestionadas por la app).
+- Nunca pasan por el portal del Maestro.
 
-### Evento MAESTRO_AUTH
-
-Este evento fluye del shell hacia el iframe. Se envía cuando el iframe señala que está listo para recibir autenticación. El payload contiene tres campos: token que es el JWT temporal de treinta segundos para transferencia de autenticación, user que es un objeto con los datos básicos del usuario incluyendo id, name y email, y company que es un objeto con los datos de la empresa activa incluyendo id, slug y name.
-
-La aplicación que recibe este evento debe intercambiar el token temporal por un token de sesión de larga duración enviándolo al endpoint de validación del Maestro. No debe almacenar el token temporal ni reutilizarlo porque es de un solo uso y expira en treinta segundos.
-
-### Evento MAESTRO_READY
-
-Este evento fluye del iframe hacia el shell. La aplicación lo envía cuando ha terminado de cargar y está lista para recibir el evento MAESTRO_AUTH. El payload contiene dos campos: appId que es el slug de la aplicación y version que es la versión actual de la aplicación.
-
-El shell no envía el evento MAESTRO_AUTH hasta que no recibe MAESTRO_READY del iframe. Esto previene race conditions donde el shell envía la autenticación antes de que la aplicación esté lista para recibirla.
-
-### Evento MAESTRO_NAVIGATE
-
-Este evento fluye del iframe hacia el shell. La aplicación lo envía cuando el usuario navega dentro de la aplicación y quiere que la URL del navegador refleje esa navegación. El payload contiene dos campos: path que es la ruta interna de la aplicación como por ejemplo /items/42 y title que es el título de la página actual.
-
-El shell actualiza la URL del navegador y el breadcrumb para reflejar la navegación interna de la app sin recargar la página. Esto permite que el usuario pueda copiar la URL y compartirla, y que al pegarla en otro navegador, el portal cargue directamente en esa vista de la aplicación.
-
-### Evento MAESTRO_NOTIFY
-
-Este evento fluye del iframe hacia el shell. La aplicación lo envía cuando necesita mostrar una notificación al usuario a nivel del portal, fuera del iframe. El payload contiene tres campos: type que puede ser success, warning, error o info, message que es el texto de la notificación, y duration que es opcional y especifica cuántos milisegundos debe mostrarse la notificación antes de desaparecer automáticamente.
-
-### Evento MAESTRO_RESIZE
-
-Este evento fluye del iframe hacia el shell. La aplicación lo envía cuando su contenido cambia de altura y necesita que el iframe se ajuste. El payload contiene un campo height con la altura deseada en píxeles. El shell ajusta la altura del iframe para eliminar scrollbars internos y que la experiencia se sienta como si la aplicación fuera parte del portal.
-
-### Evento MAESTRO_LOGOUT
-
-Este evento fluye del shell hacia todos los iframes. Se envía cuando el usuario cierra sesión en el portal. Las aplicaciones que reciben este evento deben limpiar cualquier sesión interna, estado local o datos cacheados. No necesitan redirigir al login porque el shell se encarga de eso.
+Si la empresa quiere ofrecer a sus usuarios un "selector de apps", lo hace **dentro de cada app** (cada app puede mostrar un menú con links a las otras apps de la empresa, si la empresa lo configura). El portal del Maestro **NO** es el portal de los usuarios finales.
 
 ---
 
-## Seguridad del iframe
+## Stack del portal
 
-### Atributo sandbox
+El portal del Maestro es **stack-agnóstico** dentro de los límites generales del framework:
 
-Cada iframe tiene el atributo sandbox con permisos específicos. Los permisos habilitados son allow-scripts que permite ejecutar JavaScript dentro del iframe, allow-same-origin que permite que el iframe acceda a su propio origen para hacer requests a su backend, y allow-forms que permite enviar formularios. Los permisos no habilitados incluyen allow-top-navigation que prevendría que la aplicación navegue la ventana padre, allow-popups que prevendría que la aplicación abra popups, y allow-modals que prevendría que la aplicación muestre alerts o confirms nativos del navegador.
+- **Frontend recomendado**: React + TypeScript + Tailwise (consistencia visual con el resto del ecosistema).
+- **Frontend alternativo**: Vue 3, HTML+Tailwind directo, o cualquier framework que el equipo prefiera, siempre que se containerice y respete las convenciones (`docs/CONVENCIONES_PLATAFORMA.md`).
+- La premisa 4 (Agnosticismo tecnológico) aplica también al Maestro mismo.
 
-### Validación de origen en postMessage
-
-Todo handler de mensajes postMessage, tanto en el shell como en las aplicaciones, debe validar que el campo event.origin del mensaje coincide con el dominio esperado. El shell solo acepta mensajes de dominios que coincidan con subdominios registrados de la plataforma. Las aplicaciones solo aceptan mensajes del dominio del portal Maestro. Cualquier mensaje de un origen no reconocido se descarta silenciosamente.
-
-### Content Security Policy
-
-La configuración de Traefik incluye un header Content-Security-Policy que restringe qué orígenes pueden embeber las aplicaciones como iframes. Específicamente, la directiva frame-ancestors solo permite el dominio del portal Maestro, lo que significa que ningún sitio externo puede embeber las aplicaciones de la plataforma en sus propios iframes.
-
-### Token temporal de transferencia
-
-El token que se transfiere vía postMessage en el evento MAESTRO_AUTH tiene tres protecciones. Primera, tiene una duración de solo treinta segundos, lo que minimiza la ventana de vulnerabilidad si es interceptado. Segunda, es de un solo uso: una vez que la aplicación lo intercambia por un token de sesión, el token temporal se invalida y no puede usarse de nuevo. Tercera, está vinculado a una instancia específica; no puede usarse para acceder a otra instancia ni para obtener un token de sesión de otra aplicación.
+Los agentes con responsabilidades de UX/UI (`ux-designer`, `frontend-developer`) deben **presentar Tailwise como recomendación** y **respetar la decisión final del PO** (ver `framework-agentico/core/RULES.md` sección `plantilla_base`).
 
 ---
 
-## Componentes del portal
+## Funcionalidades del portal
 
-### Barra superior
+### Login
 
-La barra superior es el componente fijo en la parte superior de la ventana del navegador. Siempre está visible independientemente de qué aplicación esté cargada en el iframe. Contiene en su lado izquierdo el logotipo de Maestro Platform. En el centro muestra un breadcrumb que indica la empresa activa y la aplicación actual, por ejemplo "Empresa X > Inventario > Items". En su lado derecho muestra un ícono de notificaciones con badge que indica notificaciones no leídas, el avatar del usuario con su nombre, y un menú desplegable con opciones para ver perfil, cambiar contraseña y cerrar sesión.
+- Formulario en `/login` (path declarado en el `maestro.yaml` del propio Maestro).
+- POST `/api/v2/auth/login` con email + password.
+- Cookie `maestro_session` `HttpOnly + Secure + SameSite=Lax` o JWT en cookie/header (según implementación).
+- Audit log: `login.success` o `login.failure`.
+- Bloqueo tras 5 fallos consecutivos durante 15 min.
+- Detalle en `03-AUTENTICACION-Y-AUTORIZACION.md`.
 
-Si el usuario pertenece a múltiples empresas, la barra superior incluye un selector de empresa activa que puede ser un dropdown o un modal dependiendo del número de empresas. Al cambiar de empresa, todo el contexto se actualiza.
+### Dashboard ejecutivo
 
-### Sidebar de navegación
+Vista inicial post-login con resumen:
+- Total de empresas (`companies` activas).
+- Total de applications registradas.
+- Total de deployments por estado (healthy / degraded / suspended).
+- Hooks success rate de las últimas 24h.
+- Branding fetch success rate de las últimas 24h.
+- Backup status.
 
-El sidebar es un panel vertical en el lado izquierdo que muestra las aplicaciones disponibles para la empresa activa. Cada aplicación se muestra con su ícono, su nombre y un indicador de estado: un punto verde si la instancia está corriendo, un punto gris si está dormida, un punto amarillo si está degradada, y un punto rojo si está fallida.
+Solo lectura. Filtros por rango de tiempo.
 
-El sidebar incluye en su parte superior un campo de búsqueda rápida que filtra las aplicaciones por nombre. Debajo de la búsqueda, las aplicaciones se organizan en dos secciones: favoritos, que son las aplicaciones que el usuario marcó como favoritas, y todas las aplicaciones en orden alfabético.
+### Gestión de empresas (`/companies`)
 
-En dispositivos móviles, el sidebar se colapsa y se accede a través de un botón hamburguesa en la barra superior.
+- Lista paginada con filtros (`status`, búsqueda por `slug` o `name`).
+- Acciones por empresa (según permisos del admin):
+  - Ver detalle (deployments asociados, audit log filtrado).
+  - Crear nueva (`companies.create`).
+  - Editar (`companies.update`).
+  - Suspender/activar (`companies.suspend`).
+  - Soft-delete (`companies.delete`).
+- Cada acción genera audit log.
 
-### Área de contenido principal
+### Gestión de applications (`/applications`)
 
-El área de contenido principal ocupa todo el espacio restante después de la barra superior y el sidebar. Cuando no hay ninguna aplicación seleccionada, muestra una pantalla de bienvenida con el nombre del usuario, estadísticas de uso reciente y accesos directos a las aplicaciones más usadas.
+- Lista paginada de apps registradas.
+- Vista detalle: maestro.yaml registrado, hash, versiones históricas, deployments asociados.
+- Auto-registro: las apps llegan via `POST /api/v2/apps/register` desde su CI; los admins pueden ver pero no editar las metadata (la app es la fuente de verdad).
+- Acción `applications.deprecate` para marcar una app como deprecada (no se permiten nuevos deployments, los existentes siguen).
 
-Cuando hay una aplicación seleccionada, el área de contenido contiene el iframe que renderiza la aplicación. El iframe ocupa todo el ancho y todo el alto disponible, con ajuste dinámico de altura si la aplicación envía el evento MAESTRO_RESIZE.
+### Gestión de deployments (`/deployments`)
 
-### Pantalla de carga por cold start
+- Lista paginada de deployments con filtros (`status`, empresa, application).
+- Vista detalle: estado actual, URL pública, métricas recientes, health check history, branding cache, hooks log de las últimas 24h.
+- Acciones (según permisos):
+  - Crear (`deployments.create`): selecciona application + company; el motor de provisioning hace el resto.
+  - Suspender (`deployments.suspend`).
+  - Destruir (`deployments.destroy`): soft-destroy (BD preservada 90 días). Pide confirmación.
+  - Purgar (`deployments.purge`): solo si `destroyed_at + 90 days <= NOW()`. Pide doble confirmación + `superadmin` requerido.
+  - Restaurar (`deployments.restore`): si está `destroyed` y dentro de 90 días, levanta de nuevo el contenedor + BD desde backup.
+  - Rotar `MAESTRO_API_KEY` (`api_keys.rotate`).
+  - Rotar `MAESTRO_WEBHOOK_SECRET` (`webhook_secrets.rotate`).
+  - Forzar refresh de branding (`branding.refresh`).
+- **Click en la URL pública del deployment**: genera link `<a target="_blank" href="<app_url>">` que abre la app en pestaña nueva. **NO transfiere token**.
 
-Cuando el usuario selecciona una aplicación cuya instancia está dormida, el área de contenido muestra una pantalla de carga en lugar del iframe. Esta pantalla contiene una animación de carga sutil, el nombre e ícono de la aplicación, un mensaje que dice "Iniciando aplicación" seguido de puntos animados, un tiempo estimado basado en el histórico de cold starts de esa aplicación, y una barra de progreso indeterminada.
+### Branding viewer
 
-Cuando la instancia está lista, es decir cuando pasa su health check, la pantalla de carga se desvanece y el iframe se carga automáticamente.
+- Vista que muestra cómo se ve el deployment desde el portal: `company_name`, `logo_url`, `primary_color`, `favicon_url`.
+- Estado del fetch: ok / unauthorized / timeout / server_error.
+- Acción "Refresh now" (audit log).
 
-### Centro de notificaciones
+### Audit log viewer
 
-El centro de notificaciones es un panel deslizante que se abre al hacer click en el ícono de notificaciones de la barra superior. Muestra una lista cronológica de notificaciones que incluyen mensajes enviados por las aplicaciones a través del evento MAESTRO_NOTIFY, alertas del sistema como instancias caídas o licencias próximas a expirar, y mensajes administrativos.
+- Vista con filtros por `actor_user_id`, `action`, `resource_type`, `resource_id`, rango de fechas.
+- Solo lectura (audit log es inmutable).
+- Permite exportar a CSV/JSON para auditorías externas.
+- Permiso requerido: `audit_log.read`.
 
-Cada notificación se puede marcar como leída individualmente o se pueden marcar todas como leídas con un solo click.
+### Hooks log viewer
+
+- Vista con filtros por deployment, event_type, status (success / failed / retry / abandoned), rango de fechas.
+- Permite reintentar manualmente un hook fallido (`hooks.retry`, audit log).
+
+### Gestión de admins
+
+- Lista de admins (`admin_users`).
+- Crear admin con rol asignado (`admins.create`, requiere permisos del admin actor).
+- Cambiar password propia (cualquier admin puede cambiar su propia password).
+- Cambiar password de otro (`admins.password_reset`, requiere `superadmin`).
+- Asignar/revocar roles (`admins.roles.grant` / `admins.roles.revoke`).
+- Desactivar / reactivar (`admins.deactivate` / `admins.activate`).
+- Ver historial de logins (audit log filtrado).
+
+### Settings del Maestro
+
+- Vista de configuraciones globales:
+  - Frecuencia de health checks (default 30s).
+  - Frecuencia de fetch de branding (default 6h).
+  - Política de retención de backups (default 30 días, ampliable).
+  - Política de purge de deployments (default 90 días post-destroy).
+- Cambios audit logged.
 
 ---
 
-## Manejo de estados de error y edge cases
+## Click en una app: flujo detallado
 
-### Aplicación no responde
+> Esta sección detalla el flujo del No-negociable tres.
 
-Cuando el health check de una instancia falla y la instancia está en estado degradado, el portal muestra un banner sobre el iframe con el mensaje "La aplicación está experimentando problemas. Estamos trabajando para resolverlo." con un botón "Reintentar" que recarga el iframe. Si la instancia pasa a estado detenido, el iframe se reemplaza con una pantalla de error que explica que la aplicación no está disponible temporalmente y ofrece un botón para reiniciar la instancia si el usuario tiene permisos de administrador.
+```
+1. Admin del Maestro está en la vista detalle de un deployment.
+2. Ve el campo "URL pública": https://inventario-acme.miplataforma.com
+3. Hace click en el botón "Abrir app" (que es un <a target="_blank" href="<app_url>">).
+4. El navegador abre la URL en una pestaña nueva.
+5. La app huésped responde su página de login (auth.login_path, default /login).
+6. El admin (o el usuario final, según contexto) ingresa email + password.
+7. La app valida contra su tabla `users` propia.
+8. La app emite su propio token (cookie HttpOnly o JWT propio).
+9. La pestaña nueva opera completamente independiente del Maestro.
+```
 
-### Licencia expirada
+**Lo que el Maestro NO hace en este flujo**:
+- NO inyecta token al click.
+- NO modifica headers HTTP del request.
+- NO intercepta requests subsiguientes.
+- NO sabe si el usuario logró loguearse (la app no le reporta eso al Maestro).
 
-Las aplicaciones con licencia expirada aparecen en el sidebar con un badge que dice "Expirada" en color rojo. Al hacer click, en lugar de cargar el iframe, el portal muestra un mensaje explicativo que indica que la licencia de esa aplicación ha expirado y que el administrador de la empresa debe renovarla para continuar usándola. Se incluye un botón "Contactar administrador" que envía un email al owner de la empresa.
+**Lo que el Maestro SÍ hace**:
+- Audit log: `deployment.opened` con `actor_user_id` (admin), `resource_id` (deployment), `actor_ip`, `user_agent`.
+- (Opcional) Rate limiting: si un admin abre el mismo deployment muchas veces en poco tiempo, podría flagear como sospechoso.
 
-### Sin conexión a internet
+### Mensaje informativo previo (recomendado)
 
-Si el navegador del usuario pierde la conexión a internet, el portal muestra un banner persistente en la parte superior que dice "Sin conexión a internet. Las acciones se reanudarán cuando la conexión se restablezca." El iframe puede seguir mostrando contenido ya cargado pero no podrá hacer nuevos requests. Cuando la conexión se restablece, el banner desaparece y el portal intenta revalidar el token de sesión.
+Antes de abrir el link, el portal **PUEDE** mostrar un mensaje:
 
-### Token expirado durante uso
+> "Vas a abrir la app **<nombre>** de la empresa **<empresa>**. La app te pedirá login propio. ¿Continuar?"
 
-Si el token JWT expira mientras el usuario está usando una aplicación, el mecanismo de refresh automático intenta renovarlo en segundo plano. Si la renovación es exitosa, el usuario no nota nada. Si la renovación falla porque el refresh token también expiró, el portal muestra un modal que dice "Tu sesión ha expirado. Por favor, inicia sesión nuevamente." con un botón que redirige al formulario de login. La URL actual se preserva para que después del login el usuario vuelva exactamente a donde estaba.
-
-### Usuario sin aplicaciones asignadas
-
-Si un usuario inicia sesión pero no tiene ninguna aplicación asignada en su empresa activa, la pantalla de bienvenida muestra un mensaje que dice "No tienes aplicaciones asignadas. Contacta a tu administrador para solicitar acceso." con un ícono ilustrativo que transmite la situación sin ser alarmante.
+Esto reduce la confusión en admins acostumbrados al modelo v1 (donde el portal manejaba la sesión).
 
 ---
 
-## Principios de diseño de la experiencia de usuario
+## Por qué NO iframes en v4
 
-### Consistencia visual
+Razones técnicas que llevaron al cambio:
 
-El portal implementa un sistema de diseño con tokens de diseño compartidos incluyendo colores, tipografía, espaciados y radios de bordes. Las aplicaciones que adopten el design system opcional de la plataforma se verán visualmente integradas con el portal. Las aplicaciones que no lo adopten se ven como contenido embebido diferenciado pero no discordante.
+1. **Aislamiento de seguridad**: el modelo v1 con iframes + postMessage requería gestionar dos contextos de origen (portal + app) y mensajes entre ellos. Esto introducía complejidad y vectores de XSS.
+2. **Independencia operativa**: con iframes, si el portal fallaba, todas las apps quedaban inaccesibles. Con `target="_blank"`, las apps siguen funcionando aunque el portal esté caído.
+3. **Performance**: iframes anidados degradan UX en navegadores modernos.
+4. **Compliance**: GDPR y otras regulaciones se simplifican cuando los datos personales de los usuarios finales **nunca pasan por el portal del Maestro**.
+5. **Single-tenant físico**: cada deployment ya es un dominio separado (`<app>-<empresa>.<base>`). Tiene sentido tratarlo como una aplicación independiente, no como un componente del portal.
 
-### Zero friction login
+### Trade-off aceptado
 
-El usuario inicia sesión una sola vez y accede a todo. La transición entre aplicaciones es instantánea para aplicaciones que ya están corriendo. El usuario nunca ve un segundo formulario de login dentro de una aplicación.
+Pérdida: el usuario final (no admin) pierde la experiencia de "un solo portal con todas las apps".
 
-### Contexto siempre visible
+Mitigación: cada empresa puede construir su propio "selector de apps" dentro de una de sus apps (por ejemplo, la primera que loguean). El Maestro provee la lista de apps licenciadas vía endpoint `GET /api/v2/portal/my-apps` (autenticado con la api key del deployment), pero la decisión de cómo mostrarla queda en cada app.
 
-El usuario siempre sabe en qué empresa está trabajando, qué aplicación está viendo y quién es. Esta información está permanentemente visible en la barra superior y nunca es ocultada por el contenido de la aplicación.
+---
 
-### Feedback inmediato
+## Cold start del deployment
 
-El portal nunca muestra pantallas en blanco sin explicación. Cada estado de carga, error o transición tiene un indicador visual claro que explica qué está pasando y qué debe hacer el usuario si se requiere alguna acción de su parte.
+Cuando un admin destruyó (`destroyed`) un deployment y luego lo restaura:
+- El motor de provisioning levanta el contenedor desde la imagen registrada.
+- Restaura la BD desde backup (si aplica).
+- Espera health check.
+- Tiempo total objetivo: ≤ 60 segundos (medible vía métrica).
 
-### Responsive obligatorio
+Mientras el deployment está `provisioning` o `starting`, el portal muestra un estado visible ("Levantando..."). El click al botón "Abrir app" durante este estado abre una página intermedia del Maestro (`/portal/loading?deployment=<id>`) que polea el estado y redirige a la app cuando alcanza `healthy`.
 
-El portal funciona en desktop, tablet y móvil. En desktop, el sidebar está expandido permanentemente. En tablet, el sidebar se puede colapsar y expandir. En móvil, el sidebar se oculta completamente y se accede mediante el botón hamburguesa. Los iframes usan CSS responsive para adaptarse al ancho disponible.
+Cold start no aplica a deployments `healthy` (siempre están corriendo en v4; no hay deployments dormidos en v4 — los deployments destruidos se restauran explícitamente, no automáticamente).
 
-### Accesibilidad
+---
 
-El portal cumple con WCAG 2.1 nivel AA como mínimo. Esto significa contraste suficiente entre texto y fondo, navegación completa por teclado, compatibilidad con lectores de pantalla, etiquetas aria en todos los controles interactivos, y focus visible en elementos navegables por teclado.
+## Manejo de estados de error
+
+El portal muestra estados visibles cuando un deployment NO está disponible:
+
+| Estado | UX |
+|---|---|
+| `provisioning` / `starting` | Spinner + tiempo estimado + botón "Cancelar" |
+| `degraded` | Banner amarillo: "App con problemas, último health check fallido. Reintentando" |
+| `suspended` | Banner rojo: "App suspendida. Contactar admin" + razón |
+| `destroyed` (dentro de 90 días) | "App destruida el <fecha>. Restaurable hasta <fecha + 90 días>" + botón "Restaurar" |
+| `purged` | "App purgada. Datos no recuperables." |
+| Branding `unauthorized` | Marcar deployment con icono de alerta; admin debe verificar `MAESTRO_API_KEY` |
+
+Cada error logueado en audit log si genera acción del admin.
+
+---
+
+## Accesibilidad y responsive
+
+- WCAG 2.1 nivel AA mínimo.
+- Tema claro y oscuro.
+- Responsive: desktop (1280+), tablet (768+), mobile (320+).
+- Navegación por teclado completa.
+- Labels en formularios.
+- Contraste suficiente.
+
+---
+
+## I18n
+
+- Idioma default: español argentino (alineado con el equipo de operaciones del Maestro).
+- Soporte adicional: inglés (recomendado para futuros operadores externos).
+- Implementación con `i18next` o equivalente del stack.
+
+---
+
+## Referencias normativas
+
+- `01-PREMISAS-Y-NO-NEGOCIABLES.md` — premisas 1, 3, 4; no-negociable 3 (target="_blank").
+- `02-MODELO-DE-DATOS.md` — tablas que el portal lee/escribe.
+- `03-AUTENTICACION-Y-AUTORIZACION.md` — login + RBAC del portal.
+- `04-INFRAESTRUCTURA-DOCKER.md` — provisioning (lo que el portal dispara via `POST /api/v2/deployments`).
+- `09-SEGURIDAD.md` — CSP, HttpOnly cookies, CSRF protection.
+- `framework-agentico/core/RULES.md` sección `plantilla_base` — Tailwise preferido pero no obligatorio.
+
+---
+
+## Historial de revisiones
+
+| Versión | Fecha | Cambio |
+|---|---|---|
+| 4.0.0 | 2026-05-07 | Versión inicial v4. Rediseña el portal como interfaz puramente administrativa. Elimina iframes, postMessage, transferencia de tokens. Click en app → `<a target="_blank">`. Reemplaza al v1 (legacy en `legacy/v3/PremisaWebMaestro/05-PORTAL-Y-RENDERIZADO.md`). |

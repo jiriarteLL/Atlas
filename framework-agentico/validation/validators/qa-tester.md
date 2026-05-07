@@ -40,10 +40,22 @@ CHECKLIST DE QA:
    - Cada requisito funcional tiene al menos un test que lo valida
    - Los criterios de aceptacion del issue estan cubiertos
 
-4. WEB MAESTRO OBLIGATORIO:
-   - Test de middleware auth (401 sin headers, 200 con headers validos)
+4. WEB MAESTRO v4 — OBLIGATORIO:
+   - Test de login propio:
+     - POST /login con creds validas -> 200 + token/cookie
+     - POST /login con creds invalidas -> 401
+     - GET /api/protegido sin auth -> 401
+     - GET /api/protegido con auth valida -> 200
    - Test de health check (GET /health -> 200 sin auth)
-   - Test de aislamiento por company_id (un tenant no ve datos de otro)
+   - Test de /maestro/branding:
+     - Sin X-Maestro-Api-Key -> 401
+     - Con X-Maestro-Api-Key invalida -> 401
+     - Con X-Maestro-Api-Key valida -> 200 + JSON con company_name y logo_url
+   - Test de hooks (si aplica): sin X-Maestro-Webhook-Secret -> 401
+   - Test de seed idempotente: re-ejecutar el seed NO duplica admin@llyasoc.com
+   - Test que el superadmin tiene TODOS los permisos definidos por la app
+   - Test que admin@llyasoc.com puede loguearse via /login con SUPERADMIN_INITIAL_PASSWORD
+   - NO testear filtrado por company_id (no aplica en v4 single-tenant)
 
 5. TESTS DE REGRESION:
    - Los cambios no rompen tests existentes

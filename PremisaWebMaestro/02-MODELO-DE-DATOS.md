@@ -1,109 +1,395 @@
-# Modelo de Datos y Relaciones
+# Modelo de Datos de la Web Maestro
+
+> **Versión:** v4 (framework agéntico v4 / contrato `maestro.platform/v2`)
+> **Última revisión:** 2026-05-07
+> **Estado:** vigente
+> **Reemplaza a:** `legacy/v3/PremisaWebMaestro/02-MODELO-DE-DATOS.md` (modelo v1 con `users` global y multi-tenancy lógica).
+
+---
 
 ## Propósito de este documento
 
-Este documento define todas las entidades del sistema, sus atributos, las relaciones entre ellas, las reglas de integridad referencial y las restricciones de negocio que gobiernan cómo los datos se crean, modifican y eliminan. Un agente de IA que genere código de migraciones de base de datos, modelos de Eloquent, endpoints de API o lógica de negocio debe usar este documento como fuente de verdad para la estructura de datos.
+Este documento define todas las entidades persistentes en la base de datos de la **Web Maestro** (= Web Anfitriona = plataforma Maestro), sus atributos, las relaciones entre ellas, las reglas de integridad referencial y las restricciones de negocio. Un agente de IA que genere código de migraciones, modelos ORM, endpoints de API o lógica de negocio del Maestro debe usar este documento como fuente de verdad.
 
-La base de datos del Maestro utiliza PostgreSQL. Las bases de datos de las instancias de aplicación pueden ser PostgreSQL, MySQL o MongoDB según lo declare cada app en su contrato, pero la base de datos central del Maestro es PostgreSQL sin excepciones.
-
----
-
-## Entidades principales
-
-### Entidad companies
-
-La entidad companies representa a las organizaciones clientes que utilizan la plataforma. Cada company es un tenant aislado con sus propios usuarios, aplicaciones licenciadas e instancias.
-
-Los atributos de companies son los siguientes. El campo id es un UUID versión 4 generado automáticamente, es la clave primaria y nunca cambia después de la creación. El campo name es una cadena de texto de hasta doscientos cincuenta y cinco caracteres que almacena el nombre comercial de la empresa, es obligatorio y no necesita ser único porque dos empresas legales diferentes podrían tener el mismo nombre comercial. El campo slug es una cadena de texto alfanumérica en minúsculas con guiones, de hasta cien caracteres, que se usa para construir subdominios y URLs, es obligatorio, debe ser único en toda la tabla y no puede modificarse después de la creación porque hacerlo rompería todas las URLs de las instancias de esa empresa. El campo plan es una cadena de texto que indica el plan comercial contratado, los valores válidos son free, starter, professional y enterprise, es obligatorio y su valor por defecto es free. El campo logo_url es una cadena de texto opcional que contiene la URL del logotipo de la empresa, se usa en el portal para personalizar la experiencia del usuario. El campo is_active es un booleano que indica si la empresa está activa, su valor por defecto es verdadero, cuando se pone en falso todas las instancias de esa empresa pasan a estado detenido y sus usuarios pierden acceso. El campo settings es un campo JSON que almacena configuraciones específicas de la empresa como zona horaria preferida, idioma, políticas de contraseña personalizadas y configuraciones de notificaciones. El campo created_at es un timestamp con zona horaria que se establece automáticamente al crear el registro. El campo updated_at es un timestamp con zona horaria que se actualiza automáticamente en cada modificación. El campo deleted_at es un timestamp nullable que implementa soft delete; cuando tiene valor, la empresa se considera eliminada lógicamente pero sus datos persisten.
-
-### Entidad users
-
-La entidad users representa a las personas individuales que utilizan la plataforma. Un usuario puede pertenecer a múltiples empresas y tener roles diferentes en cada una.
-
-Los atributos de users son los siguientes. El campo id es un UUID versión 4, clave primaria. El campo name es una cadena de hasta doscientos cincuenta y cinco caracteres con el nombre completo del usuario, obligatorio. El campo email es una cadena de hasta doscientos cincuenta y cinco caracteres con el correo electrónico, obligatorio y único en toda la tabla; es el identificador principal para login. El campo password es una cadena que almacena el hash bcrypt de la contraseña, es nullable porque un usuario que solo usa Microsoft Auth puede no tener contraseña local. El campo microsoft_id es una cadena nullable que almacena el identificador único del usuario en Microsoft Entra ID, se usa para vincular la cuenta local con la autenticación de Microsoft; es único cuando tiene valor. El campo avatar_url es una cadena nullable con la URL de la foto de perfil. El campo is_active es un booleano con valor por defecto verdadero; cuando es falso, el usuario no puede iniciar sesión en ninguna empresa. El campo email_verified_at es un timestamp nullable que indica cuándo el usuario verificó su correo electrónico. El campo last_login_at es un timestamp nullable que se actualiza cada vez que el usuario inicia sesión exitosamente. El campo last_login_ip es una cadena nullable que almacena la dirección IP del último login exitoso. Los campos created_at, updated_at y deleted_at siguen el mismo patrón que en companies.
-
-### Entidad applications
-
-La entidad applications representa las aplicaciones disponibles en el catálogo de la plataforma. Esta entidad describe la aplicación como producto, no sus instancias desplegadas.
-
-Los atributos de applications son los siguientes. El campo id es un UUID versión 4, clave primaria. El campo name es una cadena de hasta doscientos cincuenta y cinco caracteres con el nombre visible de la aplicación, obligatorio. El campo slug es una cadena alfanumérica en minúsculas con guiones, obligatorio, único y no modificable después de la creación; se usa para construir las URLs de las instancias. El campo description es un texto largo que describe el propósito y funcionalidades de la aplicación. El campo docker_image es una cadena obligatoria que contiene la referencia completa a la imagen Docker en el registry, por ejemplo ghcr.io/org/inventory-app. El campo repo_url es una cadena obligatoria que contiene la URL del repositorio de GitHub de la aplicación. El campo has_frontend es un booleano obligatorio que indica si la aplicación tiene interfaz de usuario propia; si es falso, el portal genera una UI genérica basada en el schema de la API. El campo health_endpoint es una cadena obligatoria que contiene la ruta del endpoint de health check, usualmente /health. El campo config_schema es un campo JSON nullable que define el schema de configuración personalizable por tenant, permitiendo que cada empresa ajuste parámetros de la app según sus necesidades. El campo icon_url es una cadena nullable con la URL del ícono de la aplicación para el sidebar del portal. El campo current_version es una cadena que contiene la versión actual desplegada en formato semver. El campo is_published es un booleano que indica si la aplicación es visible en el catálogo para licenciamiento. Los campos created_at, updated_at y deleted_at siguen el patrón estándar.
-
-### Entidad app_instances
-
-La entidad app_instances representa las instancias vivas de aplicaciones desplegadas para tenants específicos. Cada registro es la materialización de una combinación empresa más aplicación con su propia infraestructura aislada.
-
-Los atributos de app_instances son los siguientes. El campo id es un UUID versión 4, clave primaria. El campo application_id es un UUID que referencia a applications, obligatorio, es clave foránea. El campo company_id es un UUID que referencia a companies, obligatorio, es clave foránea. La combinación de application_id y company_id debe ser única; no puede haber dos instancias de la misma aplicación para la misma empresa. El campo subdomain es una cadena generada automáticamente que resulta de concatenar el slug de la aplicación con el slug de la empresa, por ejemplo inventario-empresax; se usa para construir la URL completa de la instancia. El campo container_id es una cadena nullable que almacena el ID del contenedor Docker mientras está en ejecución. El campo status es una cadena obligatoria con los valores posibles PROVISIONING, STARTING, HEALTHY, RUNNING, DEGRADED, SUSPENDED, STOPPING, STOPPED, DESTROYED y FAILED. El campo port es un entero nullable que almacena el puerto interno asignado al contenedor. El campo db_name es una cadena que almacena el nombre de la base de datos creada para esta instancia. El campo db_credentials es un campo texto cifrado que almacena las credenciales de base de datos en formato JSON con los campos host, port, username, password y database_name. El campo env_vars es un campo texto cifrado que almacena variables de entorno adicionales en formato JSON. El campo deployed_version es una cadena que indica qué versión de la imagen Docker está desplegada actualmente. El campo last_health_check_at es un timestamp nullable con la fecha del último health check exitoso. El campo failed_health_checks es un entero con valor por defecto cero que cuenta los health checks fallidos consecutivos. Los campos created_at, updated_at y deleted_at siguen el patrón estándar.
+La base de datos del Maestro usa **PostgreSQL** (recomendación; cualquier RDBMS con soporte de triggers SQL, UUID nativo y JSONB es aceptable). Las bases de datos de los **deployments de apps huésped** son ajenas a este documento: cada app tiene su propio modelo, registrado en `docs/APP_HUESPED_SPEC.md` §3.
 
 ---
 
-## Tablas de relación
+## Cambios respecto a v1 (legacy)
 
-### Tabla company_user
+En v1 el Maestro tenía una tabla `users` global con todos los usuarios de todas las apps, además de tablas de `companies`, `applications` y pivots M-M (`company_user`, `application_company`, `application_user`). Las apps consumían estos datos via headers `X-Auth-*` inyectados.
 
-Esta tabla materializa la relación muchos a muchos entre empresas y usuarios. Un usuario puede pertenecer a múltiples empresas y una empresa puede tener múltiples usuarios.
+En v4 ese modelo desaparece:
 
-Los atributos de company_user son los siguientes. El campo id es un UUID versión 4, clave primaria. El campo company_id es un UUID que referencia a companies, obligatorio. El campo user_id es un UUID que referencia a users, obligatorio. La combinación de company_id y user_id debe ser única; un usuario no puede tener dos registros en la misma empresa. El campo role es una cadena obligatoria con los valores posibles owner, admin y member. Cada empresa debe tener al menos un owner. Un owner puede hacer todo incluyendo eliminar la empresa. Un admin puede gestionar usuarios y licencias pero no eliminar la empresa. Un member solo puede usar las aplicaciones licenciadas. El campo invited_at es un timestamp que indica cuándo se invitó al usuario a la empresa. El campo accepted_at es un timestamp nullable que indica cuándo el usuario aceptó la invitación; si es nulo, la invitación está pendiente y el usuario no puede acceder a los recursos de esa empresa. Los campos created_at y updated_at siguen el patrón estándar.
-
-### Tabla company_application
-
-Esta tabla materializa la relación muchos a muchos entre empresas y aplicaciones. Representa las licencias: qué aplicaciones tiene contratadas cada empresa.
-
-Los atributos de company_application son los siguientes. El campo id es un UUID versión 4, clave primaria. El campo company_id es un UUID que referencia a companies, obligatorio. El campo application_id es un UUID que referencia a applications, obligatorio. La combinación de company_id y application_id debe ser única. El campo license_status es una cadena obligatoria con los valores posibles active, expired, suspended y cancelled. Solo con status active la empresa puede usar la aplicación. El campo licensed_at es un timestamp que indica cuándo se activó la licencia. El campo expires_at es un timestamp nullable que indica cuándo expira la licencia; nulo significa licencia perpetua o sin fecha de expiración definida. El campo plan_tier es una cadena que indica el tier de recursos asignado a esta licencia, con valores posibles micro, standard, professional y enterprise. El campo custom_config es un campo JSON nullable que almacena configuración específica de esta empresa para esta aplicación, basada en el config_schema definido en la aplicación. Los campos created_at y updated_at siguen el patrón estándar.
-
-### Tabla application_user
-
-Esta tabla materializa la relación muchos a muchos entre aplicaciones y usuarios, pero siempre en el contexto de una empresa. Un usuario no tiene acceso a una aplicación de forma abstracta; tiene acceso a una aplicación dentro de una empresa específica.
-
-Los atributos de application_user son los siguientes. El campo id es un UUID versión 4, clave primaria. El campo application_id es un UUID que referencia a applications, obligatorio. El campo user_id es un UUID que referencia a users, obligatorio. El campo company_id es un UUID que referencia a companies, obligatorio. La combinación de application_id, user_id y company_id debe ser única. El campo role es una cadena que indica el rol del usuario dentro de la aplicación, con valores posibles como app_admin, editor, viewer u otros que la aplicación defina en su config_schema. El campo permissions es un campo JSON nullable que almacena permisos granulares específicos de la aplicación. El campo last_accessed_at es un timestamp nullable que se actualiza cada vez que el usuario accede a esta aplicación. Los campos created_at y updated_at siguen el patrón estándar.
+- **NO** existe tabla `users` global. Cada app huésped mantiene su propia tabla `users` en su BD dedicada.
+- **NO** existen pivots M-M de usuarios contra apps o empresas.
+- **SÍ** existen `admin_users`, `admin_roles`, `admin_permissions` con sus pivots — pero son **solo para los administradores de la Web Maestro misma**, no para los usuarios finales de las apps.
+- **SÍ** se introducen las tablas `deployments`, `api_keys`, `webhook_secrets` para gestionar el ciclo de vida del par app+empresa.
 
 ---
 
-## Tablas de soporte
+## Inventario de entidades
 
-### Tabla audit_logs
+### Entidades del catálogo (registry)
 
-Esta tabla almacena el log de auditoría inmutable. No acepta operaciones UPDATE ni DELETE.
+| Tabla | Propósito | Cardinalidad |
+|---|---|---|
+| `companies` | Empresas tenant que tienen acceso a la plataforma | N |
+| `applications` | Apps huésped registradas en el catálogo | N |
+| `deployments` | Instancias activas (un par app + empresa = un deployment) | N (default 1 por par) |
 
-Los atributos de audit_logs son los siguientes. El campo id es un UUID versión 4, clave primaria. El campo user_id es un UUID nullable que referencia al usuario que realizó la acción; es nullable porque algunas acciones son del sistema, no de un usuario. El campo action es una cadena obligatoria que describe la acción realizada, como company.created, user.invited, license.activated, instance.provisioned, instance.destroyed, config.changed. El campo entity_type es una cadena que indica el tipo de entidad afectada, como Company, User, Application, AppInstance. El campo entity_id es un UUID que identifica la entidad afectada. El campo data_before es un campo JSON nullable que contiene el estado de la entidad antes del cambio. El campo data_after es un campo JSON nullable que contiene el estado de la entidad después del cambio. El campo ip_address es una cadena que almacena la IP desde donde se realizó la acción. El campo user_agent es una cadena que almacena el user agent del navegador o cliente. El campo created_at es un timestamp que se establece automáticamente y nunca se modifica.
+### Entidades de secretos (cifrados con AES-256)
 
-### Tabla oauth_tokens
+| Tabla | Propósito | Cardinalidad |
+|---|---|---|
+| `api_keys` | `MAESTRO_API_KEY` por deployment, rotables | 1 activa por deployment |
+| `webhook_secrets` | `MAESTRO_WEBHOOK_SECRET` por deployment, rotables | 1 activa por deployment |
 
-Esta tabla es gestionada por Laravel Passport y almacena los tokens OAuth2 emitidos. No se documenta su estructura aquí porque es propiedad de Passport, pero es importante saber que existe y que es la fuente de verdad para las sesiones activas.
+### Entidades de identidad de admins del Maestro
 
-### Tabla app_versions
+> Estas tablas son **para administradores de la Web Maestro** (no para usuarios finales de las apps huésped). Cumplen las mismas reglas que cualquier app huésped según el preset `web-maestro`: bcrypt cost ≥ 12 o argon2id, audit log de auth, sin `company_id` (los admins son globales del Maestro).
 
-Esta tabla registra el historial de versiones de cada aplicación.
+| Tabla | Propósito |
+|---|---|
+| `admin_users` | Administradores del Maestro |
+| `admin_roles` | Roles de admin (ej: `superadmin`, `operator`, `viewer`) |
+| `admin_permissions` | Permisos granulares |
+| `admin_user_roles` | Pivot M-M users ↔ roles |
+| `admin_role_permissions` | Pivot M-M roles ↔ permissions |
 
-Los atributos de app_versions son los siguientes. El campo id es un UUID versión 4. El campo application_id es un UUID que referencia a applications. El campo version es una cadena con la versión en formato semver. El campo docker_image_tag es la referencia completa a la imagen Docker con su tag específico. El campo changelog es un texto que describe los cambios de esta versión. El campo released_at es un timestamp. El campo released_by es un UUID nullable que referencia al usuario que publicó la versión.
+### Entidades de auditoría e historia
+
+| Tabla | Propósito | Mutabilidad |
+|---|---|---|
+| `audit_log` | Toda acción administrativa | **INMUTABLE** (INSERT-only, triggers DB rechazan UPDATE/DELETE) |
+| `branding_cache` | Cache del consumo de `/maestro/branding` por deployment | Mutable (TTL configurable) |
+| `hooks_log` | Registro de hooks salientes y su outcome | INSERT-only |
+
+---
+
+## Esquema detallado
+
+> Notación: `PK` = Primary Key, `FK` = Foreign Key, `UNIQUE` = unique constraint, `NOT NULL` = obligatorio.
+
+### Tabla `companies`
+
+```sql
+companies (
+  id              UUID PK,
+  slug            VARCHAR(50) UNIQUE NOT NULL,    -- regex ^[a-z0-9][a-z0-9-]{2,49}[a-z0-9]$
+  name            VARCHAR(255) NOT NULL,
+  status          VARCHAR(20) NOT NULL,            -- enum: active | suspended
+  contact_email   VARCHAR(255),
+  notes           TEXT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  deleted_at      TIMESTAMPTZ                      -- soft delete
+)
+INDEX companies_slug_idx ON companies(slug)
+INDEX companies_status_idx ON companies(status) WHERE deleted_at IS NULL
+```
+
+**Reglas**:
+- `slug` es inmutable una vez creada la empresa (parte del naming de contenedores y redes Docker).
+- `status = "suspended"` impide provisionar nuevos deployments para esta empresa pero NO destruye los existentes.
+- `deleted_at` (soft delete) preserva la historia; los deployments de la empresa pasan a `destroyed`.
+
+### Tabla `applications`
+
+```sql
+applications (
+  id                  UUID PK,
+  slug                VARCHAR(50) UNIQUE NOT NULL,    -- regex ^[a-z0-9][a-z0-9-]{2,49}[a-z0-9]$
+  name                VARCHAR(255) NOT NULL,
+  description         TEXT,
+  current_version     VARCHAR(20) NOT NULL,            -- SemVer
+  maestro_yaml_hash   VARCHAR(64) NOT NULL,            -- SHA-256 del maestro.yaml registrado
+  default_image       VARCHAR(255),                    -- ej: ghcr.io/org/app:1.0.0
+  status              VARCHAR(20) NOT NULL,            -- enum: active | deprecated
+  registered_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  deleted_at          TIMESTAMPTZ
+)
+INDEX applications_slug_idx ON applications(slug)
+INDEX applications_status_idx ON applications(status) WHERE deleted_at IS NULL
+```
+
+**Reglas**:
+- Cada app se auto-registra desde su CI vía `POST /api/v2/apps/register` enviando su `maestro.yaml`.
+- El registro valida el `maestro.yaml` contra el JSON Schema v2 (ver `06-CONTRATO-MAESTRO-YAML.md`).
+- `current_version` se actualiza con cada nuevo registro; las versiones anteriores quedan en `applications_versions` (tabla histórica opcional, recomendada).
+
+### Tabla `deployments`
+
+```sql
+deployments (
+  id                  UUID PK,
+  application_id      UUID NOT NULL FK -> applications(id),
+  company_id          UUID NOT NULL FK -> companies(id),
+  container_name      VARCHAR(63) UNIQUE NOT NULL,     -- ej: app-inventario-acme
+  db_container_name   VARCHAR(63) UNIQUE,              -- ej: db-inventario-acme; NULL si requires.database = none
+  network_name        VARCHAR(63) UNIQUE NOT NULL,     -- ej: app-inventario-acme-net
+  app_url             VARCHAR(500) NOT NULL,           -- URL pública (target="_blank")
+  app_internal_port   INTEGER NOT NULL,                -- coincide con requires.ports.app
+  status              VARCHAR(20) NOT NULL,            -- enum: provisioning | starting | healthy | degraded | suspended | destroyed | purged
+  resources_memory    VARCHAR(10) NOT NULL,            -- enum: 256m | 512m | 1g | 2g | 4g
+  resources_cpu       NUMERIC(3,2) NOT NULL,           -- 0.25 - 4.00
+  image_ref           VARCHAR(500) NOT NULL,           -- ej: ghcr.io/org/app@sha256:...
+  provisioned_at      TIMESTAMPTZ,
+  destroyed_at        TIMESTAMPTZ,
+  purge_eligible_at   TIMESTAMPTZ,                     -- destroyed_at + 90 days
+  last_health_check_at TIMESTAMPTZ,
+  consecutive_health_failures INTEGER NOT NULL DEFAULT 0,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (application_id, company_id) WHERE status NOT IN ('destroyed', 'purged')
+)
+INDEX deployments_status_idx ON deployments(status)
+INDEX deployments_company_idx ON deployments(company_id)
+INDEX deployments_application_idx ON deployments(application_id)
+```
+
+**Reglas**:
+- **Constraint UNIQUE parcial**: solo puede existir UN deployment activo (`status NOT IN ('destroyed', 'purged')`) por par `(application_id, company_id)`. Esta es la traducción a SQL del no-negociable de single-tenant físico.
+- `purge_eligible_at = destroyed_at + 90 days`. Antes de esa fecha la BD del deployment NO se borra (ver no-negociable de retención de 90 días).
+- `consecutive_health_failures` se resetea a 0 cuando el health check responde 200; las acciones correctivas (restart, alerta, suspensión) son escalonadas por este contador.
+
+### Tabla `api_keys`
+
+```sql
+api_keys (
+  id              UUID PK,
+  deployment_id   UUID NOT NULL FK -> deployments(id),
+  key_hash        BYTEA NOT NULL,                    -- AES-256(MAESTRO_API_KEY) usando MAESTRO_ENCRYPTION_KEY
+  key_preview     VARCHAR(8) NOT NULL,                -- primeros 4 chars + "..." para identificación visual
+  status          VARCHAR(20) NOT NULL,                -- enum: active | rotated | revoked
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  rotated_at      TIMESTAMPTZ,
+  expires_at      TIMESTAMPTZ,                         -- recomendado: created_at + 90 days
+  UNIQUE (deployment_id, status) WHERE status = 'active'
+)
+INDEX api_keys_deployment_idx ON api_keys(deployment_id)
+```
+
+**Reglas**:
+- **Constraint UNIQUE parcial**: solo UNA api_key activa por deployment a la vez (durante rotación, la nueva entra como `active` y la vieja pasa a `rotated`).
+- `key_hash` cifrado con AES-256 usando la clave maestra `MAESTRO_ENCRYPTION_KEY` (ENV var del Maestro mismo). El descifrado solo ocurre al inyectar la key en el contenedor de la app.
+- Al rotar: se genera nueva key, se actualiza la ENV var `MAESTRO_API_KEY` en el contenedor del deployment (sin downtime), la vieja queda como `rotated` por 24h para grace period y luego pasa a `revoked`.
+- `key_preview` (ej: `f8a3...`) permite a los admins identificar la key sin exponerla.
+
+### Tabla `webhook_secrets`
+
+```sql
+webhook_secrets (
+  id              UUID PK,
+  deployment_id   UUID NOT NULL FK -> deployments(id),
+  secret_hash     BYTEA NOT NULL,                    -- AES-256(MAESTRO_WEBHOOK_SECRET)
+  secret_preview  VARCHAR(8) NOT NULL,
+  status          VARCHAR(20) NOT NULL,                -- enum: active | rotated | revoked
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  rotated_at      TIMESTAMPTZ,
+  UNIQUE (deployment_id, status) WHERE status = 'active'
+)
+INDEX webhook_secrets_deployment_idx ON webhook_secrets(deployment_id)
+```
+
+Mismas reglas que `api_keys` aplicadas a webhook secrets.
+
+### Tablas de auth de admins
+
+```sql
+admin_users (
+  id                  UUID PK,
+  email               VARCHAR(255) UNIQUE NOT NULL,
+  password_hash       VARCHAR(255) NOT NULL,           -- bcrypt cost >= 12 o argon2id
+  name                VARCHAR(255),
+  is_active           BOOLEAN NOT NULL DEFAULT TRUE,
+  last_login_at       TIMESTAMPTZ,
+  failed_login_count  INTEGER NOT NULL DEFAULT 0,
+  locked_until        TIMESTAMPTZ,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  deleted_at          TIMESTAMPTZ
+)
+INDEX admin_users_email_idx ON admin_users(email)
+
+admin_roles (
+  id           UUID PK,
+  slug         VARCHAR(50) UNIQUE NOT NULL,             -- ej: superadmin, operator, viewer
+  name         VARCHAR(100) NOT NULL,
+  description  TEXT,
+  is_system    BOOLEAN NOT NULL DEFAULT FALSE,          -- true para roles definidos por el sistema (no editables)
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+)
+
+admin_permissions (
+  id           UUID PK,
+  key          VARCHAR(100) UNIQUE NOT NULL,            -- ej: companies.create, deployments.destroy
+  description  TEXT,
+  group_name   VARCHAR(50)                              -- ej: companies, deployments, audit
+)
+
+admin_user_roles (
+  admin_user_id UUID NOT NULL FK -> admin_users(id),
+  admin_role_id UUID NOT NULL FK -> admin_roles(id),
+  granted_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  granted_by    UUID FK -> admin_users(id),
+  PRIMARY KEY (admin_user_id, admin_role_id)
+)
+
+admin_role_permissions (
+  admin_role_id        UUID NOT NULL FK -> admin_roles(id),
+  admin_permission_id  UUID NOT NULL FK -> admin_permissions(id),
+  PRIMARY KEY (admin_role_id, admin_permission_id)
+)
+```
+
+**Reglas**:
+- El rol `superadmin` es de sistema (`is_system = TRUE`), tiene TODOS los permisos definidos, no puede borrarse ni editarse.
+- El admin canónico `admin@llyasoc.com` se siembra en la fase 05-seeding del Maestro (idempotente), con rol `superadmin` y la password leída de la ENV var `SUPERADMIN_INITIAL_PASSWORD`.
+- Login con bcrypt/argon2; bloqueo por `failed_login_count >= 5` durante 15 minutos (`locked_until`).
+- Audit log obligatorio para login (success/failure), logout, cambios de password, cambios de roles.
+
+### Tabla `audit_log` (INMUTABLE)
+
+```sql
+audit_log (
+  id              UUID PK,
+  timestamp       TIMESTAMPTZ NOT NULL DEFAULT NOW(),    -- precision ms
+  actor_user_id   UUID FK -> admin_users(id),            -- NULL si la acción es del sistema (ej: cron)
+  actor_ip        INET,
+  user_agent      TEXT,
+  action          VARCHAR(100) NOT NULL,                  -- ej: company.create, deployment.destroy, api_key.rotate, login.success
+  resource_type   VARCHAR(50),
+  resource_id     UUID,
+  payload_before  JSONB,
+  payload_after   JSONB,
+  request_id      UUID                                    -- correlación con logs
+)
+INDEX audit_log_timestamp_idx ON audit_log(timestamp DESC)
+INDEX audit_log_actor_idx ON audit_log(actor_user_id, timestamp DESC)
+INDEX audit_log_resource_idx ON audit_log(resource_type, resource_id)
+INDEX audit_log_action_idx ON audit_log(action)
+```
+
+**Triggers de inmutabilidad** (PostgreSQL):
+
+```sql
+CREATE OR REPLACE FUNCTION audit_log_no_update_delete()
+RETURNS TRIGGER AS $$
+BEGIN
+  RAISE EXCEPTION 'audit_log is immutable; UPDATE and DELETE are not allowed';
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER audit_log_block_update BEFORE UPDATE ON audit_log
+  FOR EACH ROW EXECUTE FUNCTION audit_log_no_update_delete();
+
+CREATE TRIGGER audit_log_block_delete BEFORE DELETE ON audit_log
+  FOR EACH ROW EXECUTE FUNCTION audit_log_no_update_delete();
+```
+
+Cualquier `UPDATE` o `DELETE` sobre `audit_log` falla con error explícito. Esta es la implementación del No-negociable doce.
+
+### Tabla `branding_cache`
+
+```sql
+branding_cache (
+  deployment_id     UUID PK FK -> deployments(id),
+  company_name      VARCHAR(255) NOT NULL,
+  logo_url          VARCHAR(500) NOT NULL,
+  primary_color     VARCHAR(7),                          -- hex (opcional)
+  favicon_url       VARCHAR(500),                        -- opcional
+  fetched_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  ttl_expires_at    TIMESTAMPTZ NOT NULL,
+  fetch_status      VARCHAR(20) NOT NULL,                -- enum: ok | unauthorized | timeout | server_error
+  consecutive_failures INTEGER NOT NULL DEFAULT 0
+)
+INDEX branding_cache_ttl_idx ON branding_cache(ttl_expires_at)
+```
+
+**Reglas**:
+- TTL default: 6 horas (configurable). Antes del TTL, el portal lee del cache; tras el TTL, un job re-consume `/maestro/branding` de la app.
+- Tras 3 fallos consecutivos (`fetch_status != 'ok'`), el deployment se marca como `degraded` y se alerta al admin.
+- Endpoint `POST /api/v2/branding/{deployment_id}/refresh` permite forzar refresh manual (audit logged).
+
+### Tabla `hooks_log`
+
+```sql
+hooks_log (
+  id              UUID PK,
+  deployment_id   UUID NOT NULL FK -> deployments(id),
+  event_id        UUID NOT NULL,                          -- UUID v4 incluido en el body del hook
+  event_type      VARCHAR(50) NOT NULL,                   -- enum: on_user_added | on_user_removed | on_company_license_granted | on_company_license_revoked
+  attempt         INTEGER NOT NULL DEFAULT 1,             -- 1, 2, 3 con backoff exponencial
+  status          VARCHAR(20) NOT NULL,                   -- enum: success | failed | retry | abandoned
+  http_status     INTEGER,
+  response_body   TEXT,                                    -- truncado a 1KB; sin headers sensibles
+  triggered_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  responded_at    TIMESTAMPTZ
+)
+INDEX hooks_log_deployment_idx ON hooks_log(deployment_id, triggered_at DESC)
+INDEX hooks_log_event_idx ON hooks_log(event_id)
+INDEX hooks_log_status_idx ON hooks_log(status)
+```
+
+**Reglas**:
+- INSERT-only en la práctica (no se ejecutan UPDATE/DELETE en código), aunque sin trigger restrictivo (a diferencia de `audit_log`).
+- Cada `event_id` se respeta para idempotencia: la app debe deduplicar por `event_id`.
+
+---
+
+## Relaciones clave (resumen)
+
+```
+companies (1) ─── (N) deployments
+applications (1) ─── (N) deployments
+deployments (1) ─── (1) api_keys [active]
+deployments (1) ─── (1) webhook_secrets [active]
+deployments (1) ─── (1) branding_cache
+deployments (1) ─── (N) hooks_log
+admin_users (N) ──── (M) admin_roles ──── (M) admin_permissions
+admin_users (1) ─── (N) audit_log [actor]
+```
+
+NO hay relación entre `companies/applications/deployments` y `admin_users`: los admins son globales, no pertenecen a ninguna empresa específica. Tampoco hay relación con usuarios finales de las apps (esos viven en las BDs propias de cada deployment).
 
 ---
 
 ## Reglas de integridad y negocio
 
-### Regla de cascada de desactivación
+1. **Single deployment por par app+empresa activo**: la constraint `UNIQUE (application_id, company_id) WHERE status NOT IN ('destroyed', 'purged')` lo enforza a nivel BD.
+2. **Inmutabilidad del audit log**: triggers SQL bloquean UPDATE/DELETE.
+3. **Cifrado de secretos**: `api_keys.key_hash` y `webhook_secrets.secret_hash` se almacenan AES-256. La clave maestra `MAESTRO_ENCRYPTION_KEY` está en una ENV var del Maestro y NO en BD.
+4. **Soft delete con preservación**: `companies` y `applications` usan soft delete (`deleted_at`) para preservar referencias en audit log. `deployments` no usa soft delete; pasa por estados explícitos hasta `purged`.
+5. **Retención post-destrucción**: deployments destruidos preservan su BD durante 90 días (`purge_eligible_at`). El purgado requiere confirmación explícita del PO (registrada en audit log).
+6. **Consistencia de naming**: `deployments.container_name`, `deployments.db_container_name`, `deployments.network_name` siguen el patrón `<role>-<app_slug>-<company_slug>` con longitud total ≤ 63 chars (límite Linux hostname).
+7. **Persistencia entre versiones**: ninguna migración de schema borra datos sin confirmación del PO. Migraciones expand-then-contract para cambios destructivos. Ver `framework-agentico/core/RULES.md` sección `politica_de_persistencia_de_datos`.
 
-Cuando una empresa se desactiva, es decir cuando su campo is_active cambia a falso, todas sus instancias activas deben transicionar al estado STOPPED. Los usuarios de esa empresa pierden la capacidad de acceder a cualquier recurso de esa empresa, pero sus cuentas de usuario siguen existiendo y pueden seguir accediendo a otras empresas a las que pertenezcan. Los datos de las instancias no se eliminan; los volúmenes Docker y las bases de datos persisten para poder reactivar la empresa en el futuro.
+---
 
-### Regla de licencia expirada
+## Migraciones recomendadas
 
-Cuando el campo expires_at de un registro en company_application alcanza la fecha actual, el sistema debe cambiar automáticamente el campo license_status a expired. La instancia correspondiente, si existe, debe transicionar al estado SUSPENDED. En estado suspendido, los datos de la instancia persisten durante noventa días. Después de noventa días, la instancia es elegible para purgado, pero el purgado no es automático; requiere acción administrativa explícita.
+- Idempotentes: re-ejecutar una migración no rompe el estado.
+- Una migración por cambio lógico (no agrupar cambios no relacionados).
+- Migraciones reversibles donde sea posible (mediante migración inversa explícita), excepto cuando reverse-engineering perdería datos.
+- Antes de cada migración del schema del Maestro, backup completo de la BD del Maestro (ver no-negociable trece).
 
-### Regla de usuario multi-empresa
+---
 
-Cuando un usuario pertenece a múltiples empresas, el portal debe mostrar un selector de empresa activa. Al cambiar de empresa, todo el contexto cambia: las aplicaciones visibles en el sidebar, los permisos del usuario y la empresa incluida en el token JWT. El cambio de empresa activa genera un nuevo token JWT con el company_id actualizado.
+## Referencias normativas
 
-### Regla de eliminación lógica
+- `01-PREMISAS-Y-NO-NEGOCIABLES.md` — premisas y no-negociables que este modelo cumple.
+- `03-AUTENTICACION-Y-AUTORIZACION.md` — uso de las tablas `admin_*` para login propio del Maestro.
+- `04-INFRAESTRUCTURA-DOCKER.md` — uso de `deployments` por el motor de provisioning.
+- `06-CONTRATO-MAESTRO-YAML.md` — formato del `maestro.yaml` cuyo hash queda registrado en `applications`.
+- `09-SEGURIDAD.md` — cifrado AES-256 y manejo de secretos.
+- `framework-agentico/core/RULES.md` — sección `politica_de_persistencia_de_datos` (cambios destructivos requieren confirmación PO).
 
-Ninguna entidad se elimina físicamente de la base de datos. Todas las entidades principales usan soft delete a través del campo deleted_at. Cuando deleted_at tiene un valor, la entidad se considera eliminada y debe ser excluida de todas las consultas por defecto. Los modelos de Eloquent deben usar el trait SoftDeletes y todas las consultas deben incluir implícitamente la condición deleted_at IS NULL a menos que explícitamente se solicite incluir registros eliminados.
+---
 
-### Regla de unicidad de instancia
+## Historial de revisiones
 
-No puede existir más de una instancia activa de la misma aplicación para la misma empresa. La combinación application_id más company_id es única en la tabla app_instances excluyendo registros con status DESTROYED. Si una empresa quiere una nueva instancia de una aplicación que ya tuvo, primero debe destruirse la instancia anterior.
-
-### Regla de pertenencia transitiva para acceso a aplicaciones
-
-Un usuario solo puede tener un registro en application_user si cumple dos condiciones simultáneas: primero, el usuario debe tener un registro activo y aceptado en company_user para la empresa indicada; segundo, la empresa debe tener un registro con license_status active en company_application para la aplicación indicada. Si cualquiera de estas condiciones deja de cumplirse, el acceso del usuario a la aplicación se revoca automáticamente.
-
-### Regla de cifrado de campos sensibles
-
-Los campos db_credentials y env_vars en app_instances deben estar cifrados en reposo utilizando el cifrado simétrico de Laravel con la clave de aplicación. Estos campos nunca deben exponerse en respuestas de API ni en logs. Cuando se necesitan para provisionar una instancia, se descifran en memoria, se inyectan como variables de entorno en el contenedor y se descartan de la memoria.
+| Versión | Fecha | Cambio |
+|---|---|---|
+| 4.0.0 | 2026-05-07 | Versión inicial v4. Reescribe el modelo eliminando `users` global, multi-tenancy lógica, pivots de usuarios contra apps. Introduce `deployments`, `api_keys`, `webhook_secrets`, `branding_cache`, `hooks_log`, `admin_users` (auth propia del Maestro). Reemplaza al v1 (legacy en `legacy/v3/PremisaWebMaestro/02-MODELO-DE-DATOS.md`). |

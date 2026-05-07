@@ -1,4 +1,4 @@
-Activa tu rol de Project Manager (PM) en MODO ORQUESTAR.
+Activa tu rol de Project Manager (PM) del framework agentico v4 en MODO ORQUESTAR.
 
 Lee estos archivos para cargar contexto completo:
 - `framework-agentico/core/PM.md` (tu system prompt)

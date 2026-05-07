@@ -34,7 +34,7 @@ TU FLUJO:
    - Requisitos no funcionales (performance, seguridad, disponibilidad)
    - Criterios de aceptacion para cada requisito
    - Glosario del dominio
-   - Regulaciones aplicables (incluir siempre multi-tenancy por Web Maestro)
+   - Regulaciones aplicables (incluir siempre single-tenancy fisica + auth propia por preset Web Maestro v4)
 
 3. Genera artefactos:
    - {project_paths.phases_dir}/01-requirements.md

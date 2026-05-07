@@ -1,157 +1,353 @@
-# Infraestructura Docker y Ciclo de Vida de Instancias
+# Infraestructura Docker y Ciclo de Vida de Deployments
+
+> **Versión:** v4 (framework agéntico v4 / contrato `maestro.platform/v2`)
+> **Última revisión:** 2026-05-07
+> **Estado:** vigente
+> **Reemplaza a:** `legacy/v3/PremisaWebMaestro/04-INFRAESTRUCTURA-DOCKER.md` (modelo v1 con instancias multi-tenant lógicas + ForwardAuth).
+
+---
 
 ## Propósito de este documento
 
-Este documento describe la infraestructura Docker de Maestro Platform: la topología de redes, cómo se crean y destruyen las instancias, los estados del ciclo de vida, los mecanismos de aislamiento, los límites de recursos, las instancias dormidas y la estrategia de escalado progresivo. Un agente de IA que necesite implementar el motor de provisionamiento, configurar Traefik o gestionar contenedores debe usar este documento como referencia.
+Este documento describe la infraestructura Docker de la **Web Maestro** v4: la topología de redes, cómo se crean y destruyen los **deployments** (un deployment = una app huésped + una empresa = un contenedor + una BD), los estados del ciclo de vida, los mecanismos de aislamiento, los límites de recursos y la estrategia de provisioning. Un agente que implemente el motor de provisioning, configure Traefik o gestione contenedores debe usar este documento como referencia.
 
 ---
 
-## Topología de redes Docker
+## Cambio fundamental respecto a v1
 
-Existen dos tipos de redes Docker en la plataforma.
+En v1 el modelo era:
 
-### Red compartida: maestro-network
+- **Instancias** multi-tenant lógicas con `company_id` por fila.
+- **Traefik con middleware ForwardAuth** validando contra el Maestro y inyectando headers `X-Auth-*`.
+- Reverse-proxy con identidad inyectada hacia las apps.
+- Iframes en el portal para mostrar las apps.
 
-La red maestro-network es una red Docker bridge creada manualmente durante la instalación inicial de la plataforma. A esta red están conectados permanentemente los siguientes contenedores: Traefik que es el reverse proxy, el contenedor de la aplicación Laravel del Maestro, el contenedor de PostgreSQL del Maestro, el contenedor de Redis del Maestro, y el contenedor del queue worker del Maestro.
+En v4 el modelo es:
 
-Adicionalmente, cada contenedor de aplicación alojada tiene una interfaz de red conectada a maestro-network. Esta conexión es exclusivamente para que Traefik pueda enviarle tráfico. El contenedor de la app no inicia comunicaciones hacia otros componentes de maestro-network por su cuenta.
-
-La red maestro-network es el único punto de contacto entre la infraestructura del Maestro y las aplicaciones alojadas. Todo el tráfico que fluye por esta red está mediado por Traefik con ForwardAuth.
-
-### Redes privadas por instancia
-
-Cada instancia de aplicación tiene su propia red Docker bridge con un nombre que sigue el patrón net seguido de guión bajo, seguido del slug de la empresa, seguido de guión bajo, seguido del slug de la aplicación. Por ejemplo, net_empresax_inventario.
-
-A esta red privada están conectados únicamente dos contenedores: el contenedor de la aplicación y el contenedor de base de datos de esa instancia. Nadie más puede alcanzar estos contenedores a través de esta red. El contenedor de base de datos no tiene ninguna otra conexión de red, lo que significa que es completamente inaccesible desde fuera de su red privada.
-
-El contenedor de la aplicación tiene dos interfaces de red: una conectada a su red privada para comunicarse con su base de datos, y otra conectada a maestro-network para recibir tráfico de Traefik. Esta es la única forma de doble conexión que existe en la plataforma.
+- **Deployments** físicos: un contenedor de app + una BD dedicada por par app+empresa. Sin `company_id` en queries de las apps.
+- **Traefik solo termina TLS y enruta** (sin ForwardAuth, sin inyección de identidad).
+- Las apps se autentican por sí mismas; el Maestro solo abre URLs en `target="_blank"`.
+- Sin iframes.
 
 ---
 
-## Componentes del stack del Maestro
+## Topología general
 
-El Maestro se despliega como un conjunto de contenedores Docker gestionados por un archivo docker-compose. Los componentes son los siguientes.
+### Nivel host (VPS o cloud)
 
-Traefik es el reverse proxy que escucha en los puertos 80 y 443. Es responsable de la terminación TLS con certificados automáticos de Let's Encrypt, el ruteo dinámico basado en labels Docker que permite descubrir nuevas instancias automáticamente sin modificar configuración, la ejecución del middleware ForwardAuth contra el Maestro para validar tokens, el rate limiting por IP y por tenant para prevenir abuso, y la redirección automática de HTTP a HTTPS.
+```
+                     ┌──────────────────────────────────┐
+                     │       INTERNET (HTTPS 443)         │
+                     └─────────────┬────────────────────┘
+                                   │
+                          ┌────────▼────────┐
+                          │     Traefik      │
+                          │  (TLS, HSTS,     │
+                          │   rate limiting) │
+                          └────────┬────────┘
+                                   │
+            ┌──────────────────────┼──────────────────────┐
+            │                      │                      │
+   ┌────────▼────────┐    ┌────────▼────────┐    ┌────────▼────────┐
+   │   maestro-net   │    │ deployment-A-net │    │ deployment-B-net │
+   │                  │    │  (privada)       │    │  (privada)       │
+   │ ┌──────────────┐ │    │ ┌──────────────┐ │    │ ┌──────────────┐ │
+   │ │ maestro-api  │ │    │ │ app-X-acme   │ │    │ │ app-Y-zenith │ │
+   │ │ maestro-db   │ │    │ │ db-X-acme    │ │    │ │ db-Y-zenith  │ │
+   │ │ maestro-redis│ │    │ └──────────────┘ │    │ └──────────────┘ │
+   │ │   (opcional) │ │    │                  │    │                  │
+   │ └──────────────┘ │    │ Sin company_id   │    │ Sin company_id   │
+   └──────────────────┘    └──────────────────┘    └──────────────────┘
+```
 
-El contenedor Laravel del Maestro ejecuta la aplicación PHP con servidor Nginx y PHP-FPM. Sirve tanto el API REST como los assets estáticos del frontend React compilado. Escucha en un puerto interno que solo es accesible desde maestro-network.
+**Reglas**:
+- Solo Traefik bindea puertos del host (80, 443). Ningún otro contenedor expone puertos al exterior.
+- `maestro-net` es la red Docker compartida del **Maestro mismo** (api + db + redis opcional + observabilidad opcional).
+- Cada deployment tiene su **red Docker dedicada** (`app-<slug>-<empresa>-net`) donde solo conviven el contenedor de app y su BD.
+- Traefik está conectado a **todas** las redes (a `maestro-net` y a cada `deployment-*-net`) para poder enrutar tráfico hacia cada deployment. Pero esa conexión es solo de salida (Traefik → contenedor), nunca permite tráfico inverso entre redes.
 
-El contenedor PostgreSQL del Maestro ejecuta la base de datos principal de la plataforma. Almacena empresas, usuarios, aplicaciones, licencias, instancias, audit logs y todas las demás entidades del modelo de datos. Solo es accesible desde maestro-network.
+### Nivel Maestro (red `maestro-net`)
 
-El contenedor Redis del Maestro sirve como caché de tokens de autenticación, almacén de sesiones, broker de colas para jobs asíncronos y caché general. Solo es accesible desde maestro-network.
+Servicios:
+- `maestro-traefik` — reverse proxy + TLS termination + redirect HTTP→HTTPS + rate limiting + HSTS.
+- `maestro-api` — backend del Maestro (registry + admin + provisioner).
+- `maestro-db` — BD del Maestro (PostgreSQL recomendado).
+- `maestro-redis` (opcional) — cache de branding, rate limiting, sesiones de admins.
+- Observabilidad opcional: `obs-prometheus`, `obs-loki`, `obs-grafana`, `obs-promtail`. Pueden vivir en una red `obs-net` separada con bridge a `maestro-net`.
 
-El contenedor queue worker ejecuta Laravel Horizon o un worker de colas que procesa los jobs asíncronos. Estos jobs incluyen el provisionamiento y destrucción de instancias, la ejecución de health checks periódicos, el envío de notificaciones y la ejecución de backups. Este contenedor es idéntico al contenedor Laravel pero ejecuta el comando de queue worker en lugar del servidor web.
+### Nivel deployment (red `app-<slug>-<empresa>-net`)
 
----
+Servicios mínimos:
+- `app-<slug>-<empresa>` — contenedor de la app huésped.
+- `db-<slug>-<empresa>` — BD dedicada (si la app declara `requires.database != "none"`).
 
-## Ciclo de vida de una instancia
-
-Cada instancia de aplicación pasa por una serie de estados bien definidos. Las transiciones entre estados están controladas por el motor de orquestación del Maestro y no pueden forzarse manualmente excepto por un administrador con privilegios especiales.
-
-### Estado PROVISIONING
-
-Es el estado inicial cuando se crea una nueva instancia. El motor de orquestación ejecuta las siguientes acciones en orden. Primero, crea la red Docker privada para la instancia. Segundo, genera credenciales de base de datos únicas con al menos treinta y dos caracteres de entropía en la contraseña. Tercero, levanta el contenedor de base de datos dentro de la red privada con las credenciales generadas. Cuarto, espera a que la base de datos esté lista para aceptar conexiones. Quinto, ejecuta las migraciones iniciales de la aplicación si la app las define en su contrato. Sexto, genera las variables de entorno que la app necesita, incluyendo la URL de conexión a la base de datos, la URL del API del Maestro y el secreto de la app. Séptimo, levanta el contenedor de la aplicación con las variables de entorno inyectadas, los límites de recursos aplicados, las labels de Traefik configuradas y las dos interfaces de red conectadas. Si cualquier paso falla, la instancia transiciona al estado FAILED.
-
-### Estado STARTING
-
-La instancia está en este estado mientras el contenedor de la aplicación está arrancando y aún no ha pasado su primer health check exitoso. El motor de orquestación consulta el endpoint de health check cada cinco segundos. Si el health check responde exitosamente, la instancia transiciona a HEALTHY. Si no responde exitosamente después de sesenta segundos que es el timeout de arranque, la instancia transiciona a FAILED.
-
-### Estado HEALTHY
-
-La instancia pasó su primer health check y está lista para recibir tráfico. En este momento, Traefik comienza a rutear requests hacia el contenedor de la aplicación. La instancia transiciona inmediatamente a RUNNING.
-
-### Estado RUNNING
-
-Es el estado normal de operación. La instancia recibe tráfico, ejecuta su lógica de negocio y responde a requests. El motor de orquestación ejecuta health checks periódicos según el intervalo definido en el contrato, por defecto cada treinta segundos. Si el health check falla, el contador de health checks fallidos se incrementa. Si llega a tres, la instancia transiciona a DEGRADED. Si el health check vuelve a responder exitosamente, el contador se resetea a cero.
-
-### Estado DEGRADED
-
-La instancia ha fallado tres o más health checks consecutivos. El motor de orquestación intenta reiniciar el contenedor automáticamente. Si después del reinicio el health check responde exitosamente, la instancia vuelve a RUNNING. Si después de cinco health checks fallidos totales el problema persiste, se envía una notificación al administrador de la plataforma. Si se alcanzan diez health checks fallidos, la instancia transiciona a STOPPING y se marca como que requiere intervención manual.
-
-### Estado SUSPENDED
-
-La instancia ha sido suspendida, ya sea porque la licencia de la empresa expiró o porque un administrador la suspendió manualmente. El contenedor de la aplicación se detiene pero el contenedor de base de datos y los volúmenes persisten. La instancia no recibe tráfico. Puede transicionar de vuelta a STARTING si la licencia se renueva o si un administrador la reactiva. Los datos se preservan durante noventa días después de la suspensión, luego la instancia es elegible para purgado.
-
-### Estado STOPPING
-
-El motor de orquestación está deteniendo el contenedor de la aplicación. Envía una señal SIGTERM al proceso principal del contenedor y espera treinta segundos para un apagado limpio. Si el proceso no se detiene en treinta segundos, envía SIGKILL. La instancia transiciona a STOPPED cuando el contenedor se detiene exitosamente.
-
-### Estado STOPPED
-
-El contenedor de la aplicación está detenido pero todos los datos persisten: la base de datos sigue corriendo o sus volúmenes existen, las variables de entorno están almacenadas en el Maestro y la configuración de red existe. La instancia puede volver a STARTING en cualquier momento, que es exactamente lo que ocurre cuando una instancia dormida se reactiva.
-
-### Estado DESTROYED
-
-Los recursos de la instancia han sido liberados: la red Docker se eliminó y los contenedores se removieron. Sin embargo, los volúmenes de la base de datos se preservan durante el periodo de retención de noventa días. Después de ese periodo, los volúmenes se eliminan y la destrucción es irreversible. Este es un estado terminal; no se puede volver a ningún otro estado.
-
-### Estado FAILED
-
-Algo salió mal durante el provisionamiento o el arranque. El motor de orquestación registra el error detallado en los logs. Un administrador puede intentar el provisionamiento de nuevo, lo cual transiciona la instancia de vuelta a PROVISIONING.
+Si la app declara servicios adicionales (ej: workers, scheduler, redis propio), pueden agregarse a la misma red, siempre que estén declarados en su `docker-compose.yml` y respeten los límites de recursos del `maestro.yaml`.
 
 ---
 
-## Instancias dormidas
+## Provisioning de un deployment
 
-Para optimizar el uso de recursos en el VPS, la plataforma implementa un mecanismo de instancias dormidas. Una instancia dormida es una instancia en estado STOPPED cuyo contenedor de aplicación fue detenido automáticamente porque no recibió tráfico durante un período configurable, que por defecto es treinta minutos.
+### Flujo paso a paso
 
-### Cómo funciona el dormido
+Cuando un admin del Maestro ejecuta `POST /api/v2/deployments` con `{application_id, company_id}`:
 
-El motor de orquestación monitorea la última vez que cada instancia en estado RUNNING recibió un request. Esto se hace a través de los access logs de Traefik. Cuando una instancia no ha recibido ningún request durante el periodo de inactividad configurado, el motor envía un job asíncrono que transiciona la instancia a STOPPING y luego a STOPPED.
+1. **Validación**:
+   - Verificar que `applications.status = active` y `companies.status = active`.
+   - Verificar que NO existe ya un deployment activo para el par (constraint UNIQUE de la BD del Maestro).
+   - Validar que el `maestro.yaml` registrado en `applications` cumple el JSON Schema v2.
 
-### Cómo funciona el despertar
+2. **Reserva de recursos**:
+   - Generar nombres canónicos: `container_name = app-<app_slug>-<company_slug>`, `db_container_name = db-<app_slug>-<company_slug>`, `network_name = app-<app_slug>-<company_slug>-net` (≤ 63 chars cada uno).
+   - Generar credenciales aleatorias:
+     - DB password: ≥ 32 chars aleatorios.
+     - `MAESTRO_API_KEY`: ≥ 32 chars aleatorios.
+     - `MAESTRO_WEBHOOK_SECRET`: ≥ 32 chars aleatorios.
+   - Cifrar las tres últimas con AES-256 y persistir en `api_keys`, `webhook_secrets`.
 
-Cuando un usuario intenta acceder a una instancia dormida, Traefik recibe el request pero no tiene un contenedor activo al cual reenviarlo. En este punto, Traefik devuelve un código HTTP 503 que el portal intercepta. El portal muestra una pantalla de carga al usuario con un mensaje indicando que la aplicación se está iniciando y un tiempo estimado. Simultáneamente, el portal envía un request al API del Maestro para despertar la instancia.
+3. **Creación de red Docker**:
+   - `docker network create --driver bridge --internal=false <network_name>`.
+   - `--internal=false` permite que la red tenga acceso saliente a internet (para que la app pueda llamar a APIs externas).
+   - Conectar Traefik a la red para enrutar tráfico inbound.
 
-El Maestro recibe la solicitud de despertar, cambia el estado de la instancia a STARTING, levanta el contenedor de la aplicación y comienza a ejecutar health checks. Cuando el health check responde exitosamente, la instancia pasa a RUNNING y el portal automáticamente recarga el iframe para mostrar la aplicación.
+4. **Provisioning de la BD** (si aplica):
+   - `docker run -d --name <db_container_name> --network <network_name> --env-file ... <db_image>`.
+   - Esperar a que la BD esté lista (`pg_isready` o equivalente, max 60s).
+   - Crear database, usuario y password generados.
 
-El tiempo total de despertar, llamado cold start, depende de la complejidad de la aplicación y típicamente oscila entre cinco y quince segundos. Aplicaciones con imágenes Docker optimizadas y arranques rápidos pueden estar listas en menos de cinco segundos.
+5. **Provisioning del contenedor de la app**:
+   - Construir `DATABASE_URL` con las credenciales generadas.
+   - Inyectar ENV vars: `DATABASE_URL`, `MAESTRO_API_KEY`, `MAESTRO_WEBHOOK_SECRET`, `SUPERADMIN_INITIAL_PASSWORD` (generado o leído de un secret store), `JWT_SECRET` o `APP_KEY` (según stack), más las custom env vars declaradas en `maestro.yaml` `env:`.
+   - `docker run -d --name <container_name> --network <network_name> --memory <m> --cpus <c> --user <non-root> --security-opt no-new-privileges --restart unless-stopped --health-cmd "..." <image_ref>`.
+   - Exponer al exterior vía Traefik label: `traefik.http.routers.<name>.rule=Host("<app_slug>-<company_slug>.<base_domain>")`.
 
-### Exclusiones del dormido
+6. **Migrations + Seeding**:
+   - Ejecutar migraciones: `docker exec <container_name> <comando_migrations>` (según stack: `php artisan migrate`, `npm run migrate`, `python manage.py migrate`, etc.).
+   - Ejecutar seeder del superadmin (fase 05-seeding): `docker exec <container_name> <comando_seed>`.
+   - Validar exit codes; si fallan, deployment pasa a `provisioning_failed` y se alerta.
 
-Algunas instancias pueden configurarse como never_sleep en su registro de company_application, lo que significa que nunca se dormirán automáticamente. Esto es típico para aplicaciones críticas que deben estar siempre disponibles, como sistemas de monitoreo o aplicaciones de comunicación en tiempo real. Esta configuración tiene un costo adicional porque consume recursos permanentemente.
+7. **Validación final**:
+   - Esperar a que el health check responda 200 (max 60s, configurable).
+   - Marcar deployment como `healthy`.
+   - Iniciar job periódico de health checks y job de consumo de `/maestro/branding`.
+
+8. **Audit log**:
+   - Registrar `deployment.provision` con `actor_user_id`, `resource_id` (deployment.id), `payload_after` (estado del deployment).
+
+### Idempotencia
+
+El motor de provisioning es **idempotente**: si una llamada a `POST /api/v2/deployments` se reintenta (ej: por timeout en cliente), el motor verifica si el deployment ya está en estado `provisioning` o posterior y reanuda desde donde quedó, en lugar de crear uno nuevo.
+
+### Rollback en fallo
+
+Si cualquier paso falla:
+- Limpieza de recursos: detener y borrar contenedores creados, eliminar la red Docker.
+- Marcar deployment como `provisioning_failed`.
+- Audit log: `deployment.provision.failed` con detalle del error.
+- La BD del deployment, si llegó a crearse, se preserva 90 días (no-negociable de retención) salvo que el PO confirme purgado inmediato.
+
+---
+
+## Ciclo de vida del deployment
+
+### Máquina de estados
+
+```
+              ┌──────────────────────────────────────┐
+              │                                       │
+              │   ┌──────────┐                        │
+              │   │provisioning│ (recursos creandose)  │
+              │   └─────┬─────┘                        │
+              │         │                              │
+              │   ┌─────▼─────┐                        │
+              │   │  starting  │ (esperando health 200)│
+              │   └─────┬─────┘                        │
+              │         │                              │
+              │   ┌─────▼─────┐                        │
+              │   │   healthy  │◄──┐                   │
+              │   └─────┬─────┘   │                   │
+              │         │          │                   │
+              │   ┌─────▼─────┐   │                   │
+              │   │  degraded  │───┘ (recovery)        │
+              │   └─────┬─────┘                        │
+              │         │                              │
+              │   ┌─────▼─────┐                        │
+              │   │ suspended  │ (intervencion manual) │
+              │   └─────┬─────┘                        │
+              │         │                              │
+              │   ┌─────▼─────┐                        │
+              │   │ destroyed  │ (BD preservada 90 dias)│
+              │   └─────┬─────┘                        │
+              │         │ (>= 90 dias + confirmacion PO)│
+              │   ┌─────▼─────┐                        │
+              │   │   purged   │                        │
+              │   └───────────┘                        │
+              └──────────────────────────────────────┘
+```
+
+### Definición de cada estado
+
+| Estado | Definición | Quién lo cambia |
+|---|---|---|
+| `provisioning` | Recursos en creación (red, BD, contenedor) | Motor de provisioning |
+| `starting` | Contenedor levantado, esperando primer health check 200 | Worker de health |
+| `healthy` | Health check OK; tráfico activo | Worker de health |
+| `degraded` | Health check fallando (1-9 fallos consecutivos), o consumo de branding fallido tras 3 intentos | Worker de health |
+| `suspended` | Health check fallando ≥ 10 veces consecutivas, o suspensión manual por admin | Worker de health o admin |
+| `destroyed` | Contenedor y red eliminados; BD preservada por 90 días | Admin via `DELETE /api/v2/deployments/{id}` |
+| `purged` | BD eliminada (irrecuperable) | Admin con confirmación PO + audit log |
+
+### Acciones correctivas escalonadas
+
+Cuando el health check falla (HTTP ≠ 200 o timeout):
+
+| Fallos consecutivos | Acción |
+|---|---|
+| 1-2 | Loguear; no actuar |
+| 3 | Restart automático del contenedor (`docker restart`); reset del contador si el restart logra `healthy` |
+| 4-5 | Estado `degraded`; notificación al admin (email/Slack) |
+| 6-9 | Mantener `degraded`; intentar restart cada 5 min |
+| 10+ | Estado `suspended`; alerta crítica; intervención manual requerida |
+
+El contador `consecutive_health_failures` se resetea a 0 cuando el health check responde 200.
+
+### Transiciones permitidas
+
+- `provisioning` → `starting`: automática al terminar el provisioning.
+- `starting` → `healthy`: automática al primer health check 200.
+- `starting` → `provisioning_failed`: si el health check no responde 200 en 60s.
+- `healthy` ↔ `degraded`: por contador de health checks.
+- `degraded` → `suspended`: por umbral de fallos.
+- `suspended` → `healthy`: solo manual (admin retira la suspensión y el primer health check responde 200).
+- `healthy/degraded/suspended` → `destroyed`: solo manual (admin via API + audit log).
+- `destroyed` → `purged`: solo después de 90 días + confirmación PO + audit log.
+- `destroyed` → `healthy`: posible **restauración** desde backup dentro de los 90 días, con audit log.
+
+Las transiciones no permitidas se rechazan con `HTTP 422`.
+
+---
+
+## Aislamiento entre deployments
+
+### Aislamiento de red
+
+- Cada deployment tiene su propia red Docker `bridge`.
+- Los contenedores de un deployment **NO** pueden hacer ping ni resolver DNS de los contenedores de otro deployment.
+- Solo Traefik puede enrutar tráfico desde el exterior hacia un deployment, y solo en la dirección inbound.
+- **NO** existe red compartida entre deployments. Si dos apps de la misma empresa necesitan intercambiar datos, lo hacen vía **API Gateway del Maestro** (mediado por el Maestro, con audit log).
+
+### Aislamiento de datos
+
+- Cada deployment tiene su propia BD con credenciales únicas.
+- Las credenciales **NO** se comparten ni con el Maestro ni con otros deployments.
+- Compartir BD entre deployments es arquitectónicamente imposible.
+
+### Aislamiento de privilegios
+
+- Contenedores no-root (`USER` no-root en Dockerfile).
+- `--security-opt=no-new-privileges` (impide escalada a root vía setuid).
+- Volúmenes montados solo en paths específicos (`/app/storage` típicamente), nunca el filesystem del host.
+- **Prohibido** montar `/var/run/docker.sock` en contenedores de apps huésped (eso permitiría a la app controlar el daemon Docker).
+- **Prohibido** `--privileged`.
+- **Prohibido** `--network=host`.
 
 ---
 
 ## Límites de recursos
 
-Cada instancia opera con límites estrictos de CPU y memoria que se aplican mediante las flags de Docker al crear el contenedor. Estos límites están organizados en tiers.
+### Memoria
 
-### Tier micro
+Tiers permitidos: `256m`, `512m`, `1g`, `2g`, `4g`. El motor de provisioning aplica `--memory <valor>` al `docker run`. Un contenedor que excede el límite es matado por el OOM Killer del kernel; el restart automático lo reintenta.
 
-El tier micro asigna un cuarto de core de CPU y doscientos cincuenta y seis megabytes de memoria RAM. El almacenamiento máximo para la base de datos es de un gigabyte. Este tier es adecuado para aplicaciones livianas como APIs simples, herramientas internas pequeñas o dashboards que consultan datos de fuentes externas.
+### CPU
 
-### Tier standard
+Permitido: `0.25` a `4.0` cores en incrementos de `0.01`. Aplicado vía `--cpus <valor>`. Excesos son throttled por el scheduler.
 
-El tier standard asigna medio core de CPU y quinientos doce megabytes de memoria RAM. El almacenamiento máximo para la base de datos es de cinco gigabytes. Este tier es adecuado para la mayoría de aplicaciones típicas con bases de datos moderadas y tráfico normal.
+### Disco
 
-### Tier professional
+Volumen para datos persistentes:
+- `<deployment_name>-storage` para archivos de la app (uploads, cache, etc.).
+- `<deployment_name>-db-data` para datos de la BD.
 
-El tier professional asigna un core de CPU y un gigabyte de memoria RAM. El almacenamiento máximo para la base de datos es de veinte gigabytes. Este tier es adecuado para aplicaciones con alta carga, grandes volúmenes de datos o procesamiento intensivo.
+Los volúmenes son persistentes a través de restarts del contenedor. Se preservan junto con la BD durante los 90 días post-destroy.
 
-### Tier enterprise
+### Red
 
-El tier enterprise asigna dos cores de CPU y dos gigabytes de memoria RAM. El almacenamiento máximo para la base de datos es de cincuenta gigabytes. Este tier es adecuado para aplicaciones críticas con requerimientos elevados de rendimiento y capacidad.
+Sin límite de bandwidth por defecto, pero rate limiting global aplicado por Traefik (default 100 req/min/IP, configurable por endpoint).
 
 ---
 
-## Estrategia de escalado progresivo
+## Naming canónico
 
-La plataforma está diseñada para escalar en fases según la demanda crezca.
+| Recurso | Patrón | Ejemplo | Restricciones |
+|---|---|---|---|
+| Contenedor de app | `app-<slug>-<empresa>` | `app-inventario-acme` | ≤ 63 chars |
+| Contenedor de BD | `db-<slug>-<empresa>` | `db-inventario-acme` | ≤ 63 chars |
+| Red Docker | `app-<slug>-<empresa>-net` | `app-inventario-acme-net` | ≤ 63 chars |
+| Volumen storage | `<container>-storage` | `app-inventario-acme-storage` | — |
+| Volumen DB data | `<container>-db-data` | `app-inventario-acme-db-data` | — |
 
-### Fase uno: un solo VPS
+`slug` y `empresa` cumplen regex `^[a-z0-9][a-z0-9-]{2,49}[a-z0-9]$` (mismo regex que el `slug` en `maestro.yaml`).
 
-La fase actual. Toda la plataforma corre en un único VPS en Azure con Docker Engine directo. La capacidad es de cinco a veinte instancias simultáneas dependiendo de la RAM del VPS. Las instancias dormidas son el mecanismo principal de optimización. Esta fase es adecuada para los primeros meses de operación.
+Detalle adicional en `docs/CONVENCIONES_PLATAFORMA.md`.
 
-### Fase dos: múltiples VPS con Docker Swarm
+---
 
-Cuando la demanda supera la capacidad de un solo VPS, se agregan nodos adicionales y se migra a Docker Swarm para orquestar contenedores a través de múltiples máquinas. Traefik soporta Docker Swarm nativamente. La capacidad sube a veinte a cien instancias. Esta fase requiere mínimos cambios en el código del Maestro porque Docker Swarm es compatible con las mismas APIs de Docker.
+## Imágenes Docker
 
-### Fase tres: Kubernetes en Azure AKS
+### De la Web Maestro
 
-Cuando la complejidad operativa de Docker Swarm se vuelve un cuello de botella, se migra a Azure Kubernetes Service. Cada aplicación se empaqueta como un Helm chart. Traefik se reemplaza por el Ingress Controller de Kubernetes o se mantiene como Ingress provider. La capacidad sube a cien a quinientas instancias. Esta fase requiere cambios significativos en el motor de provisionamiento pero no en las aplicaciones alojadas ni en el contrato maestro.yaml.
+- Construidas en CI del repo del Maestro.
+- Multi-stage build, non-root, `HEALTHCHECK`.
+- Publicadas en registry privado (ej: `ghcr.io/<org>/maestro-api:<semver>`).
+- Tag inmutable (no se reescriben). Para rollback se usa el digest `@sha256:...`.
 
-### Fase cuatro: multi-región
+### De las apps huésped
 
-Cuando se necesita servir a clientes en diferentes regiones geográficas con baja latencia, se despliegan clusters de Kubernetes en múltiples regiones de Azure con bases de datos geo-replicadas y un CDN global. Esta fase es de largo plazo y requiere un rediseño parcial del motor de orquestación.
+- Construidas en CI del fork de cada app.
+- Validación obligatoria (vía CI):
+  - `Dockerfile` con `USER` no-root (estática).
+  - `EXPOSE` coincide con `requires.ports.app` del `maestro.yaml`.
+  - Imagen ≤ 500 MB comprimida (warning a 350 MB).
+  - Sin secretos, claves privadas ni `.env` en la imagen.
+  - Scan de vulnerabilidades (trivy o equivalente) sin CRITICAL/HIGH.
+  - Firma con cosign (recomendado).
+- Publicadas en registry de la app (ej: `ghcr.io/<owner>/<app_slug>:<sha>` o `:<semver>`).
+- Tag `:latest` **PROHIBIDO** en producción.
 
-Lo importante es que las aplicaciones alojadas no necesitan cambiar en ninguna de estas fases. El contrato maestro.yaml es el mismo. Los headers de autenticación son los mismos. Los SDKs funcionan igual. Toda la complejidad de la migración es responsabilidad del equipo de plataforma, no de los equipos de desarrollo de las aplicaciones.
+---
+
+## Backup automatizado
+
+Como cumplimiento del No-negociable trece:
+
+- Job `cron` corre diariamente entre 02:00-04:00 hora del servidor.
+- Para cada deployment activo: `pg_dump` (o equivalente según motor) de la BD del deployment.
+- Para la BD del Maestro: `pg_dump` siempre.
+- Cifrado con AES-256 antes de subir.
+- Almacenamiento externo al VPS: Azure Blob, S3, GCS u otro. Configurable.
+- Retención mínima: 30 días. NO reducible.
+- BD del Maestro: backup adicional **antes de cada migración de schema**.
+- Restauración: documentada en `docs/runbook.md` (lo genera la fase 06-operations).
+
+Audit log: cada backup se registra (`backup.success` o `backup.failed`) con tamaño, duración y destination.
+
+---
+
+## Referencias normativas
+
+- `01-PREMISAS-Y-NO-NEGOCIABLES.md` — premisas 2 (single-tenant), 6 (límites de recursos), 7 (mínimo privilegio); no-negociables 2, 7, 9, 10, 13.
+- `02-MODELO-DE-DATOS.md` — tabla `deployments` y sus estados.
+- `03-AUTENTICACION-Y-AUTORIZACION.md` — generación e inyección de `MAESTRO_API_KEY` y `MAESTRO_WEBHOOK_SECRET` en provisioning.
+- `06-CONTRATO-MAESTRO-YAML.md` — campos `requires`, `resources`, `health` que el motor de provisioning consume.
+- `08-CICD-Y-GOBERNANZA.md` — pipelines que producen las imágenes Docker.
+- `09-SEGURIDAD.md` — TLS, no-new-privileges, scan de imágenes.
+- `10-OBSERVABILIDAD.md` — métricas de provisioning, health, recursos.
+- `docs/CONVENCIONES_PLATAFORMA.md` — naming canónico (lado app huésped).
+
+---
+
+## Historial de revisiones
+
+| Versión | Fecha | Cambio |
+|---|---|---|
+| 4.0.0 | 2026-05-07 | Versión inicial v4. Rediseña la infraestructura para single-tenant físico (un deployment = un par app+empresa con red y BD propias). Elimina ForwardAuth de Traefik. Reemplaza al v1 (legacy en `legacy/v3/PremisaWebMaestro/04-INFRAESTRUCTURA-DOCKER.md`). |

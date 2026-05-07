@@ -1,0 +1,243 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://maestro.llyasoc.com/schemas/maestro.yaml.schema.v2.json",
+  "title": "maestro.yaml v2 — Contrato de Aplicacion Huesped (framework agentico v4)",
+  "description": "Contrato obligatorio que toda app huesped v4 debe incluir en la raiz de su repo. Validado por maestro-cli (cuando se publique la version v2) y por el endpoint de registro del Maestro v2.",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "requires", "health", "auth", "branding", "seeding", "resources"],
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {
+      "type": "string",
+      "enum": ["maestro.platform/v2"],
+      "description": "Version del contrato. v2 reemplaza a v1. Apps con apiVersion v1 deben migrar (ver framework-agentico/migration/v3-to-v4.md)."
+    },
+    "kind": {
+      "type": "string",
+      "enum": ["Application"],
+      "description": "Tipo de recurso declarado."
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["name", "version"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]{2,49}$",
+          "description": "Slug unico; 3-50 chars, lowercase, numeros y guiones. Inmutable una vez registrado."
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$",
+          "description": "Version SemVer (X.Y.Z) sin prefijo v ni sufijo."
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 500
+        }
+      }
+    },
+    "requires": {
+      "type": "object",
+      "required": ["database", "ports"],
+      "additionalProperties": false,
+      "properties": {
+        "database": {
+          "type": "string",
+          "enum": ["postgres", "mysql", "mongo", "sqlite", "none"],
+          "description": "Motor de BD que el Maestro v2 provisionara dedicadamente. 'none' si la app no requiere BD."
+        },
+        "ports": {
+          "type": "object",
+          "required": ["app"],
+          "additionalProperties": false,
+          "properties": {
+            "app": {
+              "type": "integer",
+              "minimum": 1024,
+              "maximum": 65535,
+              "description": "Puerto interno del contenedor donde la app escucha. Debe coincidir con EXPOSE del Dockerfile."
+            }
+          }
+        }
+      }
+    },
+    "health": {
+      "type": "object",
+      "required": ["endpoint"],
+      "additionalProperties": false,
+      "properties": {
+        "endpoint": {
+          "type": "string",
+          "pattern": "^/.*",
+          "description": "Ruta HTTP sin auth que retorna 200 con cuerpo que contenga al menos {status:ok}. Debe empezar con /."
+        },
+        "timeout_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5,
+          "default": 3,
+          "description": "Timeout maximo del health check (<= 5s)."
+        }
+      }
+    },
+    "auth": {
+      "type": "object",
+      "required": ["mode", "login_path"],
+      "additionalProperties": false,
+      "description": "v2: la app implementa su propio login. NO se aceptan headers X-Auth-* (deprecados en v4).",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["own"],
+          "description": "Solo 'own' es aceptado en v2. El modo 'header' (v1) fue deprecado."
+        },
+        "login_path": {
+          "type": "string",
+          "pattern": "^/.*",
+          "description": "Ruta del formulario de login (ej: /login). Debe empezar con /."
+        },
+        "logout_path": {
+          "type": "string",
+          "pattern": "^/.*",
+          "description": "Ruta del logout (opcional). Debe empezar con /."
+        }
+      }
+    },
+    "branding": {
+      "type": "object",
+      "required": ["url"],
+      "additionalProperties": false,
+      "description": "Endpoint que el Maestro v2 consume para obtener nombre y logos de la empresa que opera el deployment.",
+      "properties": {
+        "url": {
+          "type": "string",
+          "pattern": "^/.*",
+          "description": "Path del endpoint /maestro/branding autenticado con X-Maestro-Api-Key. Default sugerido: /maestro/branding."
+        }
+      }
+    },
+    "seeding": {
+      "type": "object",
+      "required": ["superadmin_email"],
+      "additionalProperties": false,
+      "description": "Configuracion de la fase 05-seeding del framework agentico v4.",
+      "properties": {
+        "superadmin_email": {
+          "type": "string",
+          "format": "email",
+          "default": "admin@llyasoc.com",
+          "description": "Email del superadmin a crear por el seeder idempotente. Default canonico: admin@llyasoc.com."
+        },
+        "additional_users": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "object",
+            "required": ["email", "role"],
+            "additionalProperties": false,
+            "properties": {
+              "email": {
+                "type": "string",
+                "format": "email"
+              },
+              "role": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Slug del rol que se asignara al usuario."
+              },
+              "name": {
+                "type": "string"
+              }
+            }
+          },
+          "description": "Usuarios adicionales a sembrar (decision del PO en fase 02-planning). Cada uno requiere su propia ENV var de password siguiendo el patron <ROLE>_INITIAL_PASSWORD."
+        }
+      }
+    },
+    "hooks": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Webhooks que la app expone para recibir eventos del Maestro v2 firmados con HMAC-SHA256 usando MAESTRO_WEBHOOK_SECRET.",
+      "properties": {
+        "on_user_added": {
+          "type": "string",
+          "pattern": "^/.*",
+          "description": "Ruta POST que recibe evento 'usuario agregado a empresa'. Verifica X-Maestro-Webhook-Signature."
+        },
+        "on_user_removed": {
+          "type": "string",
+          "pattern": "^/.*"
+        },
+        "on_company_license_granted": {
+          "type": "string",
+          "pattern": "^/.*"
+        },
+        "on_company_license_revoked": {
+          "type": "string",
+          "pattern": "^/.*"
+        }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "required": ["memory", "cpu"],
+      "additionalProperties": false,
+      "properties": {
+        "memory": {
+          "type": "string",
+          "pattern": "^(256m|512m|1g|2g|4g)$",
+          "description": "Memoria maxima del contenedor: 256m | 512m | 1g | 2g | 4g."
+        },
+        "cpu": {
+          "type": "number",
+          "minimum": 0.25,
+          "maximum": 4.0,
+          "description": "Fraccion de core CPU entre 0.25 y 4.0."
+        }
+      }
+    },
+    "ui": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Configuracion del sistema de diseno Tailwise.",
+      "properties": {
+        "tailwise": {
+          "type": "boolean",
+          "default": true,
+          "description": "Si la app usa Tailwise. Default: true."
+        },
+        "theme": {
+          "type": "string",
+          "enum": ["dagger", "echo", "exort", "havoc", "hook", "hurricane", "ravage", "raze", "razor", "shuriken", "viper"],
+          "description": "Theme de Tailwise (si tailwise: true)."
+        },
+        "version_used": {
+          "type": "string",
+          "description": "Version de Tailwise usada (ej: 'React Version - v1.0.9')."
+        },
+        "reason": {
+          "type": "string",
+          "description": "Si tailwise: false, motivo documentado (ej: 'App sin frontend, solo API REST')."
+        }
+      }
+    },
+    "env": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]*$",
+        "not": {
+          "anyOf": [
+            { "pattern": "^MAESTRO_" },
+            { "pattern": "^SUPERADMIN_" },
+            { "pattern": "^DATABASE_URL$" }
+          ]
+        }
+      },
+      "uniqueItems": true,
+      "description": "Variables de entorno custom de la app. Prefijos MAESTRO_*, SUPERADMIN_* y DATABASE_URL estan reservados."
+    }
+  }
+}

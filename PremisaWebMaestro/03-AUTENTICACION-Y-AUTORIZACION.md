@@ -1,155 +1,272 @@
-# Autenticación y Autorización
+# Autenticación y Autorización en la Web Maestro
+
+> **Versión:** v4 (framework agéntico v4 / contrato `maestro.platform/v2`)
+> **Última revisión:** 2026-05-07
+> **Estado:** vigente
+> **Reemplaza a:** `legacy/v3/PremisaWebMaestro/03-AUTENTICACION-Y-AUTORIZACION.md` (modelo v1 / IdP centralizado con `X-Auth-*`).
+
+---
 
 ## Propósito de este documento
 
-Este documento describe el sistema completo de identidad de Maestro Platform. Cubre los métodos de autenticación, la estructura de los tokens, el mecanismo de ForwardAuth que protege todas las aplicaciones, los niveles de autorización y los flujos detallados paso a paso que un agente de IA necesita comprender para implementar correctamente la capa de seguridad de identidad.
+Este documento describe el sistema completo de identidad y autorización de la **Web Maestro** v4. Cubre los tres planos de autenticación que existen en el ecosistema:
+
+1. **Auth de admins de la Web Maestro** (login propio del Maestro para sus operadores).
+2. **Auth server-to-server entre Maestro y apps huésped** (`X-Maestro-Api-Key` para `/maestro/branding`, `X-Maestro-Webhook-Secret` para hooks).
+3. **Auth de usuarios finales de las apps**: NO la maneja el Maestro. Cada app huésped la implementa por sí misma. Este documento aclara los límites para que no haya confusión.
 
 ---
 
-## Principio fundamental
+## Cambio fundamental respecto a v1
 
-El Maestro es el único emisor de identidad en toda la plataforma. Ninguna aplicación alojada autentica usuarios por sí misma. Todas las aplicaciones reciben la identidad del usuario ya resuelta a través de headers HTTP inyectados por Traefik después de validar el token contra el Maestro. Este principio es un no negociable y no admite excepciones.
+En v1 el Maestro era el **Identity Provider único** del ecosistema:
 
----
+- Laravel Passport como servidor OAuth2.
+- Microsoft Entra ID integrado.
+- Tabla `users` global del Maestro.
+- Validación de tokens vía Traefik **ForwardAuth** contra `/api/auth/validate` del Maestro.
+- Inyección de headers `X-Auth-User-Id`, `X-Auth-User-Email`, `X-Auth-Company-Id`, `X-Auth-Roles`, `X-Auth-Permissions` en cada request a las apps.
 
-## Métodos de autenticación
+En v4 ese modelo se invirtió:
 
-La plataforma soporta dos métodos de autenticación que convergen en un mismo formato de token JWT.
+- **El Maestro NO es Identity Provider** de los usuarios finales.
+- Cada app huésped tiene su **propio login** (tabla `users`, password hash, tokens propios, middleware propio).
+- Traefik en v4 **NO** usa ForwardAuth para apps huésped. Solo termina TLS y enruta tráfico.
+- **NO** se inyectan headers `X-Auth-*`. Apps que los lean se rechazan en validación.
 
-### Método uno: Usuario y contraseña
-
-El usuario ingresa su correo electrónico y contraseña en el formulario de login del portal Maestro. Laravel Passport valida las credenciales contra la tabla users. Si las credenciales son correctas, Passport emite un access token JWT y un refresh token. El access token tiene una duración de una hora. El refresh token tiene una duración de treinta días. Ambos se almacenan en el navegador del usuario mediante cookies httpOnly y secure, lo que significa que JavaScript del lado del cliente no puede acceder a ellos y solo se envían sobre conexiones HTTPS.
-
-### Método dos: Microsoft Authentication
-
-El usuario hace click en el botón "Iniciar sesión con Microsoft" en el formulario de login. El portal redirige al usuario a la página de login de Microsoft Entra ID con los parámetros OAuth2 necesarios, incluyendo el client_id de la aplicación registrada en Azure, el redirect_uri que apunta de vuelta al Maestro, y los scopes solicitados que son openid, profile y email. El usuario se autentica en Microsoft. Microsoft redirige de vuelta al Maestro con un authorization code. El backend de Laravel intercambia el authorization code por un access token de Microsoft. El backend usa el access token de Microsoft para obtener el perfil del usuario, incluyendo su email y su Microsoft ID. El backend busca en la tabla users un registro cuyo campo microsoft_id coincida con el Microsoft ID recibido. Si lo encuentra, genera un JWT del Maestro para ese usuario. Si no lo encuentra, busca por email. Si encuentra un usuario con ese email pero sin microsoft_id, vincula la cuenta estableciendo el microsoft_id y genera el JWT. Si no encuentra ningún usuario, el comportamiento depende de la configuración de la empresa: si la empresa tiene auto-provisioning habilitado, crea un nuevo usuario automáticamente; si no, muestra un error indicando que el usuario no está registrado.
-
-En ambos casos, el resultado final es el mismo: un JWT del Maestro con la misma estructura, independientemente de si el usuario se autenticó con contraseña o con Microsoft.
-
----
-
-## Estructura del token JWT
-
-El token JWT emitido por el Maestro contiene los siguientes claims, que son campos de datos dentro del token.
-
-El claim sub contiene el UUID del usuario. Este es el identificador único e inmutable del usuario en toda la plataforma.
-
-El claim email contiene el correo electrónico del usuario.
-
-El claim name contiene el nombre completo del usuario.
-
-El claim active_company es un objeto que contiene tres campos: id con el UUID de la empresa actualmente seleccionada, slug con el slug de la empresa, y role con el rol del usuario en esa empresa que puede ser owner, admin o member.
-
-El claim companies es un arreglo de UUIDs que lista todas las empresas a las que el usuario tiene acceso con invitación aceptada. Este arreglo permite al frontend mostrar el selector de empresa sin hacer una consulta adicional al API.
-
-El claim iat contiene el timestamp de emisión del token en formato Unix epoch.
-
-El claim exp contiene el timestamp de expiración del token en formato Unix epoch. Por defecto es una hora después de iat.
-
-El claim iss contiene el dominio del Maestro, por ejemplo maestro.tudominio.com, para identificar al emisor.
-
-El token está firmado con el algoritmo RS256 usando la clave privada del Maestro. Cualquier componente que necesite verificar un token puede hacerlo usando la clave pública correspondiente sin necesidad de contactar al Maestro, aunque en la práctica la verificación centralizada a través de ForwardAuth es el mecanismo principal.
+El Maestro sigue siendo IdP solo de **sí mismo** (sus admins): el rol `admin@llyasoc.com` se autentica con login propio del Maestro, mismo modelo que cualquier app huésped según el preset `web-maestro`.
 
 ---
 
-## Mecanismo de ForwardAuth
+## Plano 1: Auth de admins de la Web Maestro
 
-ForwardAuth es una funcionalidad de Traefik que permite delegar la decisión de autorización a un servicio externo antes de reenviar el request al destino final. En Maestro Platform, ForwardAuth es el guardián que protege todas las aplicaciones alojadas.
+### Modelo
 
-### Cómo funciona paso a paso
+El Maestro implementa para sus admins el **mismo modelo de auth propia** que cualquier app huésped. Esto significa que el Maestro v4 **es una app huésped de sí misma** para fines de auth.
 
-Cuando un request llega a Traefik dirigido a cualquier aplicación alojada, por ejemplo a la URL https://inventario-empresax.maestro.com/api/items, Traefik no lo reenvía inmediatamente al contenedor de la aplicación. En su lugar, Traefik extrae el token JWT del request, que puede venir en el header Authorization como Bearer token o en una cookie httpOnly, y envía un request interno al endpoint de validación del Maestro en la ruta /api/auth/validate, incluyendo el token.
+Tablas usadas (definidas en `02-MODELO-DE-DATOS.md`):
+- `admin_users` con `email`, `password_hash`, `is_active`, `last_login_at`, `failed_login_count`, `locked_until`.
+- `admin_roles` (con `is_system` para roles del sistema como `superadmin`).
+- `admin_permissions` (granulares: `companies.create`, `deployments.destroy`, `audit_log.read`, etc.).
+- Pivots `admin_user_roles`, `admin_role_permissions`.
 
-El endpoint de validación del Maestro recibe el token, verifica su firma criptográfica, verifica que no ha expirado, extrae los claims del token, verifica que el usuario tiene acceso a la aplicación solicitada dentro de la empresa activa, y si todo es correcto, responde a Traefik con un código HTTP 200 y una serie de headers que contienen la identidad desglosada del usuario.
+### Endpoints del plano admin
 
-Traefik recibe la respuesta exitosa del Maestro, toma los headers de identidad de la respuesta y los inyecta en el request original, y finalmente reenvía el request al contenedor de la aplicación con esos headers agregados.
+```
+POST   /api/v2/auth/login          (email + password -> token)
+POST   /api/v2/auth/logout         (invalida el token)
+POST   /api/v2/auth/refresh        (refresh token -> nuevo access token)
+GET    /api/v2/auth/me             (datos del admin autenticado)
+POST   /api/v2/auth/password-change (requiere password actual + nueva)
+```
 
-Si la validación falla por cualquier motivo, ya sea token expirado, firma inválida, usuario sin acceso a esa app o empresa, o cualquier otro error, el Maestro responde con un código HTTP 401 y Traefik devuelve ese 401 al navegador del usuario sin reenviar nada al contenedor de la aplicación.
+`POST /api/v2/auth/login` y `POST /api/v2/auth/logout` son públicos (sin auth). Los demás requieren middleware de auth propio.
 
-### Headers inyectados
+`GET /health` también es público (sin auth) para health checks externos.
 
-Los headers que Traefik inyecta en el request después de una validación exitosa son los siguientes.
+### Token de acceso
 
-El header X-Auth-User-Id contiene el UUID del usuario autenticado. Este es el mismo valor que el claim sub del JWT.
+Dos opciones soportadas (la implementación elige una):
 
-El header X-Auth-User-Email contiene el correo electrónico del usuario autenticado.
+**Opción A: Cookies de sesión**
+- Cookie `maestro_session` con `HttpOnly`, `Secure`, `SameSite=Lax`.
+- Backend mantiene sesión en BD o Redis con expiración corta (1h sliding window).
+- Logout invalida la sesión.
 
-El header X-Auth-User-Name contiene el nombre completo del usuario autenticado.
+**Opción B: JWT con refresh**
+- Access token: JWT firmado con `JWT_SECRET`, expiración 1h, payload con `user_id`, `roles`, `permissions`, `iat`, `exp`.
+- Refresh token: opaco, almacenado en BD, expiración 30 días.
+- Logout invalida el refresh token.
 
-El header X-Auth-Company-Id contiene el UUID de la empresa activa del usuario. Este es el campo que toda aplicación debe usar para filtrar datos por tenant.
+**Reglas comunes**:
+- `bcrypt` cost ≥ 12 o `argon2id` para `password_hash`. NUNCA texto plano, MD5, SHA1 ni SHA256 directo.
+- Comparación de hash con timing-constant (provista por la librería).
+- Bloqueo de cuenta tras 5 intentos fallidos consecutivos durante 15 minutos (`locked_until`).
+- Rate limiting en `/login` (recomendado: 5 intentos/minuto/IP).
 
-El header X-Auth-Company-Slug contiene el slug de la empresa activa.
+### Authorization (RBAC)
 
-El header X-Auth-Roles contiene una cadena separada por comas con los roles del usuario. Incluye tanto el rol en la empresa como los roles específicos en la aplicación, por ejemplo admin,app_editor.
+El middleware de auth carga `roles` y `permissions` del admin en el contexto del request. Cada endpoint protegido declara qué `permission` requiere:
 
-El header X-Auth-Permissions contiene una cadena JSON con los permisos granulares del usuario en la aplicación, si existen.
+```
+DELETE /api/v2/deployments/{id}  ->  requiere permission "deployments.destroy"
+POST   /api/v2/companies         ->  requiere permission "companies.create"
+GET    /api/v2/audit_log         ->  requiere permission "audit_log.read"
+```
 
-Estos headers son la única fuente de identidad que las aplicaciones alojadas deben consumir. Las aplicaciones no deben intentar decodificar el JWT directamente ni validarlo por su cuenta. Los headers ya contienen toda la información necesaria y han sido validados por el Maestro.
+El rol `superadmin` (de sistema, `is_system = TRUE`) tiene TODOS los permisos definidos. Otros roles se definen según necesidad operativa (ej: `operator` con permisos sobre deployments pero no sobre `audit_log` ni rotación de keys; `viewer` con solo lecturas).
 
-### Caché de validación
+### Audit log obligatorio
 
-Para evitar que cada request a cada aplicación genere una consulta a la base de datos del Maestro, el endpoint de validación utiliza Redis como caché. Cuando un token se valida exitosamente por primera vez, el resultado se almacena en Redis con una clave derivada del hash del token y una duración de cinco minutos. Los requests subsiguientes con el mismo token durante esos cinco minutos se validan contra la caché sin consultar la base de datos.
+Cada evento de auth genera un registro en `audit_log`:
 
-Cuando un token se invalida, ya sea por logout del usuario, revocación administrativa o cambio de empresa activa, la entrada correspondiente en Redis se elimina inmediatamente, forzando que la siguiente validación consulte la base de datos y falle.
+| Acción | Campos relevantes |
+|---|---|
+| `login.success` | `actor_user_id`, `actor_ip`, `user_agent` |
+| `login.failure` | `actor_ip`, `user_agent`, `payload_before` (intento sin password) |
+| `login.locked` | `actor_user_id`, `actor_ip` |
+| `logout` | `actor_user_id`, `actor_ip` |
+| `password.change` | `actor_user_id`, `actor_ip` |
+| `role.granted` | `actor_user_id`, `resource_id` (target user), `payload_after` |
+| `role.revoked` | igual con `payload_before` |
 
----
+`audit_log` es **inmutable** (triggers DB rechazan UPDATE/DELETE). Ver `02-MODELO-DE-DATOS.md`.
 
-## Flujo de acceso a una aplicación desde el portal
+### Seeding del superadmin
 
-Este flujo describe el camino completo desde que el usuario hace click en una aplicación en el sidebar del portal hasta que ve el contenido de la aplicación renderizado en el iframe.
+La fase 05-seeding del framework agéntico v4 (con preset `maestro-platform` activo, ver `framework-agentico/agents/presets/maestro-platform/PRESET.md` y `framework-agentico/phases/05-seeding.md`) ejecuta un seeder idempotente que:
 
-Paso uno: el usuario, que ya tiene una sesión activa en el portal Maestro, hace click en la aplicación "Inventario" en el sidebar.
-
-Paso dos: el frontend React del portal envía un request POST al endpoint /api/apps/session del Maestro con el identificador de la aplicación y el identificador de la empresa activa. Este request incluye el JWT del usuario en la cookie httpOnly.
-
-Paso tres: el backend del Maestro valida el JWT, verifica que la empresa tiene una licencia activa para esa aplicación, verifica que el usuario tiene acceso a esa aplicación en esa empresa, y si todo es correcto, genera un token de sesión temporal. Este token temporal es un JWT con duración de treinta segundos, firmado con la misma clave que los tokens normales pero con un claim adicional que indica que es un token de transferencia de una sola vez.
-
-Paso cuatro: el Maestro responde al frontend con el token temporal y la URL de la instancia de la aplicación, por ejemplo https://inventario-empresax.maestro.com.
-
-Paso cinco: el frontend del portal carga un iframe con la URL de la instancia como src. Simultáneamente, establece un listener para el evento message del iframe.
-
-Paso seis: cuando el iframe termina de cargar, la aplicación dentro del iframe envía un mensaje postMessage al padre con el evento MAESTRO_READY indicando que está lista para recibir autenticación.
-
-Paso siete: el portal, al recibir MAESTRO_READY, envía un mensaje postMessage al iframe con el evento MAESTRO_AUTH que contiene el token temporal.
-
-Paso ocho: la aplicación dentro del iframe recibe el token temporal, lo envía al Maestro para intercambiarlo por un token de sesión de larga duración específico para esa instancia, y establece su propia sesión interna usando ese token.
-
-Paso nueve: a partir de este momento, todos los requests que la aplicación dentro del iframe haga a su propio backend pasan por Traefik, que ejecuta ForwardAuth contra el Maestro, valida el token de sesión, inyecta los headers X-Auth y reenvía el request al contenedor de la aplicación.
-
----
-
-## Niveles de autorización
-
-La autorización en Maestro Platform opera en cuatro niveles jerárquicos. Cada nivel debe superarse para que el request llegue a su destino.
-
-### Nivel uno: Validación de plataforma
-
-Este nivel verifica que el token JWT existe, no ha expirado y está firmado por el Maestro. Es responsabilidad de Traefik a través de ForwardAuth. Si falla, el request recibe un 401 y nunca llega a ninguna aplicación. Este nivel no sabe nada sobre aplicaciones ni licencias; solo verifica identidad básica.
-
-### Nivel dos: Validación de licencia
-
-Este nivel verifica que la empresa activa del usuario tiene una licencia con estado active para la aplicación específica que se está intentando acceder. Es responsabilidad del endpoint de validación del Maestro. Si la licencia no existe, está expirada, suspendida o cancelada, el request recibe un 403 con un mensaje que indica que la empresa no tiene licencia para esa aplicación.
-
-### Nivel tres: Validación de acceso a la aplicación
-
-Este nivel verifica que el usuario específico tiene un registro en la tabla application_user para esa aplicación en esa empresa. Es responsabilidad del endpoint de validación del Maestro. Una empresa puede tener licencia para una aplicación pero no todos sus usuarios tienen que tener acceso a ella. Si el usuario no tiene acceso, recibe un 403 con un mensaje que indica que no tiene permisos para esa aplicación.
-
-### Nivel cuatro: Validación de permisos internos
-
-Este nivel verifica los permisos granulares del usuario dentro de la aplicación, como si puede solo leer datos o también escribir, si puede administrar configuraciones o solo usarlas, y otros permisos específicos del dominio de la aplicación. Este nivel es responsabilidad de la aplicación misma, usando los datos que recibe en los headers X-Auth-Roles y X-Auth-Permissions. El SDK provisto por la plataforma incluye helpers para evaluar estos permisos.
+1. Crea o verifica el rol `superadmin` con `is_system = TRUE` y todos los permisos definidos.
+2. Crea (si no existe) al usuario `admin@llyasoc.com` con `password_hash` derivado de `SUPERADMIN_INITIAL_PASSWORD` (ENV var). Si la ENV var no existe o la password es débil (< 12 chars o blacklist), el seeder falla con exit ≠ 0.
+3. Asigna el rol `superadmin` al usuario `admin@llyasoc.com` si no lo tiene.
+4. Si el usuario ya existe, **NO toca su password** (idempotencia).
+5. Logs sin password ni hash.
 
 ---
 
-## Manejo de sesiones y expiración
+## Plano 2: Auth server-to-server entre Maestro y apps huésped
 
-### Renovación de token
+### 2.1 `X-Maestro-Api-Key` para `/maestro/branding`
 
-El access token tiene una duración de una hora. Quince minutos antes de que expire, el frontend del portal renueva automáticamente el token enviando el refresh token al endpoint de renovación de Passport. Si la renovación es exitosa, el nuevo access token reemplaza al anterior sin que el usuario note nada. Si la renovación falla porque el refresh token también expiró o fue revocado, el usuario es redirigido al login.
+**Flujo**:
+1. Cuando el Maestro provisiona un deployment, genera una `MAESTRO_API_KEY` aleatoria (≥ 32 chars), la cifra con AES-256 y la almacena en `api_keys.key_hash`.
+2. La key (en claro, solo en memoria) se inyecta como ENV var `MAESTRO_API_KEY` en el contenedor de la app durante el provisioning.
+3. Un job periódico del Maestro (default cada 6h) ejecuta `GET <app_url>/maestro/branding` con header `X-Maestro-Api-Key: <key_en_claro>`.
+4. La app valida el header en tiempo constante contra su ENV var `MAESTRO_API_KEY`.
+5. Sin/con header inválido → `HTTP 401`.
+6. Con válido → `HTTP 200` + JSON `{company_name, logo_url, primary_color?, favicon_url?}`.
+7. El Maestro cachea la respuesta en `branding_cache` con TTL de 6h.
 
-### Logout
+**Rotación**:
+- `POST /api/v2/deployments/{id}/rotate-api-key` (requiere permiso del admin).
+- Genera nueva key, actualiza la ENV var en el contenedor (sin downtime mediante restart escalonado), marca la vieja como `rotated` por 24h (grace period), luego `revoked`.
+- Audit log: `api_key.rotate` con `actor_user_id`, `resource_id` (deployment), `payload_before` (preview de la vieja), `payload_after` (preview de la nueva).
+- Recomendado: rotación automática cada 90 días (cronjob con audit log).
 
-Cuando el usuario hace click en "Cerrar sesión", el portal envía un request al endpoint de logout del Maestro que revoca tanto el access token como el refresh token, elimina la entrada de caché en Redis, envía un mensaje postMessage con evento MAESTRO_LOGOUT a todos los iframes abiertos para que las aplicaciones limpien sus sesiones internas, y finalmente redirige al usuario al formulario de login.
+### 2.2 `X-Maestro-Webhook-Secret` y firma HMAC-SHA256 para hooks salientes
 
-### Cambio de empresa activa
+**Flujo**:
+1. Al provisionar un deployment, el Maestro genera un `MAESTRO_WEBHOOK_SECRET` aleatorio (≥ 32 chars), lo cifra y almacena en `webhook_secrets.secret_hash`.
+2. La secret se inyecta como ENV var `MAESTRO_WEBHOOK_SECRET` en el contenedor.
+3. Cuando ocurre un evento (ej: `on_user_added`), el Maestro envía `POST <hook_url>` con:
+   - Body JSON: `{event_id: "<uuid>", event_type: "on_user_added", timestamp: "<iso8601>", payload: {...}}`.
+   - Header `X-Maestro-Webhook-Signature: t=<unix_ts>,v1=<hex_hmac>` donde `v1 = HMAC-SHA256(MAESTRO_WEBHOOK_SECRET, "<unix_ts>.<raw_body>")`.
+4. La app **DEBE** verificar:
+   - `|now - t| ≤ 300` segundos (anti-replay).
+   - Recalcular el HMAC y comparar en tiempo constante.
+   - Si no coincide → `HTTP 401`. El Maestro registra `hooks_log.status = failed` con `http_status = 401`.
+5. La app **DEBE** procesar el evento de manera **idempotente** usando `event_id` para deduplicar (el Maestro reintenta hasta 3 veces con backoff exponencial: 30s, 2min, 10min).
+6. La app **DEBE** responder `HTTP 200` (o `202 Accepted` si encola) en ≤ 5s.
 
-Cuando el usuario cambia la empresa activa en el selector del portal, el Maestro genera un nuevo JWT con el claim active_company actualizado a la nueva empresa. Este nuevo token invalida la caché del token anterior en Redis. Todas las aplicaciones abiertas en iframes se recargan con el nuevo contexto de empresa, lo que significa que el sidebar se actualiza para mostrar las aplicaciones de la nueva empresa y cualquier iframe abierto se redirige a la instancia correcta de la nueva empresa si la app está licenciada, o se cierra si la nueva empresa no tiene licencia para esa app.
+**Eventos soportados**:
+- `on_user_added` — usuario agregado a una empresa con licencia activa de la app.
+- `on_user_removed` — usuario removido o licencia individual revocada.
+- `on_company_license_granted` — empresa adquiere licencia de la app.
+- `on_company_license_revoked` — empresa pierde licencia.
+
+**Rotación**:
+- Análogo a `api_keys`: `POST /api/v2/deployments/{id}/rotate-webhook-secret`. Audit log: `webhook_secret.rotate`.
+
+### 2.3 Por qué dos credenciales separadas
+
+`X-Maestro-Api-Key` y `X-Maestro-Webhook-Secret` son **credenciales separadas** por deployment. Razones:
+
+- **Direccionalidad**: la api_key autentica requests del Maestro **hacia** la app (consumo de branding). El webhook_secret autentica requests del Maestro **hacia** la app (hooks). Aunque la dirección es la misma, los riesgos son distintos: el branding endpoint expone metadata de la empresa; los hooks ejecutan lógica de negocio.
+- **Rotación independiente**: rotar una no invalida la otra.
+- **Observabilidad**: separar permite trazar fallos (¿es el branding que falla o los hooks?) sin ambigüedad.
+
+---
+
+## Plano 3: Auth de usuarios finales de las apps huésped
+
+### El Maestro NO la implementa
+
+El Maestro v4 **NO autentica** a los usuarios finales de las apps huésped. **NO** mantiene tabla `users` global. **NO** emite tokens de identidad. **NO** consume credenciales de usuarios finales.
+
+Cuando un usuario final de Empresa A quiere usar la App de Inventario, el flujo es:
+
+1. El usuario navega al portal del Maestro.
+2. El usuario admin del Maestro NO es el mismo que el usuario final; pero el portal del Maestro puede mostrar links a las apps que la empresa tiene licenciadas.
+3. (Más comúnmente) la empresa comparte la URL del deployment de su app con sus empleados, sin pasar por el portal del Maestro.
+4. El usuario final navega a `https://<app_slug>-<empresa>.<dominio>/login` o equivalente.
+5. La app huésped muestra **su propio formulario de login**.
+6. El usuario ingresa email + password.
+7. La app valida contra **su propia tabla `users`** (con `password_hash` bcrypt/argon2id).
+8. La app emite **su propio token** (cookie HttpOnly o JWT propio).
+9. Cada request posterior: el middleware de la app valida el token. NO hay involucramiento del Maestro.
+
+### Por qué este modelo
+
+- **Aislamiento de datos**: cada app tiene sus usuarios, su lógica de roles/permisos específica del dominio, su política de password. El compromiso de una app no expone usuarios de otra.
+- **Independencia operativa**: una app puede operar standalone si el Maestro está caído (relevante en transición Maestro v1 → Maestro v2).
+- **Flexibilidad de stack**: cada app elige su librería de auth (Passport.js, Devise, Laravel Sanctum, FastAPI users, Django auth, etc.). El Maestro no impone.
+- **Compliance**: regulaciones como GDPR son más simples cuando los datos personales no cruzan fronteras de aplicaciones innecesariamente.
+
+### Lo único que el Maestro le dice a la app sobre sus usuarios
+
+A través de hooks server-to-server (Plano 2.2):
+- `on_user_added`: "agregamos a tu app un usuario con email X de la empresa que opera tu deployment".
+- `on_user_removed`: "removimos al usuario con email X".
+
+La app huésped recibe estos hooks y **decide** qué hacer (crear/desactivar el usuario en su tabla `users` propia, enviar email de bienvenida, etc.). El Maestro **NO** crea registros directamente en la BD de la app.
+
+---
+
+## Resumen de credenciales por capa
+
+| Capa | Credencial | Origen | Destino | Verificación |
+|---|---|---|---|---|
+| Admin del Maestro | password (bcrypt/argon2id) | tabla `admin_users` | login del Maestro | timing-constant |
+| Admin sesión | cookie/JWT del Maestro | login del Maestro | middleware del Maestro | firma + expiración |
+| Maestro → app (branding) | `X-Maestro-Api-Key` | ENV var inyectada | endpoint `/maestro/branding` de la app | timing-safe-compare |
+| Maestro → app (hooks) | `X-Maestro-Webhook-Signature` | HMAC-SHA256 del body | endpoint del hook en la app | recalcular HMAC + anti-replay |
+| Usuario final → app | password (bcrypt/argon2id) | tabla `users` de la app | login de la app | timing-constant |
+| Usuario sesión → app | cookie/JWT propio de la app | login de la app | middleware de la app | firma + expiración |
+
+---
+
+## Threat model resumido
+
+**Amenaza 1**: bypass del registry vía credenciales filtradas.
+- Mitigación: api_keys cifradas en BD, rotación automática cada 90 días, audit log de toda rotación, alerta en uso de keys revocadas.
+
+**Amenaza 2**: escalada de privilegios en el portal admin.
+- Mitigación: RBAC granular, rol `superadmin` único con auditoría especial, MFA recomendado para `superadmin` (a definir en `09-SEGURIDAD.md`).
+
+**Amenaza 3**: replay attack en hooks.
+- Mitigación: firma HMAC-SHA256 con timestamp + window de 300s; idempotencia por `event_id`.
+
+**Amenaza 4**: leak de webhook secret en logs de la app.
+- Mitigación: la app **NO DEBE** loguear el header `X-Maestro-Webhook-Signature` ni `MAESTRO_WEBHOOK_SECRET`. Validación por `security-auditor` en cada PR de la app.
+
+**Amenaza 5**: timing attack contra api_key inválida.
+- Mitigación: comparación timing-safe (`crypto.timingSafeEqual` o equivalente).
+
+**Amenaza 6**: SQL injection en login.
+- Mitigación: parametrized queries / ORM. Validación por `security-auditor`.
+
+**Amenaza 7**: XSS en portal del Maestro.
+- Mitigación: framework frontend con escaping automático, CSP estricta, cookies HttpOnly.
+
+Detalle completo del threat model en `09-SEGURIDAD.md`.
+
+---
+
+## Referencias normativas
+
+- `01-PREMISAS-Y-NO-NEGOCIABLES.md` — premisa uno (auth distribuida) y no-negociables 1, 5, 6.
+- `02-MODELO-DE-DATOS.md` — tablas `admin_users`, `admin_roles`, `admin_permissions`, `api_keys`, `webhook_secrets`, `audit_log`.
+- `06-CONTRATO-MAESTRO-YAML.md` — el contrato exige `auth.mode = "own"` y declara `branding.url`, `hooks.*`.
+- `09-SEGURIDAD.md` — threat model completo y capas de defensa.
+- `framework-agentico/core/PRESET_WEB_MAESTRO.md` — preset que aplica a apps huésped (incluye reglas de auth propia).
+- `framework-agentico/agents/presets/maestro-platform/PRESET.md` — preset que aplica al Maestro mismo (impone que el login propio para sus admins cumpla `web-maestro`).
+- `framework-agentico/phases/05-seeding.md` — fase de seeding del superadmin.
+- `docs/APP_HUESPED_SPEC.md` — sección de auth lado app huésped.
+
+---
+
+## Historial de revisiones
+
+| Versión | Fecha | Cambio |
+|---|---|---|
+| 4.0.0 | 2026-05-07 | Versión inicial v4. Reescribe el sistema de identidad con auth distribuida: el Maestro deja de ser IdP de usuarios finales; mantiene auth propia para sus admins; autentica server-to-server con `X-Maestro-Api-Key` y firma HMAC. Reemplaza al v1 (legacy en `legacy/v3/PremisaWebMaestro/03-AUTENTICACION-Y-AUTORIZACION.md`). |

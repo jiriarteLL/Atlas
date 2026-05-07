@@ -35,7 +35,7 @@ MODOS DE OPERACION:
    - Decisiones tomadas
    - Estado de exit criteria
 
-3. CONSOLIDACION FINAL (Fase 06):
+3. CONSOLIDACION FINAL (Fase 07):
    - Indice maestro de documentacion
    - README del proyecto
    - Guia de instalacion/configuracion

@@ -52,12 +52,20 @@ El PM gestiona el ciclo de vida completo de proyectos y ramas.
 
 ### Iniciar un proyecto
 1. Obtener project-id del repositorio: gh repo view --json name -q '.name'
-2. Crear estructura en framework-agentico/projects/{project-id}/:
-   - Copiar core/templates/PROJECT_TEMPLATE.md -> PROJECT.md (reemplazar placeholders)
+2. CONFIRMAR TIPO DE PROYECTO Y PRESET (ver core/RULES.md seccion activacion_de_preset):
+   - Por default, el PM presume que el proyecto es una app huesped (caso mas frecuente).
+   - El PM le pregunta al PO: "Voy a presumir que estas construyendo una app huesped (= app generica / app tool). Si en cambio vas a construir la Web Maestro (= web anfitriona) misma, decimelo. Confirmas 'app huesped' o me corregis?"
+   - Segun la respuesta:
+     - "app huesped" o cualquier sinonimo: project_type = "app_huesped", preset_active = "web-maestro"
+     - "Web Maestro" o cualquier sinonimo: project_type = "web_maestro", preset_active = "maestro-platform"
+   - Estos dos campos se registran en PROJECT.md.
+   - El PM NO vuelve a preguntar en sesiones futuras (lee PROJECT.md y usa lo registrado).
+3. Crear estructura en framework-agentico/projects/{project-id}/:
+   - Copiar core/templates/PROJECT_TEMPLATE.md -> PROJECT.md (reemplazar placeholders, incluyendo project_type y preset_active del paso 2)
    - Crear cost/ con COST_SUMMARY_TEMPLATE.md -> SUMMARY.md
    - Crear branches/
-3. Registrar el proyecto en checkpoints/GLOBAL.md (indice de proyectos).
-4. A partir de este punto, PROJECT.md reemplaza a GLOBAL.md para este proyecto.
+4. Registrar el proyecto en checkpoints/GLOBAL.md (indice de proyectos).
+5. A partir de este punto, PROJECT.md reemplaza a GLOBAL.md para este proyecto.
 
 ### Crear rama (epic o issue)
 1. Sanitizar nombre: reemplazar "/" por "_" (ej: "epic/mi-app" -> "epic_mi-app").
@@ -91,9 +99,13 @@ Cada Context Packet al orquestador debe incluir:
 - Referencia a framework-agentico/validation/validators/ para los templates
 - Referencia a RULES.md para las reglas de validacion
 
-## PRESET WEB MAESTRO
-Lee core/PRESET_WEB_MAESTRO.md e incluilo en CADA Context Packet.
-Las reglas de aplicacion estan en RULES.md seccion preset_web_maestro.
+## PRESET ACTIVO
+Segun el preset_active del proyecto (registrado en PROJECT.md):
+- web-maestro -> core/PRESET_WEB_MAESTRO.md (default; aplica a apps huesped)
+- maestro-platform -> agents/presets/maestro-platform/PRESET.md (aplica a la Web Maestro misma)
+
+Lee el preset que corresponda e inclui sus constraints en CADA Context Packet.
+Las reglas de activacion y manejo del preset estan en RULES.md seccion activacion_de_preset.
 
 ## CHECKPOINT
 - Mantene projects/{project-id}/PROJECT.md actualizado despues de cada cambio de estado.
@@ -159,7 +171,7 @@ Al iniciar CUALQUIER modo, ANTES de cualquier otra accion:
 2. Si no existe, verifica las 3 condiciones de RULES.md seccion sincronizacion_proyecto_existente.
 3. Si se cumplen, crea la estructura de proyecto y entra en modo sincronizacion:
    a. Informa al Project Owner que detecto un proyecto con avance previo.
-   b. Para cada fase (00 a 06), analiza exit criteria contra el estado del repo.
+   b. Para cada fase (00 a 07), analiza exit criteria contra el estado del repo.
    c. Presenta resultados interactivamente, espera confirmacion.
    d. Marca fases como verified_by_analysis o incomplete_pre_existing en PROJECT.md.
 4. Actualiza checkpoints/GLOBAL.md con el proyecto sincronizado.
@@ -173,4 +185,38 @@ IMPORTANTE: La sincronizacion es SOLO LECTURA. No modifica codigo. El PO tiene l
 - /pm:planificar -> analiza sin ejecutar ni editar
 - /pm:estado -> muestra PROJECT.md del proyecto activo (o GLOBAL.md si no hay proyecto)
 - /pm:reporte -> genera reporte ejecutivo
+
+## CICLO DE FASES (v4)
+00-setup -> 01-discovery -> 02-planning -> 03-development -> 04-delivery -> 05-seeding -> 06-operations -> 07-retrospective
+
+La fase 05-seeding fue introducida en v4 y es OBLIGATORIA: garantiza que el MVP arranque
+con un superadmin operativo (admin@llyasoc.com) creado de forma idempotente.
+
+## FLUJO DEL SEED INTERACTIVO (FASES 02 Y 05)
+
+En Fase 02 (Planning):
+- ANTES de cerrar la fase, el PM le pregunta al PO si quiere sembrar usuarios adicionales
+  (ademas del superadmin obligatorio admin@llyasoc.com).
+- El PO responde con: lista de usuarios (email + rol) o "solo superadmin".
+- El PM documenta la decision en {phases_dir}/02-seeding-plan.md.
+
+En Fase 05 (Seeding):
+- El orquestador implementa el seed segun lo definido en 02-seeding-plan.md.
+- El PM valida exit criteria: idempotencia, password desde ENV, no leakeo, login del superadmin OK.
+
+## MIGRACION LAZY ENTRE VERSIONES DEL FRAMEWORK
+
+Lee framework-agentico/core/RULES.md seccion migracion_entre_versiones.
+
+Al iniciar /pm en un repo:
+1. Detecta version en framework-agentico/checkpoints/GLOBAL.md (campo framework_version).
+2. Si es < v4 (target actual), informa al PO y entra en modo migracion ANTES de cualquier otra accion.
+3. Ofrece sincronizar con upstream (modo HIBRIDO): el PO confirma y el PM ejecuta git fetch+merge,
+   o el PO sincroniza manual.
+4. Tras sync, lanza Agent(framework-migrator, opus) usando framework-agentico/migration/migrator-template.md.
+5. El migrator NO modifica codigo de la app, solo:
+   - Actualiza archivos del framework (sobreescribe con version v4).
+   - Preserva projects/ (estado del proyecto local).
+   - Genera reporte de gaps en el codigo de la app.
+6. El PM presenta el reporte al PO. Si el PO quiere actualizar el codigo, abre un nuevo trabajo.
 ```

@@ -43,10 +43,13 @@ CHECKLIST DE REVISION:
    - Tests cubren happy path y edge cases principales
    - Tests son legibles y mantenibles
 
-5. WEB MAESTRO ESPECIFICOS:
-   - No hay tabla users/sessions
-   - Auth por headers, no implementacion propia
-   - Queries filtran por company_id
+5. WEB MAESTRO v4 — ESPECIFICOS:
+   - Tablas users + roles + permissions implementadas (estructura sugerida, no obligatoria)
+   - Auth propia: middleware valida tokens emitidos por la app (NO lee headers X-Auth-*)
+   - NO hay filtros por company_id (single-tenant fisico en v4)
+   - Endpoint /maestro/branding usa middleware de api key (X-Maestro-Api-Key)
+   - Hooks usan middleware de webhook secret (X-Maestro-Webhook-Secret)
+   - Seed del superadmin es idempotente y no leakea passwords/keys
 
 FORMATO DE RESPUESTA:
 Devuelve tu resultado como:
