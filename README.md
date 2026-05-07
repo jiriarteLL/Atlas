@@ -108,7 +108,6 @@ mi-fork/
 │           ├── branding.test.*         [CREAR]      Tests del endpoint /maestro/branding
 │           └── seeder.test.*           [CREAR]      Tests de idempotencia del seeder
 │
-├── mock/                               [EXISTENTE]  Mock LEGACY (v3). En v4 NO se usa para auth — ver §8 y mock/README.md.
 │
 ├── framework-agentico/                 [EXISTENTE]  Framework de fases de desarrollo (v4)
 ├── Tailwise Bundle/                    [EXISTENTE]  Sistema de diseño (leer, copiar, no modificar)
@@ -197,6 +196,19 @@ ui:
 ```
 
 Si `ui.tailwise` no está declarado o es `true`, se asume que la app usa Tailwise.
+
+### Premisa para agentes UX/UI
+
+La plataforma Web Maestro es **stack-agnóstica**: cualquier stack containerizable con Docker es válido para una aplicación huésped. Tailwise es la opción **preferida** del template pero NO obligatoria.
+
+Los agentes con responsabilidades UX/UI (`ux-designer`, `frontend-developer`, `fullstack-developer`, `mobile-developer`) deben:
+
+- Presentar Tailwise como recomendación inicial cuando hay frontend.
+- Respetar la decisión del PO si elige otro stack (ej: Flutter Web, Svelte, framework propietario).
+- Documentar la decisión en `maestro.yaml` (`ui.tailwise: false`, `ui.reason`).
+- NO sesgar la propuesta hacia Tailwise si el PO no lo pide explícitamente.
+
+Esta premisa está formalizada en `framework-agentico/core/RULES.md` sección `plantilla_base`.
 
 ---
 
@@ -366,7 +378,7 @@ CREATE TABLE users (
 CREATE INDEX idx_users_email ON users(email);
 ```
 
-Más detalle (incluyendo `roles`, `permissions` y pivots) en `docs/APP_HUESPED_SPEC_V2.md` §3.
+Más detalle (incluyendo `roles`, `permissions` y pivots) en `docs/APP_HUESPED_SPEC.md` §3.
 
 ### Middleware de auth (obligatorio)
 
@@ -677,9 +689,9 @@ vendor
 !README.md
 Tailwise Bundle/
 framework-agentico/
+legacy/
 .claude/
 docker-compose*.yml
-mock/
 .DS_Store
 __pycache__
 .pytest_cache
@@ -733,7 +745,7 @@ env:
 
 Validar con: `maestro-cli validate` (cuando el CLI v2 esté disponible) o contra el schema en `docs/schemas/maestro.yaml.schema.v2.json`.
 
-Spec completa: `docs/APP_HUESPED_SPEC_V2.md`.
+Spec completa: `docs/APP_HUESPED_SPEC.md`.
 
 ---
 
@@ -849,7 +861,7 @@ ESTRUCTURA
 [ ] maestro.yaml v2 (apiVersion: maestro.platform/v2)
 [ ] Dockerfile cumple los 7 requisitos
 [ ] docker-compose.yml levanta con `docker compose up -d`
-[ ] .dockerignore excluye Tailwise Bundle/, framework-agentico/, .env, mock/
+[ ] .dockerignore excluye Tailwise Bundle/, framework-agentico/, .env, legacy/
 [ ] .env.example actualizado con todas las variables usadas
 
 PUERTOS Y REDES
@@ -945,7 +957,7 @@ Nunca conectás directamente entre contenedores.
 
 ### "Antes había un mock/ con auth simulada. ¿Sigue siendo válido?"
 
-NO. El directorio `mock/` es **legacy v3** que simulaba la inyección de headers `X-Auth-*` cuando el Maestro v1 actuaba como Identity Provider. En v4, la app maneja su propio login y no necesita ese mock. Ver `mock/README.md`.
+NO. El directorio `mock/` era **legacy v3** y simulaba la inyección de headers `X-Auth-*` cuando el Maestro v1 actuaba como Identity Provider. En v4, la app maneja su propio login y no necesita ese mock. **El directorio fue eliminado del template** durante el cleanup del 2026-05-07; sigue accesible via git history si alguien lo necesita como referencia historica.
 
 ### "Quiero levantar 2 apps al mismo tiempo"
 
@@ -978,25 +990,28 @@ Documentá en `maestro.yaml` con `ui.tailwise: false` y `ui.reason`.
 |---|---|
 | `framework-agentico/CHANGELOG.md` | Historial completo v3 → v4 |
 | `framework-agentico/migration/v3-to-v4.md` | Proceso de migración para apps existentes v3 |
-| `framework-agentico/core/PRESET_WEB_MAESTRO.md` | Constraints del preset Web Maestro v4 (constraints por fase) |
+| `framework-agentico/core/RULES.md` | Reglas generales del framework v4 (glosario de sinónimos, política de versionado, política de persistencia de datos, activación de preset, etc.) |
+| `framework-agentico/core/PRESET_WEB_MAESTRO.md` | Constraints del preset `web-maestro` (apps huésped, default) |
+| `framework-agentico/agents/presets/maestro-platform/PRESET.md` | Constraints del preset `maestro-platform` (Web Maestro / Web Anfitriona) |
 | `framework-agentico/phases/05-seeding.md` | Detalle de la fase 05-seeding |
-| `framework-agentico/agents/presets/maestro-platform-v2/PRESET.md` | Preset para construir el Maestro v2 (proyecto separado) |
-| `docs/APP_HUESPED_SPEC_V2.md` | Especificación normativa v2 (este README es la guía rápida; aquí va el detalle técnico) |
-| `docs/APP_HUESPED_BEST_PRACTICES_V2.md` | Recomendaciones v4 (12-factor, supply chain, observabilidad, testing) |
-| `docs/CONVENCIONES_PLATAFORMA_V2.md` | Naming, redes, puertos, env vars (v2) |
+| `docs/APP_HUESPED_SPEC.md` | Especificación normativa del contrato `maestro.platform/v2` (este README es la guía rápida; aquí va el detalle técnico) |
+| `docs/APP_HUESPED_BEST_PRACTICES.md` | Recomendaciones (12-factor, supply chain, observabilidad, testing) |
+| `docs/CONVENCIONES_PLATAFORMA.md` | Naming, redes, puertos, env vars |
 | `docs/schemas/maestro.yaml.schema.v2.json` | JSON Schema v2 para validar tu `maestro.yaml` |
-| `mock/README.md` | Estado legacy del mock v3 |
+| `legacy/README.md` | Índice de versiones anteriores (en `legacy/v{n}/`) |
 | `CHANGELOG.md` | Cambios del repo (este template) |
 
 ### Documentos legacy (referencia histórica)
 
 | Documento | Estado |
 |---|---|
-| `docs/APP_HUESPED_SPEC.md` | DEPRECADO (contrato v1) |
-| `docs/APP_HUESPED_BEST_PRACTICES.md` | DEPRECADO (acompañaba v1) |
-| `docs/CONVENCIONES_PLATAFORMA.md` | DEPRECADO (convenciones v1) |
-| `framework-agentico/agents/presets/maestro-platform/` | Preset v1 del Maestro (legacy del proyecto Maestro v1 ya completado) |
-| `PremisaWebMaestro/` | Premisa del proyecto Maestro v1 (legacy) |
-| `arquitectura_actual.md` | Snapshot histórico del 2026-04-14 (legacy) |
+| `legacy/v3/docs/APP_HUESPED_SPEC.md` | DEPRECADO (contrato v1) — vigente: `docs/APP_HUESPED_SPEC.md` |
+| `legacy/v3/docs/APP_HUESPED_BEST_PRACTICES.md` | DEPRECADO (acompañaba v1) — vigente: `docs/APP_HUESPED_BEST_PRACTICES.md` |
+| `legacy/v3/docs/CONVENCIONES_PLATAFORMA.md` | DEPRECADO (convenciones v1) — vigente: `docs/CONVENCIONES_PLATAFORMA.md` |
+| `legacy/v3/framework-agentico/agents/presets/maestro-platform/` | DEPRECADO (preset v1 del Maestro) — vigente: `framework-agentico/agents/presets/maestro-platform/` |
+| `legacy/v3/PremisaWebMaestro/` | DEPRECADO (constitución v1 del Maestro) — será reescrita en `PremisaWebMaestro/` v4 (Fase 3 del cleanup) |
+| `legacy/v3/arquitectura_actual.md` | DEPRECADO (snapshot histórico del 2026-04-14, sin reemplazo) |
+| `mock/` | ELIMINADO en cleanup v4. Recuperable via git history (commit anterior a 2026-05-07). |
+| `cli/` | ELIMINADO en cleanup v4 (el repo es stack-agnóstico). Recuperable via git history. |
 
 Para apps v4 nuevas, ignorá los legacy. Para apps v3 que migran a v4, ver `framework-agentico/migration/v3-to-v4.md`.

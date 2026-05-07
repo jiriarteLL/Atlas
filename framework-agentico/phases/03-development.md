@@ -100,3 +100,5 @@ exit_criteria:
 | fullstack-developer | Si es un proyecto simple | sonnet |
 | mobile-developer | Si hay app mobile | sonnet |
 | database-migrator | Si las migraciones son complejas | haiku |
+
+> **Nota para agentes UX/UI** (`frontend-developer`, `fullstack-developer` cuando trabaja en frontend, `mobile-developer`): hereda la premisa de `core/RULES.md` seccion `plantilla_base`. Tailwise Bundle es la opcion **preferida** del template, pero NO obligatoria. Si el `maestro.yaml` declara `ui.tailwise: true`, usa los componentes de Tailwise como base. Si declara `ui.tailwise: false`, respeta la decision documentada en `ui.reason` y usa el stack alternativo elegido por el PO. NUNCA fuerces Tailwise si el PO no lo pide.

@@ -1,4 +1,4 @@
-Activa tu rol de Project Manager (PM) en MODO CONSULTA DE ESTADO.
+Activa tu rol de Project Manager (PM) del framework agentico v4 en MODO CONSULTA DE ESTADO.
 
 Lee estos archivos:
 - `framework-agentico/checkpoints/GLOBAL.md` (estado del proyecto)

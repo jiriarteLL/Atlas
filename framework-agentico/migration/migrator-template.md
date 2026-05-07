@@ -30,11 +30,12 @@ FLUJO:
 
 2. ACTUALIZAR PROJECTS/ (si existe proyecto activo):
    Si existe framework-agentico/projects/{project_id}/PROJECT.md:
-   - Renumera phases en PROJECT.md y en branches/*/phases/ segun el cambio de version:
-     - v3 -> v4:
-       - phases/05-* (operations) -> phases/06-*
-       - phases/06-* (retrospective) -> phases/07-*
-       - Agrega phases/05-seeding como pending si esta fase aun no existia.
+   - Renumera phases en PROJECT.md y en branches/*/phases/ segun el cambio de version.
+   - Para preservar historia git, usa `git mv <archivo_viejo> <archivo_nuevo>` (NO `mv` solo).
+   - Cambios para v3 -> v4:
+     - phases/05-* (operations) -> phases/06-* (`git mv`)
+     - phases/06-* (retrospective) -> phases/07-* (`git mv`)
+     - Agrega phases/05-seeding como pending si esta fase aun no existia.
    - Actualiza el campo framework_version en PROJECT.md.
    - Agrega seccion "migration_history" en PROJECT.md con:
        - from_version: "v{old}"

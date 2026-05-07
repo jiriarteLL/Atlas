@@ -5,6 +5,61 @@
 
 ---
 
+## v4.1 — 2026-05-07
+
+**Cleanup de paths canonicos.** Sin cambios funcionales en el framework. Saneamiento de nomenclatura y reorganizacion de archivos legacy bajo `legacy/v3/`.
+
+### Cambios en `framework-agentico/`
+
+- `core/RULES.md`: nuevas secciones:
+  - `glosario_de_sinonimos` (§0): PO/Project Owner/Product Owner, app huesped/aplicacion generica/tool, Web Maestro/Web Anfitriona como sinonimos.
+  - `politica_de_versionado` (§16): paths canonicos sin sufijo de version; versiones anteriores a `legacy/v{n}/` con banner DEPRECADO.
+  - `politica_de_persistencia_de_datos` (§17): BD persiste entre versiones; cambios destructivos requieren confirmacion explicita del PO.
+  - `activacion_de_preset` (§8 reescrita, antes `preset_web_maestro`): default `web-maestro` (app huesped); el PM confirma con el PO al iniciar; si PO declara construir Web Maestro, preset_active = `maestro-platform`.
+- `core/PM.md`: paso 2 nuevo de confirmacion de tipo de proyecto (app huesped vs Web Maestro). Seccion "PRESET WEB MAESTRO" reescrita como "PRESET ACTIVO" con logica condicional.
+- `core/templates/PROJECT_TEMPLATE.md`: agregados `project_type` y `preset_active`.
+- `core/templates/PROJECT_TEMPLATE.md`: campo legacy `preset` reemplazado por `preset_active`.
+- `checkpoints/GLOBAL.md`: campo `preset` reemplazado por `default_preset` (cada proyecto declara su preset_active en su PROJECT.md).
+- `agents/presets/maestro-platform-v2/` -> `agents/presets/maestro-platform/` (sufijo `-v2` removido para alineacion con politica de versionado).
+- `agents/presets/maestro-platform/PRESET.md` y `rules/RULES.md` (canonicos): titulos "v2" removidos; referencias a `_V2.md` y `-v2/` actualizadas a paths canonicos.
+- `agents/presets/maestro-platform/` legacy v1 movido a `legacy/v3/framework-agentico/agents/presets/maestro-platform/` con banner DEPRECADO.
+- `phases/04-delivery.md` y `phases/05-seeding.md`: referencia a seccion `preset_web_maestro` actualizada a `activacion_de_preset`.
+- `phases/05-seeding.md`: documentado orden obligatorio de seeders (permissions -> roles -> assign permissions to role -> users -> assign role to user).
+- `phases/02-planning.md` y `phases/03-development.md`: agregada nota explicita para agentes UX/UI sobre Tailwise como preferido pero NO obligatorio.
+- `migration/migrator-template.md`: paso 2 actualizado para usar `git mv` (preserva historia git).
+
+### Cambios fuera de `framework-agentico/`
+
+- Documentos canonicos de apps huesped (sufijo `_V2` removido):
+  - `docs/APP_HUESPED_SPEC_V2.md` -> `docs/APP_HUESPED_SPEC.md`
+  - `docs/APP_HUESPED_BEST_PRACTICES_V2.md` -> `docs/APP_HUESPED_BEST_PRACTICES.md`
+  - `docs/CONVENCIONES_PLATAFORMA_V2.md` -> `docs/CONVENCIONES_PLATAFORMA.md`
+- v1 de los anteriores movidos a `legacy/v3/docs/` con banner DEPRECADO.
+- `PremisaWebMaestro/` (constitucion v1 del Maestro) movida a `legacy/v3/PremisaWebMaestro/` con banner DEPRECADO en cada uno de sus 12 archivos.
+- `PremisaWebMaestro/` v4 redactada de cero (12 documentos): constitucion del Maestro v4 alineada al modelo registry+redirector+provisioner del contrato `maestro.platform/v2`.
+- `arquitectura_actual.md` movido a `legacy/v3/` (snapshot historico, sin reemplazo).
+- `mock/` ELIMINADO del template canonico (era legacy v3, recuperable via git history).
+- `cli/node/templates/node-express/` ELIMINADO del template canonico (era ilustrativo Node-only; el template es stack-agnostico, recuperable via git history).
+- `legacy/README.md` y `legacy/v3/README.md` creados como indices con politica de versionado y mapping de equivalentes vigentes.
+- `.env.example` (raiz) creado para apps huesped v4 con todas las ENV vars del modelo (DATABASE_URL, MAESTRO_API_KEY, MAESTRO_WEBHOOK_SECRET, SUPERADMIN_INITIAL_PASSWORD, JWT_SECRET, etc.).
+
+### Cambios en slash commands
+
+- `.claude/commands/pm.md`: "framework agentico v2" -> "framework agentico v4".
+- `.claude/commands/pm-orquestar.md`, `pm-planificar.md`, `pm-estado.md`, `pm-reporte.md`: header marcado con "framework agentico v4".
+
+### Referencias cruzadas
+
+- `README.md` (raiz), `CHANGELOG.md` (raiz), `docs/*`, `framework-agentico/core/*`, `framework-agentico/phases/*`, `framework-agentico/agents/presets/maestro-platform/*` actualizados para apuntar a paths canonicos.
+- Banner DEPRECADO estandar (definido en `core/RULES.md` §`politica_de_versionado`) aplicado a 18 archivos en `legacy/v3/`.
+
+### Compatibilidad
+
+- **Sin breaking changes** en el framework. Forks que sincronicen con upstream tras este cleanup deben actualizar referencias en sus archivos propios si las tienen (paths obsoletos `_V2.md`, `maestro-platform-v2/`).
+- El `framework-migrator` (`migration/migrator-template.md`) sigue siendo aplicable para forks v3 que migren a v4. Tras este cleanup, las referencias generadas por el migrator apuntan a paths canonicos.
+
+---
+
 ## v4.0 — 2026-05-06
 
 **BREAKING.** Cambio de modelo de auth y tenancy. Inversion del contrato Maestro <-> App huesped.

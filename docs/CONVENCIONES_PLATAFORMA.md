@@ -1,16 +1,13 @@
 # Convenciones de la Plataforma Maestro — Coexistencia Maestro ↔ Apps Huésped
 
-> ⚠️ **DOCUMENTO DEPRECADO (convenciones v1) — superado por `docs/CONVENCIONES_PLATAFORMA_V2.md`.**
+> **Fuente de verdad** para naming, puertos, redes, volúmenes, subdominios y variables de entorno que **TODA aplicación huésped (contrato `maestro.platform/v2`)** debe respetar.
 >
-> Este documento contiene las convenciones de Maestro v1 (multi-tenant con `company_id`, ForwardAuth, headers `X-Auth-*`). Para Maestro v2 / apps v4 (single-tenant fisico, auth propia) usar `CONVENCIONES_PLATAFORMA_V2.md`.
+> **Versión del contrato:** `maestro.platform/v2`
+> **Framework agéntico:** v4
+> **Última revisión:** 2026-05-07.
+> **Reemplaza a:** `legacy/v3/docs/CONVENCIONES_PLATAFORMA.md` (convenciones v1).
 >
-> ---
->
-> **Fuente de verdad (legacy)** para naming, puertos, redes, volúmenes, subdominios y variables de entorno que **TODA aplicación huésped v1** debe respetar para coexistir con el Maestro v1.
->
-> **Deliverable DEL-001** generado en Fase 02 (Planning) el 2026-04-16.
-> **Origen**: DEC-012 (zero local installs) + DEC-017 (multi-tenant con escala V1 de 1 empresa × 7 apps).
-> **Vinculación**: RF-122, preset `maestro-platform` `rules/RULES.md`, ADR-011.
+> **Cambio principal v1 → v2:** single-tenant fisico (un contenedor = una empresa). El `company_slug` ya no aparece en naming de contenedores ni redes; cada deployment de app es independiente.
 >
 > Este documento es **normativo**. Cualquier app huésped que no lo cumpla **no se provisiona**.
 
@@ -22,31 +19,33 @@
 
 | Tipo | Patrón | Ejemplo |
 |---|---|---|
-| Servicio core del Maestro | `maestro-<servicio>` | `maestro-api`, `maestro-portal`, `maestro-db`, `maestro-redis`, `maestro-traefik`, `maestro-docker-proxy` |
-| Worker del Maestro | `maestro-worker-<rol>` | `maestro-worker-health`, `maestro-worker-provisioning`, `maestro-worker-hooks` |
-| Instancia app huésped (app) | `app-<app_slug>-<company_slug>` | `app-contabilidad-llyasoc` |
-| BD dedicada de instancia | `db-<app_slug>-<company_slug>` | `db-contabilidad-llyasoc` |
-| Observabilidad | `obs-<componente>` | `obs-prometheus`, `obs-grafana`, `obs-loki`, `obs-promtail`, `obs-cadvisor` |
+| Servicio core del Maestro v2 | `maestro-<servicio>` | `maestro-api`, `maestro-portal`, `maestro-db`, `maestro-traefik` |
+| Worker del Maestro v2 | `maestro-worker-<rol>` | `maestro-worker-health`, `maestro-worker-registry` |
+| Contenedor app huésped (uno por empresa) | `app-<app_slug>-<empresa_slug>` | `app-contabilidad-llyasoc` |
+| BD dedicada de app | `db-<app_slug>-<empresa_slug>` | `db-contabilidad-llyasoc` |
+| Observabilidad | `obs-<componente>` | `obs-prometheus`, `obs-grafana`, `obs-loki` |
 
-**Reglas de nombres**:
-- **Namespace `maestro-*`**: reservado exclusivamente para el core del Maestro. Ninguna app huésped puede usar este prefijo en sus contenedores, redes o volúmenes.
-- **Namespace `app-*`**: reservado para instancias huésped provisionadas por el Maestro.
-- **Namespace `db-*`**: reservado para BDs dedicadas de instancias huésped.
-- **Namespace `obs-*`**: reservado para el stack de observabilidad.
-- `app_slug` y `company_slug` deben cumplir regex `^[a-z0-9][a-z0-9-]{2,49}[a-z0-9]$` (validado por el JSON Schema de `maestro.yaml` y por la regla de validación de `companies.slug`).
-- Longitud total del nombre de contenedor: **≤ 63 caracteres** (límite Linux hostname). Los slugs max 50 chars dejan margen para prefijos.
+> **Nota v2:** aunque el contenedor de app huésped sirve a UNA empresa (single-tenant fisico), el `empresa_slug` sigue presente en el naming **del contenedor** para que el operador (Maestro v2) distinga entre deployments de la misma app para distintas empresas. Pero **dentro del contenedor**, no hay logica de tenancy: un solo deployment, una sola empresa, sin `company_id` en queries.
+
+**Reglas de nombres:**
+- **Namespace `maestro-*`**: reservado exclusivamente para el core del Maestro.
+- **Namespace `app-*`**: reservado para deployments de apps huésped.
+- **Namespace `db-*`**: reservado para BDs dedicadas.
+- **Namespace `obs-*`**: reservado para observabilidad.
+- `app_slug` y `empresa_slug` deben cumplir regex `^[a-z0-9][a-z0-9-]{2,49}[a-z0-9]$`.
+- Longitud total ≤ 63 chars.
 
 ### 1.2 Imágenes Docker
 
 | Registry | Uso |
 |---|---|
-| `ghcr.io/llyasoc-digital/maestro-api:<version>` | backend del Maestro |
-| `ghcr.io/llyasoc-digital/maestro-portal:<version>` | portal React estático |
-| `ghcr.io/llyasoc-digital/maestro-php:<version>` | base image PHP para desarrollo |
-| `ghcr.io/llyasoc-digital/maestro-node:<version>` | base image Node para SDK/CLI |
-| `ghcr.io/<owner>/<app_slug>:<semver>` | imágenes de apps huésped |
+| `ghcr.io/llyasoc-digital/maestro-api:<version>` | Backend del Maestro v2 |
+| `ghcr.io/llyasoc-digital/maestro-portal:<version>` | Portal del Maestro v2 |
+| `ghcr.io/<owner>/<app_slug>:<semver>` | Imágenes de apps huésped (independiente de empresa) |
 
-Tags inmutables (no re-push). `latest` **prohibido** en producción; se usa en dev.
+Tags inmutables. `latest` prohibido en producción.
+
+> **Nota v2:** la imagen de la app es la misma para todas las empresas que la usan. La diferenciación se hace en el deployment (un contenedor por empresa, distintos `DATABASE_URL`, distintos secrets).
 
 ---
 
@@ -56,52 +55,47 @@ Tags inmutables (no re-push). `latest` **prohibido** en producción; se usa en d
 
 | Red | Propósito | Miembros |
 |---|---|---|
-| `maestro-network` | Edge + backplane del Maestro | Traefik, maestro-api, maestro-portal, maestro-db, maestro-redis, maestro-docker-proxy, obs-* |
-| `app-<app_slug>-<company_slug>-net` | Red privada por instancia | contenedor de la app + su BD dedicada |
+| `maestro-network` | Edge + backplane del Maestro v2 | Traefik, maestro-api, maestro-portal, maestro-db, obs-* |
+| `app-<app_slug>-<empresa_slug>-net` | Red privada del deployment | contenedor de la app + su BD dedicada |
 
 ### 2.2 Conectividad
 
-- El **contenedor de app huésped** está conectado a **dos redes**: su red privada `app-<slug>-<company>-net` (donde vive su BD) Y a `maestro-network` (solo para recibir tráfico reenviado por Traefik).
-- El **contenedor de BD de una instancia** está conectado **exclusivamente** a su red privada. No es accesible desde `maestro-network` ni desde otras apps.
-- **Prohibido** conectar el contenedor de BD de una instancia a `maestro-network` o a otra red.
-- **Prohibido** crear rutas, aliases o DNS que permitan a una app huésped resolver contenedores de otra instancia.
-- Comunicación inter-apps: **exclusivamente** vía `/api/v1/gateway/<app-destino>/<ruta>` del Maestro (ADR-007).
+- El contenedor de **app huésped** está conectado a `app-<slug>-<empresa>-net` (con su BD) y a `maestro-network` (para que Traefik enrute trafico).
+- El contenedor de **BD** está conectado **exclusivamente** a su red privada.
+- **Prohibido** conectar contenedores de distintos deployments entre sí directamente.
+- Comunicación inter-apps: vía API Gateway del Maestro v2 (futuro), nunca conexión directa.
 
 ### 2.3 DNS interno Docker
 
-- Dentro de `maestro-network`: los contenedores se resuelven por nombre (ej: `maestro-api` resuelve al IP del Maestro).
-- Dentro de `app-<slug>-<company>-net`: el contenedor de la app resuelve su BD por el nombre `db-<slug>-<company>` (via Docker DNS).
-- **Variable de entorno canónica** que la app huésped recibe: `DATABASE_URL=postgres://<user>:<pass>@db-<slug>-<company>:5432/<dbname>`. La app **debe** leer esta variable y no hardcodear hostnames.
+- Dentro de `maestro-network`: contenedores se resuelven por nombre.
+- Dentro de `app-<slug>-<empresa>-net`: la app resuelve su BD por `db-<slug>-<empresa>`.
+- **Variable canónica** que la app recibe: `DATABASE_URL=postgres://<user>:<pass>@db-<slug>-<empresa>:5432/<dbname>`.
 
 ---
 
 ## 3. Puertos
 
-### 3.1 Puertos expuestos al host / exterior
+### 3.1 Puertos expuestos al host
 
-**Solo Traefik expone puertos al exterior**:
+**Solo Traefik** expone puertos al exterior:
 - `80/tcp` → redirect 301 a 443.
 - `443/tcp` → tráfico HTTPS.
 
-**Nada más** se expone al host. Ni el Maestro, ni las BDs, ni las apps, ni Redis, ni Grafana. Todo queda en redes Docker internas.
+Ningun otro servicio se expone al host.
 
 ### 3.2 Puertos internos (dentro de redes Docker)
 
 | Servicio | Puerto |
 |---|---|
-| maestro-api (php-fpm via nginx sidecar) | 8080 |
-| maestro-portal (nginx static) | 8081 |
-| maestro-db (PostgreSQL) | 5432 |
-| maestro-redis | 6379 |
-| maestro-docker-proxy | 2375 |
-| Traefik admin dashboard (interno, no expuesto) | 8082 |
-| Observability stack | 9090 (prom), 3000 (grafana), 3100 (loki), ... (documentado separado) |
-| Instancia app huésped | declarado en `maestro.yaml` `requires.ports.app` (1024–65535) |
-| Instancia BD de app huésped | 5432 (PostgreSQL default), 3306 (MySQL), 27017 (Mongo), etc. |
+| maestro-api | 8080 |
+| maestro-portal | 8081 |
+| maestro-db | 5432 |
+| Traefik admin (interno) | 8082 |
+| Observability stack | 9090 (prom), 3000 (grafana), 3100 (loki) |
+| Contenedor app huésped | declarado en `maestro.yaml` `requires.ports.app` (1024–65535) |
+| BD de app huésped | 5432 (postgres), 3306 (mysql), 27017 (mongo) |
 
-**Reglas**:
-- Apps huésped **no pueden** declarar puertos < 1024 (no-negociable del preset web-maestro).
-- Apps huésped **no deben** intentar bindear al host (no hay `ports:` en docker-compose de instancias; todo está expuesto vía Traefik).
+Apps huésped no pueden declarar puertos < 1024.
 
 ---
 
@@ -109,20 +103,18 @@ Tags inmutables (no re-push). `latest` **prohibido** en producción; se usa en d
 
 ### 4.1 Nombres y contenido
 
-| Volumen | Contenido | Persistencia |
-|---|---|---|
-| `maestro-db-data` | PostgreSQL data dir del Maestro | backed up diario |
-| `maestro-redis-data` | Redis AOF | backed up diario (opcional) |
-| `maestro-traefik-acme` | Certificados Let's Encrypt | backed up diario |
-| `maestro-secrets` | bind mount `/secrets/` (OAuth keys, master keys) | gestionado por humano; no por framework |
-| `obs-prometheus-data`, `obs-grafana-data`, `obs-loki-data` | Data de observabilidad | retention según política |
-| `db-<app_slug>-<company_slug>-data` | PostgreSQL data dir de una instancia | backed up diario |
+| Volumen | Contenido |
+|---|---|
+| `maestro-db-data` | PostgreSQL data dir del Maestro v2 |
+| `maestro-traefik-acme` | Certificados Let's Encrypt |
+| `maestro-secrets` | Secrets del Maestro (API keys, passwords) |
+| `obs-*-data` | Data de observabilidad |
+| `db-<app_slug>-<empresa_slug>-data` | PostgreSQL data dir de un deployment de app |
 
 ### 4.2 Reglas
 
-- Las apps huésped **no pueden** solicitar volúmenes custom al Maestro V1. Solo reciben la BD dedicada.
-- Filesystem del contenedor de app **efímero** — todo estado persistente va a la BD, no a disco local.
-- Si una app necesita storage de archivos (ej: uploads), V1 requiere usar almacenamiento externo (Azure Blob vía SDK custom; no soportado directamente V1; diferible).
+- Apps huésped no pueden solicitar volúmenes custom al Maestro v2.
+- Filesystem del contenedor de app es **efímero** — todo estado persistente va a la BD o a blob storage externo.
 
 ---
 
@@ -130,97 +122,78 @@ Tags inmutables (no re-push). `latest` **prohibido** en producción; se usa en d
 
 ### 5.1 Patrón de subdominios
 
-Base: `<MAESTRO_BASE_DOMAIN>` (ej: `maestro.local` en dev, `maestro.llyasoc.com` en prod).
+Base: `<MAESTRO_BASE_DOMAIN>` (ej: `maestro.llyasoc.com`).
 
 | Subdominio | Ruta a |
 |---|---|
-| `<MAESTRO_BASE_DOMAIN>` | Portal (redirect a `/` o `/login`) |
-| `maestro.<MAESTRO_BASE_DOMAIN>` | API + portal (mismo backend, Traefik enruta por path) |
-| `<app_slug>-<company_slug>.<MAESTRO_BASE_DOMAIN>` | Instancia de app huésped |
-| `grafana.<MAESTRO_BASE_DOMAIN>` | Grafana (solo admins, auth via ForwardAuth) |
+| `<MAESTRO_BASE_DOMAIN>` | Portal del Maestro v2 |
+| `<app_slug>-<empresa_slug>.<MAESTRO_BASE_DOMAIN>` | Deployment de app huésped (URL que el portal abre en `target="_blank"`) |
+| `grafana.<MAESTRO_BASE_DOMAIN>` | Grafana (admin only) |
 
-### 5.2 Labels Traefik para instancias huésped
-
-Template de labels que el motor de provisioning aplica al contenedor de una instancia:
+### 5.2 Labels Traefik para deployments huésped (cambio v1 → v2)
 
 ```yaml
 labels:
   - "traefik.enable=true"
   - "traefik.docker.network=maestro-network"
-  - "traefik.http.routers.app-<slug>-<company>.rule=Host(`<slug>-<company>.<MAESTRO_BASE_DOMAIN>`)"
-  - "traefik.http.routers.app-<slug>-<company>.entrypoints=websecure"
-  - "traefik.http.routers.app-<slug>-<company>.tls=true"
-  - "traefik.http.routers.app-<slug>-<company>.tls.certresolver=letsencrypt"
-  - "traefik.http.routers.app-<slug>-<company>.middlewares=forward-auth-maestro@file,security-headers@file,rate-limit@file"
-  - "traefik.http.services.app-<slug>-<company>.loadbalancer.server.port=<app_port_from_maestro_yaml>"
+  - "traefik.http.routers.app-<slug>-<empresa>.rule=Host(`<slug>-<empresa>.<MAESTRO_BASE_DOMAIN>`)"
+  - "traefik.http.routers.app-<slug>-<empresa>.entrypoints=websecure"
+  - "traefik.http.routers.app-<slug>-<empresa>.tls=true"
+  - "traefik.http.routers.app-<slug>-<empresa>.tls.certresolver=letsencrypt"
+  # NOTA v2: NO HAY middleware ForwardAuth.
+  # La app v2 maneja su propia auth. Traefik solo enruta tráfico.
+  - "traefik.http.routers.app-<slug>-<empresa>.middlewares=security-headers@file,rate-limit@file"
+  - "traefik.http.services.app-<slug>-<empresa>.loadbalancer.server.port=<app_port_from_maestro_yaml>"
 ```
 
-El middleware `forward-auth-maestro` está declarado globalmente en la config de Traefik:
-
-```yaml
-http:
-  middlewares:
-    forward-auth-maestro:
-      forwardAuth:
-        address: "http://maestro-api:8080/api/auth/validate"
-        authResponseHeaders:
-          - "X-Auth-User-Id"
-          - "X-Auth-User-Email"
-          - "X-Auth-Company-Id"
-          - "X-Auth-Roles"
-          - "X-Auth-Permissions"
-        trustForwardHeader: false
-```
+> **Cambio crítico v1 → v2:** ya no hay `forward-auth-maestro` middleware. Traefik no inyecta headers `X-Auth-*`. La app autentica al usuario por su cuenta.
 
 ---
 
 ## 6. Variables de entorno
 
-### 6.1 Inyectadas por el Maestro a cada instancia huésped
+### 6.1 Inyectadas por el Maestro v2 a cada deployment de app huésped
 
-El motor de provisioning inyecta **sólo** estas variables (no más, no menos):
+El motor de provisioning del Maestro v2 inyecta:
 
 | Variable | Contenido |
 |---|---|
-| `DATABASE_URL` | Connection string completa de la BD dedicada |
-| `MAESTRO_BASE_URL` | URL pública del Maestro (ej: `https://maestro.<MAESTRO_BASE_DOMAIN>`) |
+| `DATABASE_URL` | Connection string de la BD dedicada |
+| `MAESTRO_BASE_URL` | URL pública del Maestro v2 |
 | `MAESTRO_APP_ID` | UUID de la app en el catálogo |
 | `MAESTRO_APP_SLUG` | Slug de la app |
-| `MAESTRO_COMPANY_ID` | UUID de la empresa (tenant) en ejecución |
-| `MAESTRO_COMPANY_SLUG` | Slug de la empresa |
-| `MAESTRO_INSTANCE_ID` | UUID único de la instancia |
-| `MAESTRO_WEBHOOK_SECRET` | Secret HMAC para verificar hooks entrantes (proporcionado por Maestro) |
-| `MAESTRO_GATEWAY_URL` | URL del endpoint gateway (ej: `https://maestro.<MAESTRO_BASE_DOMAIN>/api/v1/gateway`) |
-| `MAESTRO_JWKS_URL` | URL del JWKS público (para validar JWT offline si la app quiere) |
-| `APP_ENV` | `local|staging|production` |
-| `LOG_LEVEL` | por default `info` |
-| Custom env declaradas en `maestro.yaml.env` | propagadas tal cual |
+| `MAESTRO_EMPRESA_ID` | UUID de la empresa que opera este contenedor |
+| `MAESTRO_EMPRESA_SLUG` | Slug de la empresa |
+| `MAESTRO_DEPLOYMENT_ID` | UUID único de este deployment |
+| `MAESTRO_API_KEY` | Secret compartido para que el Maestro v2 consuma `/maestro/branding` de la app |
+| `MAESTRO_WEBHOOK_SECRET` | Secret HMAC para verificar hooks entrantes (si la app declara hooks) |
+| `SUPERADMIN_INITIAL_PASSWORD` | Password inicial del superadmin (consumida por la fase 05-seeding) |
+| `APP_KEY` o `JWT_SECRET` (segun stack) | Secret para firmar tokens propios de la app |
+| `APP_ENV` | `local | staging | production` |
+| `LOG_LEVEL` | default `info` |
+| Custom env vars declaradas en `maestro.yaml.env` | propagadas tal cual |
 
-### 6.2 Prefijos reservados (prohibidos en apps huésped)
+> **Cambio v2:** se agregan `MAESTRO_API_KEY`, `SUPERADMIN_INITIAL_PASSWORD`. Ya NO se inyectan headers `X-Auth-*` (eso era trabajo de Traefik en v1).
 
-Las apps huésped **no deben** declarar ni usar variables con estos prefijos:
+### 6.2 Prefijos reservados
 
-- `MAESTRO_*` (reservado para metadata y coordinación con plataforma)
-- `X_AUTH_*` (header values; son headers HTTP, no env vars, pero mencionamos por si confunde)
-- `DATABASE_URL` (será sobrescrita por el Maestro)
+Las apps huésped **NO DEBEN** usar variables con estos prefijos:
 
-Si una app declara una env var con prefijo reservado en su `maestro.yaml`, la validación del contrato falla.
+- `MAESTRO_*` (reservado para metadata y coordinación)
+- `SUPERADMIN_*` (reservado para seeding del superadmin)
+- `DATABASE_URL` (sera sobrescrita por el Maestro v2)
 
-### 6.3 Headers HTTP reservados
+### 6.3 Headers HTTP reservados (cambio v1 → v2)
 
-Las apps huésped no deben **emitir** estos headers en sus responses (ya que Traefik o el Maestro los inyectan en el request):
-
-- `X-Auth-User-Id`, `X-Auth-User-Email`, `X-Auth-Company-Id`, `X-Auth-Roles`, `X-Auth-Permissions`.
-- `X-Maestro-*` (reservado).
-- `X-Request-Id` (propagado por Traefik; la app puede **leerlo** pero no reemplazarlo).
-
-Las apps **deben leer** los `X-Auth-*` del request (no de cookies, no de body, no de query params).
+- `X-Maestro-Api-Key`: la app **DEBE** consumirlo (lo envía el Maestro v2 al consumir `/maestro/branding`).
+- `X-Maestro-Webhook-Signature`: la app **DEBE** verificarlo en endpoints de hooks.
+- `X-Auth-*`: **DEPRECADOS en v2.** El Maestro v2 NO los inyecta. La app NO debe leerlos.
 
 ---
 
 ## 7. Recursos (CPU / memoria)
 
-### 7.1 Tiers disponibles V1
+### 7.1 Tiers disponibles v2
 
 | Tier | Memoria | CPU |
 |---|---|---|
@@ -230,23 +203,19 @@ Las apps **deben leer** los `X-Auth-*` del request (no de cookies, no de body, n
 | `large` | 2g | 2.0 |
 | `xlarge` | 4g | 4.0 |
 
-Cada app declara en `maestro.yaml` valores dentro de rangos:
-- `resources.memory`: entre `256m` y `4g`.
-- `resources.cpu`: entre `0.25` y `4.0`.
-
-El motor de provisioning aplica `--memory` y `--cpus` de Docker al levantar el contenedor.
+(Igual que v1.) Cada app declara `resources.memory` y `resources.cpu` en `maestro.yaml`.
 
 ### 7.2 Reglas
 
-- Es **obligatorio** declarar ambos campos. Omitirlos es un error de validación.
-- Si el consumo real excede sostenidamente el 90% durante >30 min, se dispara alerta.
-- Si excede el 100% (`memory`): OOM Killer → contenedor reiniciado automáticamente; después de 3 OOMs en 5 min, se suspende la instancia.
+- Es obligatorio declarar ambos campos.
+- Si el consumo real excede sostenidamente el 90 % por > 30 min: alerta.
+- Si excede el 100 % de memory: OOM Killer → restart automático.
 
 ---
 
-## 8. Dockerfile — Reglas normativas para apps huésped
+## 8. Dockerfile — Reglas normativas v2
 
-Toda app huésped debe cumplir:
+(Mayoritariamente igual a v1.)
 
 ```dockerfile
 # Multi-stage obligatorio
@@ -257,44 +226,42 @@ WORKDIR /app
 FROM node:20-alpine AS runtime
 WORKDIR /app
 
-# No-negociable 4: usuario no-root
+# Usuario no-root
 RUN addgroup -g 1001 -S app && adduser -u 1001 -S app -G app
 USER app
 
-# Copy solo lo necesario
 COPY --from=build --chown=app:app /app/dist ./dist
 COPY --from=build --chown=app:app /app/node_modules ./node_modules
-COPY --from=build --chown=app:app /app/package.json ./
 
 EXPOSE 3000
-# No-negociable 3: HEALTHCHECK
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
   CMD wget -q -O- http://localhost:3000/health || exit 1
 
 CMD ["node", "dist/index.js"]
 ```
 
-Reglas verificadas automáticamente por `maestro-cli validate`:
-- ✅ `USER` directive presente y no-root (UID != 0).
-- ✅ `HEALTHCHECK` instruction presente.
-- ✅ `EXPOSE` con puerto que coincide con `maestro.yaml.requires.ports.app`.
-- ❌ No `COPY .env*` (usa `.dockerignore`).
-- ❌ No `--privileged` (se valida en el runner, no en el Dockerfile; pero el Maestro no lo permitiría).
-- ❌ No `ENV <VAR>=<SECRETO>` hardcoded (gitleaks + trivy).
+Reglas verificadas:
+- ✅ `USER` directive presente y no-root.
+- ✅ `HEALTHCHECK` instruction.
+- ✅ `EXPOSE` con puerto coincidente con `maestro.yaml.requires.ports.app`.
+- ❌ `COPY .env*` (usar `.dockerignore`).
+- ❌ `--privileged`.
+- ❌ Hardcodeo de secretos.
 
 ---
 
-## 9. `maestro.yaml` — Contrato resumido
+## 9. `maestro.yaml` v2 — Contrato resumido
 
-La especificación completa del contrato gateway se documenta en la fase 02-planning de cada proyecto generado por el framework agéntico (entregable `API_CONTRACTS.md`).
+Ver `docs/APP_HUESPED_SPEC.md §5` para la especificación completa.
 
-Ejemplo canónico:
+Ejemplo canónico v2:
+
 ```yaml
-apiVersion: maestro.platform/v1
+apiVersion: maestro.platform/v2
 kind: Application
 metadata:
   name: contabilidad
-  version: 1.0.0
+  version: 2.0.0
 requires:
   database: postgres
   ports:
@@ -303,22 +270,32 @@ health:
   endpoint: /health
   timeout_seconds: 5
 auth:
-  mode: header
-  headers:
-    - X-Auth-User-Id
-    - X-Auth-User-Email
-    - X-Auth-Company-Id
-    - X-Auth-Roles
-    - X-Auth-Permissions
+  mode: own                          # v2: solo "own"
+  login_path: /login
+  logout_path: /logout               # opcional
+branding:
+  url: /maestro/branding             # endpoint autenticado con X-Maestro-Api-Key
 resources:
   memory: 512m
   cpu: 0.5
+seeding:
+  superadmin_email: admin@llyasoc.com
+  additional_users: []
 hooks:
-  on_user_added: /hooks/user-added
-  on_user_removed: /hooks/user-removed
-env:                   # variables custom de la app (opcionales)
-  - FEATURE_FLAG_X
+  on_user_added: /hooks/user-added   # opcional
+env:
+  - SMTP_HOST
+  - REDIS_URL
 ```
+
+Diferencias claves vs v1:
+- `apiVersion: maestro.platform/v2` (era `v1`)
+- `auth.mode: own` (era `header`)
+- `auth.login_path` (NEW; obligatorio en v2)
+- `auth.logout_path` (NEW; opcional)
+- `auth.headers` ELIMINADO (no aplica)
+- `branding.url` (NEW; obligatorio en v2)
+- `seeding.*` (NEW; obligatorio en v2)
 
 ---
 
@@ -326,64 +303,59 @@ env:                   # variables custom de la app (opcionales)
 
 ### 10.1 Formato obligatorio
 
-Toda app huésped debe loguear a **stdout/stderr** (no a archivos). Formato:
+Toda app huésped debe loguear a stdout/stderr en JSON:
 
 ```json
 {
-  "timestamp": "2026-04-16T14:23:01.234Z",
-  "level": "info|warn|error|debug",
-  "message": "string",
+  "timestamp": "2026-05-06T14:23:01.234Z",
+  "level": "info",
+  "message": "user.login.success",
   "request_id": "req_01HY...",
-  "company_id": "uuid (si aplica)",
-  "user_id": "uuid (si aplica)",
-  "app_slug": "<slug>",
-  "additional_fields": {}
+  "user_id": "uuid",
+  "app_slug": "<slug>"
 }
 ```
 
+> **Cambio v2:** se agrega `user_id`, **se elimina `company_id`** (single-tenant fisico).
+
 ### 10.2 Prohibiciones
 
-- **Nunca loguear** el contenido de headers `X-Auth-*`, tokens, passwords, `DATABASE_URL`, secrets.
-- **Nunca loguear** bodies de requests completos sin redacción.
-- Promtail + Loki recolectan y retienen 30 días.
+- **Nunca loguear:** passwords, hashes, JWTs propios, `MAESTRO_API_KEY`, `MAESTRO_WEBHOOK_SECRET`, `SUPERADMIN_INITIAL_PASSWORD`, cookies de sesion, bodies de requests con datos sensibles.
 
 ---
 
-## 11. Ciclo de vida de una app nueva (resumen de flujo para devs)
+## 11. Ciclo de vida de un deployment v2
 
 ```
-1. Dev clona repo template (`maestro-cli new <name>`).
-2. Template incluye: Dockerfile compatible, maestro.yaml baseline, CLAUDE.md con reglas heredadas,
-   workflow .github/workflows/deploy.yml, SDK @maestro/sdk-node preinstalado.
-3. Dev desarrolla la app respetando las convenciones de este documento.
-4. Dev hace push a su rama → CI ejecuta:
-   - maestro-cli validate
-   - tests + lint
-   - trivy scan
-   - build imagen Docker
-5. Dev abre PR → review → merge a master.
-6. Tag v<semver> → CI push de imagen a ghcr.io/<owner>/<app_slug>:<version>.
-7. CI llama POST /api/v1/apps/register al Maestro.
-8. Admin del Maestro licencia la app a una o más empresas via portal admin.
-9. Admin provisiona instancia para (app, empresa).
-10. Usuarios finales acceden al portal y la app aparece en su sidebar.
+1. Equipo construye app v2 siguiendo `docs/APP_HUESPED_SPEC.md`.
+2. CI ejecuta: maestro-cli validate (v2) + tests + trivy + build.
+3. Tag semver → push imagen a ghcr.io/<owner>/<app_slug>:<version>.
+4. CI llama POST /api/v2/apps/register al Maestro v2 con metadata.
+5. Admin del Maestro v2 licencia la app a una empresa.
+6. Maestro v2 provisiona deployment: contenedor + BD + ENV vars + SUPERADMIN_INITIAL_PASSWORD.
+7. Pipeline de deploy ejecuta el seeder (fase 05-seeding del framework v4): crea admin@llyasoc.com.
+8. App queda online en https://<app_slug>-<empresa_slug>.<MAESTRO_BASE_DOMAIN>.
+9. Maestro v2 consume /maestro/branding para mostrar nombre y logos en el portal.
+10. Usuario hace click en el portal → Maestro v2 abre la URL en target="_blank".
+11. Usuario hace login en la app con sus credenciales propias.
 ```
 
 ---
 
-## 12. Dónde cambiar este documento
+## 12. Referencias cruzadas
 
-- Cualquier cambio en este doc requiere PR con label `convenciones` + aprobación del software-architect + code-reviewer transversal.
-- Breaking changes (ej: cambio de nombre de header, cambio de prefijo reservado) requieren bump mayor del `apiVersion: maestro.platform/v1` → `v2` y un periodo de transición >=6 meses.
-- Historial de cambios se mantiene en `CHANGELOG.md` del repo.
+- `framework-agentico/CHANGELOG.md` — cambios v3 → v4
+- `framework-agentico/core/PRESET_WEB_MAESTRO.md` — preset v4 (constraints por fase)
+- `framework-agentico/phases/05-seeding.md` — fase de seeding
+- `framework-agentico/agents/presets/maestro-platform/PRESET.md` — preset para construir la Web Maestro
+- `framework-agentico/migration/v3-to-v4.md` — proceso de migración
+- `docs/APP_HUESPED_SPEC.md` — especificación normativa v2
+- `docs/APP_HUESPED_BEST_PRACTICES.md` — best practices v2
 
 ---
 
-## 13. Referencias cruzadas
+## 13. Historial de revisiones
 
-Estos artefactos son **generados por el framework agéntico** durante el ciclo de desarrollo. Ver:
-
-- Fase 02 — Planning: `framework-agentico/phases/02-planning.md` define cómo se generan ARCHITECTURE, ADR_LOG, DATA_MODEL, API_CONTRACTS, UX_SPECS y THREAT_MODEL.
-- Decisiones: cada proyecto registra sus ADRs en `framework-agentico/projects/{project-id}/branches/{rama}/phases/02-planning-adr.md`.
-- Preset y reglas: `framework-agentico/agents/presets/maestro-platform/rules/RULES.md`
-- Premisa vinculante: `PremisaWebMaestro/01-PREMISAS-Y-NO-NEGOCIABLES.md`
+| Versión | Fecha | Cambio |
+|---|---|---|
+| 2.0.0 | 2026-05-06 | Versión inicial. Convenciones para Maestro v2 / contrato `maestro.platform/v2` / framework agéntico v4. Single-tenant fisico, sin ForwardAuth, sin headers X-Auth-*. |

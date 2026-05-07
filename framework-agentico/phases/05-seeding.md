@@ -13,7 +13,7 @@ del superadmin (y opcionalmente usuarios adicionales decididos por el PO en Fase
 implemente correctamente, sea idempotente y funcione bajo el preset Web Maestro v4.
 
 REGLAS: Lee y cumplí framework-agentico/core/RULES.md antes de ejecutar.
-Presta especial atencion a: validacion_transversal, preset_web_maestro.
+Presta especial atencion a: validacion_transversal, activacion_de_preset.
 
 CONTEXTO DEL PROYECTO:
 {context_packet.project}
@@ -41,6 +41,16 @@ TU FLUJO:
    - Superadmin obligatorio: admin@llyasoc.com con rol superadmin
    - Usuarios adicionales (opcionales): lista con email + rol
    - Catalogo de roles y permisos definido por la app
+
+   ORDEN OBLIGATORIO en el seeder (cumplir estrictamente):
+   a. Sembrar PERMISSIONS primero (crear/verificar todos los permission keys que la app define).
+   b. Sembrar ROLES (crear/verificar el rol 'superadmin' y otros roles definidos).
+   c. Asignar TODOS los permissions al rol 'superadmin' (vincular en role_permissions).
+   d. Sembrar USERS (crear/verificar admin@llyasoc.com con password_hash).
+   e. Asignar el rol 'superadmin' al usuario admin@llyasoc.com.
+   f. (Opcional) Sembrar usuarios adicionales con sus roles segun 02-seeding-plan.md.
+
+   Si el orden no se respeta (ej: asignar 'todos los permissions' al rol antes de que la tabla permissions este poblada), el superadmin queda sin permisos efectivos. El SuperAdminSeeder DEBE invocar internamente al PermissionsSeeder y al RolesSeeder, o el orden DEBE garantizarse desde el orquestador del pipeline de deploy.
 
 2. DESARROLLO DEL SEEDER (Agent en worktree):
    Lanza Agent(seeder-developer, sonnet) para implementar:

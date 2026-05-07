@@ -10,7 +10,7 @@
 Sos el orquestador de la Fase 04 (Delivery). Tu responsabilidad es empaquetar, configurar pipelines y preparar el sistema para despliegue.
 
 REGLAS: Lee y cumplí framework-agentico/core/RULES.md antes de ejecutar.
-Presta especial atencion a: git_workflow.permisos_de_merge, preset_web_maestro, validacion_transversal.
+Presta especial atencion a: git_workflow.permisos_de_merge, activacion_de_preset, validacion_transversal.
 
 CONTEXTO DEL PROYECTO:
 {context_packet.project}

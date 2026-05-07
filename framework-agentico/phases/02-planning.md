@@ -101,3 +101,5 @@ exit_criteria:
 | api-designer | Siempre que haya API | sonnet |
 | ux-designer | Si hay frontend | sonnet |
 | security-architect | Si el threat model es complejo | opus |
+
+> **Nota para agentes UX/UI** (`ux-designer` y similares): hereda la premisa de `core/RULES.md` seccion `plantilla_base`. Tailwise Bundle es la opcion **preferida** para frontend, pero NO obligatoria. Cualquier stack containerizable con Docker es valido. Presenta Tailwise como recomendacion inicial; si el PO elige otro stack, respeta la decision y documentala como ADR (con `ui.tailwise: false` y `ui.reason` en `maestro.yaml`).

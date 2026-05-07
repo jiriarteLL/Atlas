@@ -1,228 +1,237 @@
 # Preset: Maestro Platform
 
 > **Tipo:** Preset activable
-> **Activación:** El humano lo activa al construir la plataforma Maestro misma (no una app huésped)
-> **Efecto:** Invierte el preset `web-maestro` — cada restricción que ese impone a las apps huésped, aquí se convierte en una obligación que el Maestro debe **producir, emitir, validar o imponer**.
-> **Relación con `web-maestro`:** Son duales. Toda app construida con `web-maestro` depende de que el Maestro construido con `maestro-platform` cumpla su lado del contrato.
+> **Activación:** Se activa cuando el PO declara que va a construir la Web Maestro (= web anfitriona). Ver `framework-agentico/core/RULES.md` seccion `activacion_de_preset` para el flujo de seleccion. Default del PM: preset `web-maestro` (app huesped); este preset solo aplica si el PO indica explicitamente que construye la Web Maestro.
+> **Framework agéntico:** v4
+> **Reemplaza a:** `legacy/v3/framework-agentico/agents/presets/maestro-platform/PRESET.md` (preset v1 que asumía Maestro como Identity Provider con headers `X-Auth-*`).
+> **Relación con `web-maestro` v4:** Son duales. Toda app construida con `web-maestro` v4 depende de que la Web Maestro construida con este preset cumpla su lado del contrato `maestro.platform/v2`.
 
 ---
 
 ## Descripción
 
-Este preset se activa cuando el proyecto es la **plataforma Maestro** (el orquestador multi-tenant que aloja apps dockerizadas), no una aplicación huésped. El Maestro es:
+Este preset se activa cuando el proyecto es la **plataforma Maestro v2** (orquestador de aplicaciones huésped single-tenant), no una aplicación huésped. El Maestro v2 es un **registry + redirector**, NO un Identity Provider:
 
-- **Identity Provider único** del ecosistema (Laravel Passport OAuth2 + JWT + Microsoft Entra ID + usuario/contraseña).
-- **Motor de provisioning** de contenedores, redes Docker aisladas y bases de datos dedicadas por instancia.
-- **Reverse proxy manager** (Traefik + ForwardAuth + TLS Let's Encrypt).
-- **Gateway inter-apps** con registro y verificación de permisos.
-- **Definidor y validador** del contrato `maestro.yaml` que las apps huésped deben cumplir.
-- **Emisor** de los headers `X-Auth-User-Id`, `X-Auth-User-Email`, `X-Auth-Company-Id`, `X-Auth-Roles`, `X-Auth-Permissions`.
-- **Receptor** de los health checks que las apps exponen.
-- **Dueño** de la tabla canónica `users`, `companies`, `applications` y las tres tablas pivote M-M.
+- **Registry**: mantiene un catálogo de aplicaciones registradas, empresas, deployments (un deployment = una app + una empresa = un contenedor), URLs, puertos, estado.
+- **Redirector**: cuando un usuario hace click en una app desde el portal del Maestro, el Maestro abre la URL del deployment en `target="_blank"`. NO maneja la sesión del usuario.
+- **Provisioner**: provisiona contenedores Docker, redes aisladas y BDs dedicadas por deployment.
+- **Brand consumer**: consume el endpoint `/maestro/branding` de cada app (autenticando con `X-Maestro-Api-Key`) para obtener nombre y logos de cada empresa.
+- **Hook emitter**: emite hooks server-to-server hacia las apps (firmados con `X-Maestro-Webhook-Secret`).
+- **NO** es Identity Provider de las apps huesped. Cada app tiene su propio login.
+- **NO** inyecta headers `X-Auth-*`. Esa responsabilidad fue deprecada al pasar de v1 a v2.
+- **NO** mantiene una tabla `users` global a la que las apps consultan. Cada app tiene su propia tabla `users`.
 
-Al activar este preset, todos los agentes del framework reciben obligaciones adicionales que garantizan que el Maestro cumpla simétricamente el contrato que `web-maestro` exige a las apps.
-
----
-
-## Documentos de Referencia
-
-- `PremisaWebMaestro/00-INDICE-MAESTRO.md` — índice maestro
-- `PremisaWebMaestro/01-PREMISAS-Y-NO-NEGOCIABLES.md` — constitución del proyecto
-- `PremisaWebMaestro/02-MODELO-DE-DATOS.md` — entidades y relaciones canónicas
-- `PremisaWebMaestro/03-AUTENTICACION-Y-AUTORIZACION.md` — sistema de identidad
-- `PremisaWebMaestro/04-INFRAESTRUCTURA-DOCKER.md` — topología de redes, ciclo de vida
-- `PremisaWebMaestro/05-PORTAL-Y-RENDERIZADO.md` — shell React + iframes + postMessage
-- `PremisaWebMaestro/06-SDK-Y-CONTRATO.md` — schema `maestro.yaml`, SDKs, CLI
-- `PremisaWebMaestro/07-SISTEMA-AGENTICO.md` — jerarquía de agentes IA para apps huésped
-- `PremisaWebMaestro/08-CICD-Y-GOBERNANZA.md` — pipelines y protecciones
-- `PremisaWebMaestro/09-SEGURIDAD.md` — defensa en profundidad
-- `PremisaWebMaestro/10-OBSERVABILIDAD.md` — stack de monitoreo
-- `PremisaWebMaestro/11-PLAN-DE-IMPLEMENTACION.md` — fases cronológicas
-- `framework-agentico/agents/presets/web-maestro/PRESET.md` — preset dual (lado app huésped)
+Al activar este preset, todos los agentes del framework agéntico v4 reciben obligaciones específicas de construir el Maestro v2.
 
 ---
 
-## Impacto por Fase
+## Diferencias clave con el Preset `maestro-platform` (v1)
+
+| Dimensión | `maestro-platform` v1 (legacy) | `maestro-platform` v4 (vigente) |
+|---|---|---|
+| Rol del Maestro | Identity Provider único + Reverse proxy con ForwardAuth | Registry + redirector + provisioner |
+| Headers `X-Auth-*` | **Emitidos** vía `/api/auth/validate` consumido por Traefik | **NO emitidos.** Cada app autentica por su cuenta. |
+| Tabla `users` global | **Obligatoria** en el Maestro (canónica) | **NO existe** en el Maestro. Cada app tiene la suya. |
+| OAuth2 / Passport | Implementación obligatoria con Laravel Passport | NO aplica |
+| Microsoft Entra ID | Integración obligatoria | NO aplica (cada app puede integrarlo si lo requiere) |
+| Multi-tenancy | Multi-tenant lógico con `company_id` en tablas | Multi-tenant físico: un contenedor por empresa, sin `company_id` |
+| Branding | Inyectado por el Maestro al portal | Consumido por el Maestro vía `/maestro/branding` autenticado con `X-Maestro-Api-Key` |
+| Autenticación Maestro → App (server) | `X-Maestro-Webhook-Secret` para hooks | + `X-Maestro-Api-Key` para `/maestro/branding` |
+| Click en app desde portal | Reverse proxy + iframe + headers inyectados | Abre URL en `target="_blank"`, app gestiona login |
+| Hooks salientes (Maestro → App) | Igual: HMAC-SHA256 con secret por app | Igual |
+| Audit log inmutable | Obligatorio | Obligatorio (igual) |
+| Backups cifrados ≥ 30 días | Obligatorio | Obligatorio (igual) |
+
+---
+
+## Documentos de referencia
+
+- `framework-agentico/CHANGELOG.md` — cambios v3 → v4
+- `framework-agentico/core/PRESET_WEB_MAESTRO.md` — preset dual (lado app huésped v4)
+- `docs/APP_HUESPED_SPEC.md` — contrato `maestro.platform/v2` (lado app)
+- `docs/APP_HUESPED_BEST_PRACTICES.md` — recomendaciones
+- `docs/CONVENCIONES_PLATAFORMA.md` — convenciones (naming, redes, env vars)
+- `framework-agentico/phases/05-seeding.md` — fase de seeding (las apps tienen seeder; el Maestro tambien)
+- `framework-agentico/migration/v3-to-v4.md` — proceso de migración
+
+---
+
+## Impacto por fase
 
 ```yaml
 00-setup:
-  - verificar SOLO: Docker, Docker Compose, git, IDE (VSCode o equivalente), acceso al repo
-  - NO instalar PHP, Composer, Node.js, ni clientes de BD en el host (DEC-012)
-  - toolchain ejecutable exclusivamente via contenedores (`docker compose run --rm <servicio> <comando>`)
-  - cliente gráfico de BD (DBeaver, DataGrip, TablePlus) en el host es opcional y aceptado
-  - NO verificar VPS Azure: gestionado por el humano por fuera del framework (DEC-011)
-  - todo el trabajo es local-dockerizado; el framework genera artefactos de deploy, no despliega
+  - verificar SOLO: Docker, Docker Compose, git, IDE
+  - NO instalar runtimes en el host (mismo principio v1)
+  - toolchain ejecutable exclusivamente via contenedores
+  - el VPS / cloud lo gestiona el humano por fuera del framework
 
 01-discovery:
-  - tratar los 10 no-negociables de la premisa como requisitos no funcionales obligatorios
-  - identificar regulaciones aplicables (cliente no ha definido; compliance-analyst investiga GDPR/LGPD/ISO27001)
-  - mapear stakeholders: empresas tenant, usuarios finales, devs de apps, admins Maestro, C-Level
-  - documentar métricas objetivo: 50 usuarios concurrentes V1, latencia ForwardAuth <50ms p95, cold start <15s
+  - tratar las premisas v2 como requisitos no funcionales obligatorios
+  - identificar regulaciones aplicables (compliance-analyst investiga)
+  - mapear stakeholders: empresas tenant, usuarios finales, devs de apps huesped, admins Maestro
+  - documentar metricas objetivo: latencia de redireccion < 200ms, tiempo de provisioning de deployment < 60s
 
 02-planning:
-  - ADRs obligatorios: Laravel Passport vs alternativa, elección de BD del Maestro, estrategia de cifrado AES-256, Traefik como reverse proxy, estrategia de redes Docker por instancia
-  - modelo de datos: entidades canónicas users, companies, applications + pivots M-M + oauth_* (Passport) + instances + audit_log inmutable + backups_registry
-  - contratos de API: /api/auth/*, /api/companies, /api/users, /api/applications, /api/instances/*, /api/apps/register, /api/inventory/context, /api/gateway/*
-  - threat model OBLIGATORIO: superficie de ataque multi-tenant, escalada de privilegios entre tenants, inyección vía headers X-Auth-*, tampering del token JWT
-  - UX: shell React portal, selector de empresa activa, iframe + postMessage, pantalla cold start, manejo de errores por estado
-  - OBLIGATORIO: diseñar `docker-compose.dev.yml` 100% portátil (sin dependencia de PHP/Node en host) (DEC-012)
-  - OBLIGATORIO: producir `docs/CONVENCIONES_PLATAFORMA.md` con convenciones de puertos, redes Docker, volúmenes, naming de contenedores, subdominios y variables de entorno que eviten colisiones entre Maestro y apps huésped
+  - ADRs obligatorios:
+    - eleccion de BD del Maestro (PostgreSQL recomendado)
+    - reverse proxy (Traefik con TLS Let's Encrypt; ya NO requiere middleware ForwardAuth)
+    - estrategia de provisioning (Docker API)
+    - estrategia de cifrado AES-256 para secretos del Maestro
+    - estrategia de redes Docker por deployment
+  - modelo de datos del Maestro v2:
+    - companies (empresas registradas)
+    - applications (apps en el catálogo, con metadata de SPEC v2)
+    - deployments (instancias activas: app + empresa + contenedor + BD + estado)
+    - api_keys (X-Maestro-Api-Key por deployment, rotables)
+    - webhook_secrets (X-Maestro-Webhook-Secret por deployment, rotables)
+    - audit_log inmutable
+    - admin_users (usuarios del Maestro mismo, con su propio login segun preset web-maestro v4 — el Maestro v2 ES una app huesped de si mismo)
+  - contratos de API:
+    - /api/v2/apps/register (apps se auto-registran desde CI)
+    - /api/v2/companies (CRUD)
+    - /api/v2/deployments/* (lifecycle)
+    - /api/v2/portal/my-apps (portal queries)
+    - /api/v2/branding/refresh (forzar refresh del cache de branding)
+  - threat model: bypass del registry, escalada de privilegios admin, leak de api keys, leak de webhook secrets
+  - UX: shell del portal con grid de apps disponibles. Click abre URL en target="_blank".
 
 03-development:
-  - IMPLEMENTAR Laravel Passport como OAuth2 server emisor de JWT
-  - IMPLEMENTAR /api/auth/login (user/pass) y OAuth2 flow con Microsoft Entra ID
-  - IMPLEMENTAR /api/auth/validate (consumido por Traefik ForwardAuth) que retorna headers X-Auth-*
-  - CREAR tablas canónicas users, companies, applications + 3 tablas pivote M-M + oauth_* + instances + audit_log
-  - IMPLEMENTAR audit log INMUTABLE (solo INSERT; triggers que rechazan UPDATE/DELETE a nivel BD)
-  - IMPLEMENTAR cifrado AES-256 de secretos en BD del Maestro
-  - IMPLEMENTAR motor de provisioning de instancias (Docker API, redes aisladas, BDs dedicadas, credenciales random 32+ chars)
-  - IMPLEMENTAR máquina de estados del ciclo de vida de instancia
-  - IMPLEMENTAR health checks periódicos + auto-restart tras 3 fallos consecutivos
-  - IMPLEMENTAR portal React con shell, sidebar, iframe, postMessage, cold start screen
-  - IMPLEMENTAR gateway inter-apps con registro en audit log
-  - PUBLICAR JSON Schema de maestro.yaml como validador canónico
-  - IMPLEMENTAR SDK Node.js @maestro/sdk-node (middleware auth, filtro tenant, helpers permisos)
-  - IMPLEMENTAR CLI maestro-cli con comandos validate y new
-  - IMPLEMENTAR endpoint /api/apps/register para registro automático de apps desde CI/CD
-  - IMPLEMENTAR hooks salientes on_user_added / on_user_removed firmados con HMAC-SHA256
+  - IMPLEMENTAR el catálogo: companies, applications, deployments
+  - IMPLEMENTAR motor de provisioning (Docker API: redes aisladas, BDs dedicadas, ENV vars inyectadas)
+  - IMPLEMENTAR generacion + inyeccion de MAESTRO_API_KEY y MAESTRO_WEBHOOK_SECRET por deployment
+  - IMPLEMENTAR consumo del endpoint /maestro/branding de cada app (con X-Maestro-Api-Key)
+  - IMPLEMENTAR cache de branding por deployment (TTL razonable, invalidacion via /api/v2/branding/refresh)
+  - IMPLEMENTAR portal con grid de apps disponibles para el usuario admin del Maestro
+  - IMPLEMENTAR redireccion: cuando el usuario hace click, abrir URL en target="_blank" (no iframe)
+  - IMPLEMENTAR hooks salientes (on_user_added, on_user_removed) firmados con HMAC-SHA256
+  - IMPLEMENTAR endpoint /api/v2/apps/register para self-registration desde CI/CD
+  - IMPLEMENTAR JSON Schema oficial de maestro.yaml v2 publicado
+  - IMPLEMENTAR maestro-cli con comandos validate (v2) y new (template v4)
+  - IMPLEMENTAR audit log INMUTABLE (triggers DB rechazan UPDATE/DELETE)
+  - IMPLEMENTAR cifrado AES-256 de secretos en BD
+  - El Maestro v2 mismo cumple el preset web-maestro v4 para SU PROPIO LOGIN (auth propia para admins del Maestro)
 
 04-delivery:
-  - Dockerfile del Maestro multi-stage, non-root, HEALTHCHECK (el Maestro se impone a sí mismo lo que exige a las apps)
-  - docker-compose.yml con Traefik, Maestro, BD del Maestro, Redis (levantable localmente)
-  - pipeline CI/CD en .github/workflows con validación, tests, build y escaneo
-  - configuración de Traefik con ForwardAuth, TLS Let's Encrypt, redirect HTTP→HTTPS, HSTS, rate limiting 100 req/min/IP
-  - scripts/documentación de deployment para Azure VPS (el despliegue al VPS lo ejecuta el humano; el framework solo produce los artefactos)
+  - Dockerfile multi-stage non-root con HEALTHCHECK
+  - docker-compose con Traefik, Maestro v2, BD del Maestro, Redis (opcional)
+  - pipeline CI/CD en .github/workflows
+  - Traefik: TLS Let's Encrypt, redirect HTTP→HTTPS, HSTS, rate limiting
+  - SIN ForwardAuth (no aplica en v2): Traefik solo enruta tráfico
   - rama main protegida (PR + review)
+  - ENV vars obligatorias: DATABASE_URL, MAESTRO_ENCRYPTION_KEY, APP_KEY/JWT_SECRET para auth de admins, SUPERADMIN_INITIAL_PASSWORD para el seed del admin del Maestro
 
-05-operations:
-  - stack de observabilidad: Prometheus, cAdvisor, Loki, Promtail, Grafana
-  - dashboards: ejecutivo, por instancia, del Maestro
-  - alertas con canales Slack y email
-  - runbooks operativos: instancia no responde, VPS sin espacio, cert TLS no renueva, BD Maestro caída, rollback de app
-  - política de backups: diario 2-4am, cifrado, Azure Blob Storage, retención >=30 días
-  - logs centralizados con company_id filtrable + audit log consultable
+05-seeding:
+  - El Maestro v2 mismo arranca con un usuario superadmin admin@llyasoc.com (seeder idempotente)
+  - Si el PO lo requiere, sembrar empresas iniciales y/o admins adicionales
+  - Validacion transversal: security-auditor + qa-tester + compliance-analyst aprueban el seed
 
-06-retrospective:
-  - documentar patterns del Maestro para referencia del equipo
-  - consolidar ADRs, threat model, runbooks
-  - registrar lecciones aprendidas sobre multi-tenancy seguro
+06-operations:
+  - stack de observabilidad: Prometheus, Loki, Grafana
+  - dashboards: ejecutivo del Maestro, deployments individuales, salud del registry
+  - alertas: deployment unhealthy, /maestro/branding 5xx, hooks failures
+  - runbooks: deployment caido, BD del Maestro caída, Traefik no renueva cert
+  - backups diarios cifrados, retencion >= 30 dias
+  - logs: incluir user_id (admin) y request_id en logs del Maestro mismo
+
+07-retrospective:
+  - documentar patterns del Maestro v2
+  - consolidar ADRs y runbooks
+  - lecciones de migracion del modelo v1 (si aplica)
 
 transversal:
   security-auditor:
-    - auditar los 10 no-negociables de la premisa como checklist obligatorio
-    - validar defensa en profundidad (red + middleware + cifrado)
-    - validar que Traefik no tenga rutas que bypass ForwardAuth
-    - validar que credenciales de BD por instancia sean únicas y >=32 chars
-    - validar que audit_log tenga triggers DB contra UPDATE/DELETE
-    - validar ausencia de secretos en código y en imagen Docker
+    - validar que no haya tabla users global con auth de usuarios de apps (eso es responsabilidad de cada app)
+    - validar manejo de secretos de los deployments (api_keys, webhook_secrets cifrados)
+    - validar audit log inmutable
+    - validar TLS y headers de seguridad en Traefik
+    - validar que el endpoint /api/v2/apps/register tiene su propio mecanismo de auth (token de registro)
   qa-tester:
-    - testear flujo completo: login → JWT → ForwardAuth → headers inyectados en app huésped
-    - testear aislamiento entre tenants (Tenant A no puede leer datos de Tenant B)
-    - testear ciclo de vida completo de instancia: crear → ejecutar → dormir → despertar → destruir → restaurar
-    - testear OAuth2 con Microsoft Entra ID
-    - testear health checks y auto-restart
-    - testear rate limiting y headers de seguridad
+    - testear ciclo completo: registrar app → licenciar a empresa → provisionar deployment → consumir /maestro/branding → click en portal
+    - testear hooks: on_user_added llega correctamente firmado
+    - testear rotacion de api_key sin downtime
+    - testear que el seed del Maestro mismo es idempotente
   compliance-analyst:
-    - investigar GDPR/LGPD/ISO27001/SOC2 aplicables (abierto desde Discovery)
-    - validar política de retención 90 días post-destrucción de instancia
-    - validar audit log cumple requisitos regulatorios
+    - GDPR/LGPD/ISO27001/SOC2 segun aplicabilidad
+    - validar politica de retencion de backups y de deployments destruidos
+    - validar audit log
   performance-analyst:
-    - verificar latencia ForwardAuth <50ms p95 (objetivo de la premisa)
-    - verificar cold start <15s para instancias dormidas
-    - verificar cache hit rate >90% en validación de tokens (Redis)
-    - dimensionar para SLA V1 de 50 usuarios concurrentes
+    - latencia de redireccion < 200ms
+    - tiempo de provisioning de deployment < 60s
+    - tiempo de consumo de /maestro/branding (con cache) < 50ms
 ```
 
 ---
 
-## Diferencias Clave con el Preset `web-maestro`
-
-| Dimensión | `web-maestro` (app huésped) | `maestro-platform` (Maestro mismo) |
-|---|---|---|
-| Login | **Prohibido** implementar login propio | **Obligatorio** implementar Passport OAuth2 + Microsoft Entra ID |
-| Tabla users/sessions | **Prohibido** crearlas | **Obligatorio** mantenerlas como canónicas |
-| Tokens OAuth/JWT | **Prohibido** almacenarlos | **Obligatorio** emitirlos, almacenarlos cifrados y validarlos |
-| Headers X-Auth-* | **Obligatorio** consumirlos | **Obligatorio** emitirlos vía endpoint /api/auth/validate |
-| Endpoint /health | **Obligatorio** exponerlo | **Obligatorio** consumirlo y actuar sobre él (auto-restart) |
-| Contrato maestro.yaml | **Obligatorio** cumplirlo | **Obligatorio** definirlo, publicar schema y validarlo |
-| DATABASE_URL | **Obligatorio** leerla del env | **Obligatorio** generarla, inyectarla y cifrar credenciales |
-| Docker socket | **Prohibido** montarlo | **Obligatorio** usarlo (vía servicio dedicado mínimo-privilegio) desde el motor de provisioning |
-| Comunicación inter-apps | **Prohibido** URL directa | **Obligatorio** proveer gateway inter-apps |
-| Límites de recursos | **Obligatorio** respetarlos | **Obligatorio** imponerlos vía flags Docker |
-| Ejecución como root | **Prohibido** | **Prohibido** también (el Maestro se autoimpone la regla) |
-| Audit log | Opcional | **Obligatorio e inmutable** (INSERT-only, triggers DB) |
-| Backups | No aplica (stateless desde la app) | **Obligatorio** diarios cifrados >=30 días retención |
-
----
-
-## Artefactos que el Preset Genera y Valida
+## Artefactos que el preset genera y valida
 
 ```yaml
 generados_por_el_framework_agentico:
-  backend_laravel:
-    - migraciones de BD con entidades canónicas + tablas Passport + audit_log + instances
-    - modelos Eloquent con relaciones M-M, scopes, soft delete, cifrado de campos sensibles
-    - endpoints de autenticación (/api/auth/login, /api/auth/microsoft, /api/auth/validate, /api/auth/refresh, /api/auth/logout)
-    - endpoints CRUD (/api/companies, /api/users, /api/applications, /api/licenses)
-    - endpoints de instancias (/api/instances/create, /stop, /start, /destroy)
-    - endpoints de registro de apps (/api/apps/register)
-    - endpoints de gateway inter-apps (/api/gateway/*)
-    - endpoint de inventario (/api/inventory/context)
-    - motor de provisioning (servicio Laravel + Docker API)
-    - jobs periódicos de health check con auto-restart escalonado
-    - middleware de emisión de headers X-Auth-*
+  backend:
+    - migraciones de BD del Maestro (companies, applications, deployments, api_keys, webhook_secrets, audit_log, admin_users)
+    - modelos de dominio del registry
+    - endpoints de admin del Maestro: /api/v2/companies, /api/v2/applications, /api/v2/deployments
+    - endpoint /api/v2/apps/register para self-registration desde CI/CD de apps huesped
+    - endpoint /api/v2/portal/my-apps para el portal
+    - endpoint /api/v2/branding/refresh para forzar cache
+    - motor de provisioning (servicio + Docker API)
+    - jobs periodicos de health check de deployments
+    - jobs periodicos de refresh de branding (consumo de /maestro/branding de cada app)
     - hooks salientes on_user_added, on_user_removed firmados HMAC
     - audit log con triggers DB INSERT-only
-    - cifrado AES-256 de secretos
+    - cifrado AES-256 de api_keys y webhook_secrets
+    - middleware de admin auth (login propio del Maestro v2 para sus admins)
+    - seeder del superadmin del Maestro (admin@llyasoc.com)
 
-  frontend_react:
-    - shell del portal con barra superior + sidebar + área de contenido
-    - selector de empresa activa con cambio de contexto JWT
-    - renderizador de iframes con transferencia de token vía postMessage
-    - pantalla cold start con tiempo estimado
-    - pantalla de bienvenida para usuarios sin apps
-    - manejo visual de errores por estado (app caída, licencia expirada, token expirado, sin conexión)
-    - flujo de login user/pass + botón Microsoft
+  frontend:
+    - portal React con grid de apps registradas
+    - selector de empresa (los admins del Maestro pueden ver vista de cada empresa)
+    - preview del branding por deployment
+    - acciones: registrar empresa, licenciar app, provisionar deployment, suspender, destruir
+    - vista de audit log
+    - login propio del Maestro v2 para sus admins
 
   infraestructura:
-    - docker-compose con Traefik, Maestro, BD Maestro, Redis
-    - configuración Traefik: ForwardAuth, TLS, HSTS, rate limiting, redirect HTTP→HTTPS
-    - Dockerfile multi-stage non-root con HEALTHCHECK
-    - scripts de deployment para Azure VPS
-    - stack de observabilidad (Prometheus, cAdvisor, Loki, Promtail, Grafana)
-    - dashboards y reglas de alertas
+    - docker-compose con Traefik, Maestro v2, BD Maestro, Redis (opcional)
+    - configuracion Traefik: TLS, HSTS, rate limiting (SIN ForwardAuth)
+    - Dockerfile multi-stage non-root
+    - scripts de deployment a cloud
+    - stack de observabilidad
 
-  sdk_y_cli:
-    - @maestro/sdk-node con middleware de auth + filtro tenant + helpers permisos
-    - maestro-cli con comandos validate, new
-    - JSON Schema oficial de maestro.yaml publicado
-    - repositorio template de GitHub para apps huésped
-    - CLAUDE.md generador para apps huésped (hereda reglas de la plataforma)
+  cli_y_sdk:
+    - maestro-cli con comandos: validate (v2 schema), new (template v4)
+    - JSON Schema oficial de maestro.yaml v2 publicado
+    - SDK opcional: librerias de auth/branding helpers (no obligatorias, son convenientes)
 
 generados_por_humanos_o_portal_externo:
-  - credenciales iniciales de Microsoft Entra ID (humano entrega al equipo dev)
-  - certificados TLS wildcard para el dominio (si no se usa Let's Encrypt por instancia)
-  - secretos Azure (subscription ID, tenant ID, service principal) para despliegue IaC
+  - certificados TLS wildcard (si no se usa Let's Encrypt por subdominio)
+  - secretos de cloud para despliegue IaC
 
 validados_por_el_framework:
-  - maestro.yaml de apps huésped contra JSON Schema (en fase 5-6, via maestro-cli)
-  - Dockerfiles de apps huésped (USER no-root, HEALTHCHECK presente)
-  - imágenes Docker de apps huésped (scan de vulnerabilidades en CI/CD)
+  - maestro.yaml v2 de apps huesped contra JSON Schema (en CI de las apps)
+  - Dockerfiles de apps huesped (USER no-root, HEALTHCHECK)
+  - imagenes Docker (scan de vulnerabilidades en CI)
+  - endpoint /maestro/branding de cada app (test de integracion en CI)
 ```
 
 ---
 
-## No-Negociables Heredados de la Premisa
+## No-negociables del Maestro v2
 
-Los 10 no-negociables del documento `01-PREMISAS-Y-NO-NEGOCIABLES.md` aplican al Maestro como obligaciones de construcción y validación:
+1. **Single-tenant fisico de las apps huesped**: cada deployment = un contenedor = una empresa. El Maestro NO permite que un deployment sirva a multiples empresas.
+2. **Auth propia de las apps**: el Maestro NO inyecta headers de identidad de usuario a las apps. Las apps tienen su propio login.
+3. **Auth server-to-server**: toda llamada del Maestro a una app DEBE autenticarse con `X-Maestro-Api-Key` (o `X-Maestro-Webhook-Secret` para hooks).
+4. **Audit log inmutable**: triggers DB rechazan UPDATE/DELETE. Toda accion administrativa queda registrada.
+5. **Aislamiento de red por deployment**: cada deployment tiene su propia red Docker privada. Su BD esta en esa red privada, no expuesta al Maestro.
+6. **Cifrado AES-256** de secretos en BD del Maestro (api_keys, webhook_secrets).
+7. **TLS obligatorio** sin excepciones; Let's Encrypt o cert wildcard.
+8. **Backups cifrados ≥ 30 dias** retencion.
+9. **Login propio del Maestro v2** para sus admins (cumple preset web-maestro v4 a si mismo).
+10. **Click en app abre URL en target="_blank"** — NO iframe, NO reverse proxy con inyeccion de headers.
 
-1. **Zero Trust en autenticación** → ForwardAuth en Traefik sin rutas que lo bypass
-2. **Aislamiento de red por instancia** → redes Docker dedicadas creadas en el provisioning
-3. **Health check obligatorio** → validador en maestro-cli + verificación runtime
-4. **Prohibición root en contenedores** → validación estática del Dockerfile en CI/CD + flag no-new-privileges
-5. **Secretos nunca en código** → pre-commit hooks + scan profundo CI/CD + AES-256 en BD
-6. **Límites de recursos declarados** → maestro.yaml obligatorio + flags Docker
-7. **Base de datos dedicada por instancia** → provisioning genera BD + usuario + pass 32 chars
-8. **TLS obligatorio** → Traefik + Let's Encrypt + HSTS
-9. **Audit log inmutable** → tabla INSERT-only + triggers DB
-10. **Backup automatizado >=30 días** → job diario + Azure Blob Storage cifrado
+---
+
+## Notas operativas
+
+- La Web Maestro NO necesita ser construida en este meta-trabajo del framework v4. Este preset esta listo para que un proyecto separado lo use cuando el PO ejecute `/pm:orquestar` y, al confirmar el tipo de proyecto, indique que va a construir la Web Maestro / Web Anfitriona (preset_active = `maestro-platform`). Ver `framework-agentico/core/RULES.md` seccion `activacion_de_preset`.
+- Cuando se construya, el proyecto sigue las 8 fases del framework v4 (00-setup ... 07-retrospective) con este preset activo.
+- El Maestro v2 mismo cumple el preset `web-maestro` v4 para SU PROPIO login de admins (es una app huesped de si mismo, en cierto sentido). Pero adicionalmente cumple las obligaciones de este preset por su rol de orquestador.

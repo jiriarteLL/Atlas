@@ -8,7 +8,7 @@
 
 ```yaml
 framework_version: "4.0"
-preset: "web-maestro"                   # siempre activo (v4: single-tenant + auth propio)
+default_preset: "web-maestro"           # default sugerido para proyectos nuevos. Cada proyecto declara su preset_active en su PROJECT.md (ver core/RULES.md seccion activacion_de_preset).
 
 # --- Proyecto activo ---
 # Solo un proyecto puede estar in_progress a la vez (restriccion single-PM)

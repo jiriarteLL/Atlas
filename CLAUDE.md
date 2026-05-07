@@ -142,10 +142,15 @@ framework-agentico/
 
 1. Invocar `/pm` para hablar con el Project Manager
 2. El PM detecta el repo, crea estructura de proyecto en projects/
-3. El PM lee RULES.md, pregunta la premisa hasta certeza 100%
-4. El PM determina agentes, stack y plan de fases
-5. `/pm:orquestar` para ejecutar, `/pm:planificar` para solo planificar
-6. `/pm:estado` para ver progreso en cualquier momento
+3. El PM CONFIRMA TIPO DE PROYECTO con el PO:
+   - Default: app huesped (= app generica / app tool, caso mas frecuente)
+   - Alternativa: Web Maestro (= web anfitriona)
+   Esto activa el preset correspondiente: web-maestro (default) o maestro-platform.
+   Detalle en `framework-agentico/core/RULES.md` seccion `activacion_de_preset`.
+4. El PM lee RULES.md, pregunta la premisa hasta certeza 100%
+5. El PM determina agentes, stack y plan de fases
+6. `/pm:orquestar` para ejecutar, `/pm:planificar` para solo planificar
+7. `/pm:estado` para ver progreso en cualquier momento
 
 ## Reanudacion de Sesion
 

@@ -9,6 +9,27 @@
 
 ```yaml
 # ============================================================
+# 0. GLOSARIO DE SINONIMOS
+# ============================================================
+glosario_de_sinonimos:
+  descripcion: >
+    El PO usa sinonimos intercambiables para varios conceptos del framework. Todos los agentes
+    DEBEN reconocerlos correctamente. NO forzar un unico termino canonico - responder usando el
+    termino que el PO uso.
+
+  po:
+    sinonimos: ["Project Owner", "Product Owner", "PO", "dueno del producto", "dueno del proyecto"]
+    descripcion: "El humano responsable del proyecto. Toma decisiones de negocio y autoriza acciones criticas."
+
+  app_huesped:
+    sinonimos: ["aplicacion huesped", "app huesped", "aplicacion generica", "app generica", "aplicacion tool", "app tool"]
+    descripcion: "Aplicacion que corre dentro de la plataforma Web Maestro. Cada deployment sirve a UNA empresa (single-tenant fisico). Stack agnostico (cualquier stack containerizable con Docker)."
+
+  web_maestro:
+    sinonimos: ["Web Maestro", "Web Anfitriona", "plataforma Maestro", "Maestro", "anfitriona"]
+    descripcion: "Plataforma orquestadora de apps huesped. En v4 es registry + redirector + provisioner."
+
+# ============================================================
 # 1. GOVERNANCE
 # ============================================================
 governance:
@@ -65,11 +86,20 @@ git_workflow:
 # 3. PLANTILLA BASE
 # ============================================================
 plantilla_base:
-  - La plantilla Tailwise Bundle (en "/Tailwise Bundle") es la PREFERIDA para iniciar cualquier proyecto.
-  - Los agentes de desarrollo DEBEN usar esta plantilla como base salvo incompatibilidad tecnica comprobada.
-  - Si existe incompatibilidad, DEBE documentarse como ADR con: que parte es incompatible, por que, y que alternativa se usa.
-  - Variantes disponibles: Laravel, React, Vue, HTML. La seleccion depende del stack definido en planning.
-  - El PM registra la variante seleccionada y su compatibilidad en el PROJECT.md del proyecto.
+  - La plantilla Tailwise Bundle (en "/Tailwise Bundle") es la PREFERIDA para iniciar cualquier proyecto con frontend.
+  - La preferencia NO es una imposicion - cualquier stack containerizable con Docker es valido (premisa de agnosticismo tecnologico).
+  - Los agentes de desarrollo presentan Tailwise como recomendacion inicial salvo incompatibilidad tecnica comprobada.
+  - Si el PO elige otro stack, DEBE documentarse como ADR con - que stack se usa, por que, que componentes Tailwise se sustituyen.
+  - Variantes Tailwise disponibles - Laravel, React, Vue, HTML. La seleccion depende del stack definido en planning.
+  - El PM registra la variante seleccionada (o la decision de NO usar Tailwise) y su compatibilidad en el PROJECT.md del proyecto.
+
+  premisa_para_agentes_ux_ui:
+    - Aplica a - ux-designer, frontend-developer, fullstack-developer (cuando trabaja frontend), mobile-developer.
+    - Tailwise es la opcion preferida del template, NO obligatoria.
+    - Los agentes UX/UI DEBEN presentar Tailwise como recomendacion inicial cuando hay frontend.
+    - Si el PO elige otro stack (Flutter Web, Svelte, framework propietario, etc.), respetar la decision y documentarla en `maestro.yaml` con `ui.tailwise: false` y `ui.reason`.
+    - NUNCA sesgar la propuesta hacia Tailwise si el PO no lo pide explicitamente.
+    - Esta premisa esta tambien en `README.md` seccion 3 (lado app huesped) y en los templates de fases 02-planning y 03-development.
 
 # ============================================================
 # 4. VALIDACION TRANSVERSAL
@@ -143,14 +173,37 @@ comunicacion:
   - Los agentes NUNCA se invocan directamente entre fases; siempre pasan por el PM.
 
 # ============================================================
-# 8. PRESET WEB MAESTRO
+# 8. ACTIVACION DE PRESET
 # ============================================================
-preset_web_maestro:
-  - SIEMPRE ACTIVO. Todas las aplicaciones corren en la plataforma Web Maestro.
-  - Las constraints del preset se incluyen en CADA Context Packet.
-  - Las constraints son NO NEGOCIABLES y aplican en TODAS las fases.
-  - Ver core/PRESET_WEB_MAESTRO.md para la lista completa de constraints por fase.
-  - Los validadores transversales DEBEN verificar cumplimiento del preset.
+activacion_de_preset:
+  presets_disponibles:
+    web-maestro:
+      descripcion: "Para proyectos de aplicacion huesped (app generica / app tool). Default."
+      constraints: "core/PRESET_WEB_MAESTRO.md"
+      cuando_usar: "El proyecto es una app que correra dentro de la plataforma Web Maestro."
+    maestro-platform:
+      descripcion: "Para proyectos de Web Maestro / Web Anfitriona."
+      constraints: "agents/presets/maestro-platform/PRESET.md"
+      cuando_usar: "El proyecto es la plataforma misma que orquesta apps huesped."
+
+  flujo_de_activacion:
+    - Al iniciar /pm en un proyecto sin PROJECT.md, el PM presume que el proyecto es una app huesped (caso de uso mas frecuente).
+    - El PM le pregunta al PO para confirmar - "Voy a presumir que estas construyendo una app huesped (= app generica / app tool). Si en cambio vas a construir la Web Maestro (= web anfitriona) misma, decimelo. Confirmas 'app huesped' o me corregis?"
+    - Si el PO confirma app_huesped o usa cualquier sinonimo - project_type "app_huesped", preset_active "web-maestro".
+    - Si el PO indica Web Maestro o usa cualquier sinonimo - project_type "web_maestro", preset_active "maestro-platform".
+    - El PM registra project_type y preset_active en projects/{id}/PROJECT.md.
+    - Si ya existe PROJECT.md con preset_active definido, el PM NO vuelve a preguntar; lee y usa lo registrado.
+
+  reglas_generales:
+    - SIEMPRE hay un preset activo. NO hay proyectos sin preset.
+    - El preset_active es UNICO por proyecto. NO se activan dos presets simultaneamente.
+    - Las constraints del preset activo se incluyen en CADA Context Packet enviado a orquestadores.
+    - Las constraints del preset son NO NEGOCIABLES y aplican en TODAS las fases.
+    - Los validadores transversales DEBEN verificar cumplimiento del preset activo.
+
+  presets_compuestos:
+    - El preset maestro-platform incluye internamente el cumplimiento de web-maestro para el login propio de los admins del Maestro (ver agents/presets/maestro-platform/PRESET.md).
+    - Esto NO es activar dos presets simultaneamente; es un solo preset (maestro-platform) que internamente referencia obligaciones del otro.
 
 # ============================================================
 # 9. SINCRONIZACION DE PROYECTO EXISTENTE
@@ -170,7 +223,7 @@ sincronizacion_proyecto_existente:
     - El PM crea la estructura de proyecto (ver seccion aislamiento_por_proyecto) y luego informa al Project Owner que detecto un proyecto con avance previo.
 
   flujo_de_sincronizacion:
-    - El PM analiza el repositorio fase por fase, en orden (00 a 06).
+    - El PM analiza el repositorio fase por fase, en orden (00 a 07).
     - Para CADA fase, el PM:
       1. Lee los exit_criteria del template de fase (phases/{NN}-{nombre}.md).
       2. Analiza el estado actual del repositorio contra cada criterio.
@@ -264,6 +317,12 @@ monitoreo_de_costos:
       convencion de proxy: estimated_output_chars (largo de la respuesta en caracteres).
       El cost-analyst convierte a tokens estimados con la formula: chars / 4 = tokens aprox.
       Input tokens se estiman por: cantidad de archivos leidos * promedio de chars por archivo.
+
+      MARGEN DE ERROR: la estimacion chars/4 tiene un error tipico de +/- 30-50% respecto
+      a los counters reales del modelo (varia segun tokenizer, idioma, contenido). NO usar
+      estos numeros para forecasting financiero exacto. Usarlos como tendencia y para detectar
+      anomalias (spikes inesperados, retry_cost_ratio > umbral, pm_overhead_ratio creciendo).
+      El costo real consolidado se obtiene de la facturacion de Anthropic (fuera del framework).
 
     por_nivel:
       pm:
@@ -478,4 +537,63 @@ migracion_entre_versiones:
     - framework-agentico/migration/v3-to-v4.md (proceso detallado v3 -> v4)
     - framework-agentico/migration/migrator-template.md (template del Agent migrator)
     - framework-agentico/CHANGELOG.md (cambios entre versiones)
+
+# ============================================================
+# 16. POLITICA DE VERSIONADO
+# ============================================================
+politica_de_versionado:
+  principio_canonico: >
+    El path canonico (sin sufijo de version) siempre apunta a la version vigente.
+    La version esta en metadata (frontmatter o encabezado del archivo), no en el path.
+
+  estructura:
+    canonico_ejemplo: "docs/APP_HUESPED_SPEC.md - siempre la version vigente"
+    legacy_ejemplo: "legacy/v{n}/docs/APP_HUESPED_SPEC.md - versiones anteriores con banner DEPRECADO"
+
+  reglas:
+    - Cuando el framework bumpea de version mayor (ej v4 -> v5), los archivos vigentes se mueven a legacy/v{n}/.
+    - Los archivos en legacy/v{n}/ DEBEN tener un banner DEPRECADO en su encabezado.
+    - El path canonico siempre apunta al actual.
+    - El git history preserva la evolucion completa.
+    - El CHANGELOG documenta movimientos entre versiones.
+    - El framework agentico interno (framework-agentico/) NO se versiona en filesystem - siempre es la version vigente. La historia queda en git y en el CHANGELOG.
+    - El migrator hace lazy migration de los forks (ver seccion migracion_entre_versiones).
+
+  banner_obligatorio_en_legacy:
+    descripcion: "Cada archivo .md bajo legacy/ DEBE llevar este banner en su encabezado."
+    formato_ejemplo: |
+      > ⚠️ DEPRECADO - Documento del framework v{n} / contrato `maestro.platform/v{m}`.
+      > Conservado como referencia historica.
+      >
+      > Version vigente: <path al equivalente vigente> o "no aplica" si fue eliminado.
+      > Razon de la deprecacion: ver framework-agentico/CHANGELOG.md v{n+1}.0.
+
+# ============================================================
+# 17. POLITICA DE PERSISTENCIA DE DATOS
+# ============================================================
+politica_de_persistencia_de_datos:
+  principio: >
+    Los datos de las bases de datos persisten entre versiones del framework.
+    NO se truncan ni borran automaticamente. Cualquier cambio que afecte datos
+    existentes requiere confirmacion explicita del PO.
+
+  reglas:
+    - Las migraciones de schema NUNCA borran datos existentes sin confirmacion previa del PO.
+    - Las migraciones que dropean columnas DEBEN ser expand-then-contract - primero agregar la columna nueva con dual-write, luego (en otra version) dropear la vieja.
+    - Los seeders son SIEMPRE idempotentes - re-ejecutar NO duplica datos ni cambia datos existentes salvo que el PO autorice un reset explicito.
+    - El framework-migrator NO toca codigo de la app ni datos de la BD. Solo reporta gaps.
+    - Cualquier agente que necesite ejecutar operaciones destructivas sobre datos (TRUNCATE, DROP TABLE, DELETE FROM sin WHERE, UPDATE masivo) DEBE escalar al PM, y el PM DEBE pedir confirmacion explicita al PO antes de proceder.
+
+  confirmacion_requerida_para:
+    - Cambios de schema que afecten columnas con datos existentes.
+    - TRUNCATE de cualquier tabla.
+    - DROP de tablas con datos.
+    - DELETE masivos sin filtro estricto.
+    - Cambios en passwords de usuarios existentes (excepcion - el seed del superadmin NO toca passwords existentes).
+    - Cambios en api_keys o webhook_secrets que invaliden las actuales sin reemplazo coordinado.
+    - Reset de seeders (volver a sembrar desde cero borrando lo existente).
+
+  audit_log:
+    - Toda operacion confirmada por el PO sobre datos queda registrada en audit_log.
+    - El audit_log es inmutable (INSERT-only). Ver seccion memorias_transaccionales y los presets activos.
 ```

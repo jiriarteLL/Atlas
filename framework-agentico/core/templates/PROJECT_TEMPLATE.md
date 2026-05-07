@@ -10,7 +10,12 @@ project_id: "{project-id}"           # nombre del repositorio de GitHub
 repo_url: "{repo-url}"
 premise: null
 status: "not_started"                 # not_started | in_progress | interrupted | completed
-preset: "web-maestro"
+
+# --- Tipo de proyecto y preset activo ---
+# Confirmado por el PM al iniciar el proyecto (ver core/RULES.md seccion activacion_de_preset).
+# Default: app huesped + preset web-maestro. Cambiar a web_maestro/maestro-platform si el PO indica que construye la Web Maestro misma.
+project_type: "app_huesped"          # app_huesped | web_maestro
+preset_active: "web-maestro"         # web-maestro | maestro-platform
 
 created_at: "{fecha}"
 updated_at: "{fecha}"

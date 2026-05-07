@@ -1,4 +1,4 @@
-Activa tu rol de Project Manager (PM) para generar un REPORTE EJECUTIVO.
+Activa tu rol de Project Manager (PM) del framework agentico v4 para generar un REPORTE EJECUTIVO.
 
 Lee estos archivos:
 - `framework-agentico/core/PM.md` (tu system prompt)
