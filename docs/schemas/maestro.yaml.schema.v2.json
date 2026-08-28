@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://maestro.llyasoc.com/schemas/maestro.yaml.schema.v2.json",
   "title": "maestro.yaml v2 — Contrato de Aplicacion Huesped (framework agentico v4)",
-  "description": "Contrato obligatorio que toda app huesped v4 debe incluir en la raiz de su repo. Validado por maestro-cli (cuando se publique la version v2) y por el endpoint de registro del Maestro v2.",
+  "description": "Contrato obligatorio que toda app huesped v4 debe incluir en la raiz de su repo. Validado por maestro-cli (cuando se publique la version v2) y por el endpoint de registro del Maestro v2. Incluye como propiedades OPCIONALES metadata.criticality (SPEC.md Sec3.5) y data_policy (SPEC.md Sec5.10.1), declaradas explicitamente en el schema desde esta version.",
   "type": "object",
   "required": ["apiVersion", "kind", "metadata", "requires", "health", "auth", "branding", "seeding", "resources"],
   "additionalProperties": false,
@@ -35,6 +35,11 @@
         "description": {
           "type": "string",
           "maxLength": 500
+        },
+        "criticality": {
+          "type": "string",
+          "enum": ["lite", "standard", "critical"],
+          "description": "Tier de criticidad de la app huesped (ID-005, SPEC.md Sec3.5). Fuente unica de verdad: /maestro/manifest la lee de aca y el PROJECT.md del framework la espeja. Opcional; ausente se asume 'standard' (Sec3.5). PII regulada => critical."
         }
       }
     },
@@ -238,6 +243,103 @@
       },
       "uniqueItems": true,
       "description": "Variables de entorno custom de la app. Prefijos MAESTRO_*, SUPERADMIN_* y DATABASE_URL estan reservados."
+    },
+    "data_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Politica de datos de la app (DP-001..007, SPEC.md Sec5.10.1). Clasificacion, retencion, residencia y DR. Si classification.regulated es true, cada regulation_code exige su ADR de cumplimiento (DP-006). Opcional en v2; obligatoria cuando metadata.criticality es 'critical' (ver allOf).",
+      "properties": {
+        "classification": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["pii"],
+          "description": "Clasificacion de los datos que la app procesa/persiste (DP-002).",
+          "properties": {
+            "pii": {
+              "type": "boolean",
+              "description": "La app procesa datos personales identificables."
+            },
+            "categories": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 },
+              "uniqueItems": true,
+              "description": "Categorias reales de datos sensibles que maneja la app."
+            },
+            "regulated": {
+              "type": "boolean",
+              "description": "Los datos caen bajo regulacion aplicable."
+            },
+            "regulation_codes": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 },
+              "uniqueItems": true,
+              "description": "Codigos de regulacion aplicables (ej: AR-LEY-25326). Cada uno exige su ADR de cumplimiento (DP-006)."
+            }
+          }
+        },
+        "retention_days": {
+          "type": "integer",
+          "minimum": 30,
+          "description": "Dias de retencion de datos/artifacts (DP-001, NN13: >= 30). Debe coincidir con la retencion real del motor."
+        },
+        "residency": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Residencia de datos (DP-003, critical).",
+          "properties": {
+            "primary_region": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Region primaria donde residen los datos."
+            },
+            "allowed_regions": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 },
+              "uniqueItems": true,
+              "description": "Regiones permitidas para residencia/replicacion."
+            }
+          }
+        },
+        "dr": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Objetivos de recuperacion ante desastre (DP-004, critical). rto/rpo deben ser identicos a operability de slo.yaml.",
+          "properties": {
+            "rto_hours": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Recovery Time Objective en horas. Identico a slo.yaml operability.rto_hours."
+            },
+            "rpo_hours": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Recovery Point Objective en horas. Identico a slo.yaml operability.rpo_hours."
+            },
+            "drill_last_run": { "type": "string" },
+            "drill_evidence_url": { "type": "string" },
+            "drill_rto_measured_seconds": { "type": "integer" }
+          }
+        }
+      }
     }
-  }
+  },
+  "allOf": [
+    {
+      "description": "Una app critical (metadata.criticality == critical) DEBE declarar data_policy (DP-001..007, SPEC.md Sec5.10).",
+      "if": {
+        "required": ["metadata"],
+        "properties": {
+          "metadata": {
+            "required": ["criticality"],
+            "properties": {
+              "criticality": { "const": "critical" }
+            }
+          }
+        }
+      },
+      "then": {
+        "required": ["data_policy"]
+      }
+    }
+  ]
 }
