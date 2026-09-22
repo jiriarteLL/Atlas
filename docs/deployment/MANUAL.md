@@ -6,6 +6,8 @@
 > **Audiencia:** **desarrolladores** (§1–§7) y **evaluador humano** (§8–§9), más los agentes que trabajan para cualquiera de los dos. Ver el reparto de responsabilidades en §0.1.
 > **Panel Dokploy:** <http://10.100.1.124:3000/>
 >
+> ⛔ **Antes de desplegar, leé [`AGENTS.md`](../../AGENTS.md)** (raíz del repo): las reglas operativas obligatorias — qué puede y qué no puede hacer un agente, dónde se detiene el flujo y quién autoriza Gate 2, merge y Preprod. Este manual explica **cómo** se hace cada paso; `AGENTS.md` dice **quién** puede hacerlo y **dónde se frena**.
+>
 > **Precedencia normativa.** Este documento es **operativo**, no normativo. Ante conflicto mandan, en este orden:
 > `PremisaWebMaestro/01-PREMISAS-Y-NO-NEGOCIABLES.md` → `EvaluacionAppHuesped/SPEC.md` →
 > `docs/APP_HUESPED_SPEC.md` → `docs/CONVENCIONES_PLATAFORMA.md`.
@@ -721,6 +723,7 @@ Qué entregar al cerrar un `Test` (la entrega del `Preprod` es distinta y está 
 
 | Documento | Qué aporta |
 |---|---|
+| [`AGENTS.md`](../../AGENTS.md) | **Reglas operativas obligatorias** para cualquier agente: qué puede y qué no, dónde se detiene el flujo, quién autoriza Gate 2 / merge / Preprod, precedencia y break-glass. Leerlo antes de desplegar. |
 | `EvaluacionAppHuesped/SPEC.md` | Proceso de evaluación, tiers, dimensiones, requisitos MUST/SHOULD, gates, waivers, formato del reporte. **Fuente de verdad de §7.** |
 | `PremisaWebMaestro/01-PREMISAS-Y-NO-NEGOCIABLES.md` | Axiomas y no-negociables. Toda violación es FAIL bloqueante sin waiver posible. |
 | `docs/APP_HUESPED_SPEC.md` | Contrato de la app huésped: `maestro.yaml`, endpoints, Dockerfile, puertos. |
