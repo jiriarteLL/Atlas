@@ -147,6 +147,8 @@ for f in docker-compose.yml docker-compose.test.yml docker-compose.preprod.yml; 
 
 Todas las apps comparten el host `10.100.1.124`. Un puerto mal elegido no da un error claro: pisa otra app o la deja sin arrancar.
 
+> ⚠️ **No confundir con la convención local de `README.md` §5.** Esa asigna a cada app un bloque de 100 puertos en **`localhost`** según su `APP_ID` (`3000 + APP_ID × 100`), para que un desarrollador pueda levantar varias apps en su máquina. Los números se parecen y no significan lo mismo: `3100-3199` allá es el bloque local de la app con `APP_ID=1`; acá es el rango de **Test** para cualquier app. **El puerto del VPS no se deduce del `APP_ID`** — se asigna secuencialmente y se verifica libre (§2.3).
+
 ### 2.1 Rangos por ambiente
 
 | Ambiente | Rango | Asignación |
@@ -725,6 +727,7 @@ Qué entregar al cerrar un `Test` (la entrega del `Preprod` es distinta y está 
 | `docs/CONVENCIONES_PLATAFORMA.md` | Naming de contenedores/redes/volúmenes, puertos, variables de entorno reservadas. |
 | `docs/APP_HUESPED_BEST_PRACTICES.md` | Prácticas recomendadas de implementación. |
 | `framework-agentico/core/RULES.md` | Reglas del framework, incluido `git_workflow` y permisos de merge. |
+| `README.md` | Cómo se **desarrolla** una app huésped (este manual cubre cómo se **sube**). Su §5 es la convención de puertos de `localhost`, distinta de la del VPS (§2). |
 | `.claude/commands/evaluar-app-huesped.md` | Comando `/evaluar-app-huesped` que ejecuta los gates. |
 
 > **Nota de disponibilidad.** `EvaluacionAppHuesped/` y el comando `/evaluar-app-huesped` viven hoy en la rama `maestros/web-maestro-para-aplicacones-genericas` y aterrizan en `master` cuando esa rama se mergee. Hasta entonces, los pasos de §7 son igualmente vinculantes y se ejecutan desde esa rama.

@@ -4,7 +4,9 @@
 >
 > **Contrato de integración:** `maestro.platform/v2`
 > **Framework agéntico:** v4
-> **Última actualización:** 2026-05-07
+> **Última actualización:** 2026-09-22
+
+> 📘 **¿Vas a subir una app a Test o Preproducción?** Este README cubre **cómo se desarrolla** una app huésped. El **cómo se sube** está en **[`MANUAL_METODOLOGICO.md`](MANUAL_METODOLOGICO.md)**: flujo operativo del panel de Dokploy (`http://10.100.1.124:3000/`), convención de nombres y tags, puertos del VPS compartido, despliegue por API, evaluación contra el Maestro y reparto de responsabilidades entre desarrollador y evaluador humano.
 
 ---
 
@@ -45,6 +47,8 @@ Detalle completo en `framework-agentico/CHANGELOG.md` y `framework-agentico/migr
 17. [Checklist Pre-PR](#17-checklist-pre-pr)
 18. [Troubleshooting](#18-troubleshooting)
 19. [Documentos de Referencia](#19-documentos-de-referencia)
+
+> **Fuera de este README:** el despliegue a Test y Preproducción vive en **[`MANUAL_METODOLOGICO.md`](MANUAL_METODOLOGICO.md)**.
 
 ---
 
@@ -247,6 +251,10 @@ Cada app es un stack Docker autocontenido con mínimo 2 servicios (app + db) y m
 
 ## 5. Convención de Puertos
 
+> ⚠️ **Esta sección es sólo para `localhost`** — la máquina del desarrollador. Los puertos del **VPS compartido** (`10.100.1.124`), donde conviven Test y Preproducción, se asignan con **otra** regla: ver [`MANUAL_METODOLOGICO.md` §2](MANUAL_METODOLOGICO.md).
+>
+> **Los números se parecen y no significan lo mismo.** `3100-3199` acá es el bloque local de la app con `APP_ID=1`; en el VPS es el rango de **Test** para cualquier app. Nunca deduzcas el puerto del VPS a partir de tu `APP_ID`, ni al revés: en el VPS el puerto se asigna secuencialmente y **se verifica libre antes de reservarlo**.
+
 Para evitar colisiones cuando un dev levanta múltiples apps simultáneamente, cada app reserva un bloque de 100 puertos basado en su `APP_ID`.
 
 ### Fórmula
@@ -277,6 +285,7 @@ Puerto DB     = 3000 + (APP_ID × 100) + 1    (solo en modo debug)
 - Se declara en `maestro.yaml` y en `.env`.
 - Nunca uses puertos por debajo de 3000 ni por encima de 9999.
 - Si tu app necesita puertos adicionales (WebSocket, worker, etc.), usá `base+2`, `base+3`, etc., dentro de tu bloque.
+- **Este bloque no te reserva nada en el VPS.** Al desplegar a Test o Preproducción, el puerto sale del rango del ambiente y se verifica libre con el chequeo de [`MANUAL_METODOLOGICO.md` §2.3](MANUAL_METODOLOGICO.md).
 
 ---
 
@@ -548,6 +557,10 @@ Detalle completo en `framework-agentico/phases/05-seeding.md`.
 ---
 
 ## 11. docker-compose.yml: Template Base
+
+Este es el `docker-compose.yml` de la **raíz**, para desarrollo local. Es obligatorio por contrato (`IN-011`) y es el que evalúa el Gate 1 — **no se elimina ni se reemplaza**.
+
+Para desplegar a Dokploy hacen falta además `docker-compose.test.yml` y `docker-compose.preprod.yml`, autocontenidos y con `name:` explícito de proyecto y de volúmenes: ver [`MANUAL_METODOLOGICO.md` §1.5](MANUAL_METODOLOGICO.md).
 
 ```yaml
 # docker-compose.yml
@@ -850,6 +863,23 @@ fork/develop ──PR──► principal/app-{nombre} ──CI/CD──► ghcr.
 - Cuando un usuario hace click desde el portal del Maestro, se abre la URL en `target="_blank"`.
 - El usuario hace login en la app con sus credenciales propias.
 
+### Ambientes previos: Test y Preproducción (Dokploy)
+
+Antes de producción hay **dos ambientes** sobre el VPS interno `llubuntu2` (`10.100.1.124`), que se operan desde el panel de Dokploy (`http://10.100.1.124:3000/`). El procedimiento completo está en **[`MANUAL_METODOLOGICO.md`](MANUAL_METODOLOGICO.md)**; el resumen:
+
+| Ambiente | Tag | Qué es | Quién lo despliega |
+|---|---|---|---|
+| **Test** | `Test` | App **sin evaluar**, para probar el desarrollo end-to-end en un entorno real. | **El desarrollador**, por su cuenta. |
+| **Preproducción** | `Preprod` | App **ya evaluada** contra el Maestro y aprobada por el evaluador humano. Se registra en el catálogo. | **El evaluador humano**, nunca el desarrollador. |
+
+Lo que tenés que saber antes de abrir el manual:
+
+- **El código llega por Provider `Git`** (`sourceType: git` + `customGitUrl`), y el despliegue se hace **por API**, no a mano por el panel.
+- **Un `docker-compose` por ambiente**, versionado en el repo y autocontenido: `docker-compose.yml` (desarrollo local, el obligatorio de §11), `docker-compose.test.yml` y `docker-compose.preprod.yml`. Dokploy recibe un solo `composePath`, así que no hay overlays.
+- **Los puertos del VPS no son los de §5** — ver la advertencia de esa sección.
+- **Un Gate 1 en PASS habilita la revisión, no la promoción.** El desarrollador auto-evalúa su propio PR hasta PASS y ahí se detiene: no corre el Gate 2, no mergea y no despliega a `Preprod`.
+- El ambiente corre sobre **HTTP sin certificado**: no se suben datos reales.
+
 > **Estado transitorio (mientras Maestro v2 no exista):** las apps v4 funcionan **standalone**. Levantás el fork local con `docker compose up`, te logueás directo, y operás. El endpoint `/maestro/branding` queda preparado para cuando el Maestro v2 esté disponible.
 
 ---
@@ -861,11 +891,17 @@ ESTRUCTURA
 [ ] maestro.yaml v2 (apiVersion: maestro.platform/v2)
 [ ] Dockerfile cumple los 7 requisitos
 [ ] docker-compose.yml levanta con `docker compose up -d`
+[ ] docker-compose.test.yml y docker-compose.preprod.yml presentes y autocontenidos
+    (MANUAL_METODOLOGICO.md §1.5)
+[ ] Los tres compose parsean con `docker compose -f <archivo> config`
+[ ] Ninguno de los tres tiene secretos hardcodeados (grep anti-hardcode, IN-011)
 [ ] .dockerignore excluye Tailwise Bundle/, framework-agentico/, .env, legacy/
 [ ] .env.example actualizado con todas las variables usadas
 
 PUERTOS Y REDES
-[ ] Puertos según APP_ID (ver §5)
+[ ] Puertos locales según APP_ID (ver §5)
+[ ] Puerto del VPS tomado del rango del ambiente y verificado libre
+    (MANUAL_METODOLOGICO.md §2 — NO se deduce del APP_ID)
 [ ] Red Docker: app-{nombre}-net
 [ ] Volúmenes: {nombre}-db-data, {nombre}-storage
 [ ] DB no expone puerto sin DB_EXPOSE_PORT=true
@@ -905,6 +941,12 @@ SEGURIDAD
 [ ] No hay credenciales/api keys hardcodeadas
 [ ] Logs no exponen passwords, hashes, tokens, MAESTRO_API_KEY, MAESTRO_WEBHOOK_SECRET, SUPERADMIN_INITIAL_PASSWORD
 [ ] Cookies con HttpOnly + Secure + SameSite (si usás cookies)
+[ ] La bandera Secure es apagable por env var para ambientes sin TLS
+    (el VPS de Test/Preprod corre HTTP; con Secure el navegador descarta la
+    cookie y el login entra en bucle silencioso — MANUAL_METODOLOGICO.md §6.4)
+[ ] Nombre de la cookie de sesión único en toda la plataforma: <slug>_session
+    (NO maestro_session: las cookies se indexan por host, no por puerto, y
+    pisaría la sesión del portal del Maestro)
 [ ] Audit log de auth implementado (recomendado)
 [ ] Rate limiting en /login
 
@@ -988,6 +1030,7 @@ Documentá en `maestro.yaml` con `ui.tailwise: false` y `ui.reason`.
 
 | Documento | Rol |
 |---|---|
+| `MANUAL_METODOLOGICO.md` | **Despliegue a Test y Preproducción vía Dokploy**: flujo operativo, convención de nombres/tags, puertos del VPS, despliegue por API, verificación, evaluación contra el Maestro y reparto de responsabilidades desarrollador ↔ evaluador humano |
 | `framework-agentico/CHANGELOG.md` | Historial completo v3 → v4 |
 | `framework-agentico/migration/v3-to-v4.md` | Proceso de migración para apps existentes v3 |
 | `framework-agentico/core/RULES.md` | Reglas generales del framework v4 (glosario de sinónimos, política de versionado, política de persistencia de datos, activación de preset, etc.) |
