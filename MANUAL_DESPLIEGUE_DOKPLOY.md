@@ -100,6 +100,47 @@ El naming interno sigue `docs/CONVENCIONES_PLATAFORMA.md` §1 y §2, sin excepci
 
 Para el ambiente de Test agregá el sufijo del ambiente al slug (`app-<slug>-test`) para que **nunca** colisione con el stack de preproducción del mismo aplicativo corriendo en el mismo host.
 
+### 1.5 Un `docker-compose` por ambiente
+
+**Cada ambiente tiene su propio archivo de compose, versionado en el repo.** No se reutiliza el de desarrollo para subir a Dokploy, ni se edita a mano el de Test para convertirlo en el de Preprod.
+
+| Archivo | Ambiente | Quién lo usa |
+|---|---|---|
+| `docker-compose.yml` | **Desarrollo local** | El desarrollador en su máquina. **Obligatorio en la raíz** (`IN-011`): es el que evalúa el Gate 1 y el que valida `docker compose config`. |
+| `docker-compose.test.yml` | **Test en Dokploy** | El desarrollador. Es el que apunta `composePath` del servicio `App Test` (§5.3). |
+| `docker-compose.preprod.yml` | **Preproducción en Dokploy** | El evaluador humano. Es el que apunta `composePath` del servicio `App Preprod` (§9.1). |
+
+> 🔴 **El `docker-compose.yml` de la raíz no se elimina ni se reemplaza.** Es un MUST del contrato (`IN-011`) y su ausencia es FAIL de Gate 1. Los archivos por ambiente **se suman**, no lo sustituyen.
+
+**Hacelos autocontenidos, no overlays.** Dokploy recibe **un solo** `composePath`: no hay forma de pasarle `-f base -f overlay` como se hace a mano. Un archivo por ambiente, completo, evita el problema entero. Si tu versión del panel soportara varios archivos, **verificalo contra el spec real (§4.4) antes de confiar en eso** — no lo asumas.
+
+Esa decisión además esquiva dos trampas que ya costaron un incidente de producción en este VPS:
+
+- **Omitir un `-f` es destructivo en silencio:** recrea los contenedores perdiendo los overrides del ambiente, sin ningún error.
+- **Un `-p` (nombre de proyecto) distinto crea volúmenes nuevos y vacíos.** Los volúmenes son *project-scoped*: si el nombre de proyecto no coincide, Postgres inicializa una base limpia y el esquema aparece completo por la migración de arranque — con cero datos. **Un esquema migrado no prueba que sean los datos correctos.**
+
+Por eso cada archivo declara **explícitamente** su `name:` de nivel superior y el `name:` de cada volumen, en vez de depender del directorio o de un `-p` de invocación.
+
+**Qué DEBE cambiar entre los tres archivos:**
+
+- `name:` del proyecto compose y sufijo del slug (`<slug>-test` vs `<slug>`).
+- Puerto publicado (§2: dev local libre, Test `3110-3199`, Preprod `3200-3299`).
+- Nombres de contenedores, red y volúmenes (§1.4) — **nunca compartidos entre ambientes**.
+- Límites de recursos y `restart:` policy.
+- Flags de ambiente: la bandera `Secure` de la cookie apagada mientras no haya HTTPS (§6.4).
+
+**Qué NO puede cambiar, en ninguno de los tres:**
+
+- **Cero secretos hardcodeados.** Todos los valores sensibles vienen de `.env` / `env_file` o `${VAR}`. Un literal de `MAESTRO_API_KEY`, `*_SECRET`, `*_PASSWORD` o `SUPERADMIN` en cualquiera de estos archivos es **FAIL automático de Gate 1** (`IN-011`), y el chequeo corre sobre **todos** los compose del repo, no sólo el de la raíz.
+- El puerto interno del contenedor, que **DEBE** coincidir con `requires.ports.app` del `maestro.yaml` y con el `EXPOSE` del Dockerfile. Lo que cambia por ambiente es el puerto **publicado** en el host, no el interno.
+- La presencia de BD y healthcheck.
+
+Verificá los tres antes de abrir el PR:
+
+```bash
+for f in docker-compose.yml docker-compose.test.yml docker-compose.preprod.yml; do echo "== $f"; docker compose -f "$f" config >/dev/null && echo "  parsea OK"; rg -n 'MAESTRO_API_KEY|_SECRET|_PASSWORD|SUPERADMIN' "$f" | rg -v '\$\{' && echo "  ⚠ HARDCODE" || echo "  sin hardcode"; done
+```
+
 ---
 
 ## 2. Puertos — el apartado que más incidentes evita
@@ -279,12 +320,16 @@ ensayo local → project.create → compose.create → compose.update (env + git
 
 **No te saltees esto.** Un error de configuración adentro de Dokploy cuesta muchísimo más de diagnosticar que el mismo error en tu máquina.
 
+Ensayá **con el mismo archivo que va a correr en Dokploy** (§1.5), no con el de desarrollo: si probás `docker-compose.yml` y desplegás `docker-compose.test.yml`, el ensayo no prueba nada de lo que vas a subir.
+
 ```bash
 docker build -t <app>:test .
-docker compose -p ensayo --env-file <tu.env> up -d
+docker compose -f docker-compose.test.yml --env-file <tu.env> up -d
 curl -s http://localhost:<puerto>/health
-docker compose -p ensayo down -v
+docker compose -f docker-compose.test.yml down -v
 ```
+
+No hace falta `-p`: el archivo por ambiente ya declara su `name:` de nivel superior (§1.5). Si tuvieras que pasar un `-p`, es señal de que al compose le falta ese `name:`.
 
 Cuatro trampas que aparecieron haciendo exactamente esto:
 
@@ -321,11 +366,11 @@ POST /api/compose.create
   "environmentId": "<del paso anterior>",
   "composeType": "docker-compose",
   "sourceType": "raw",
-  "composeFile": "<contenido del docker-compose.yml>"
+  "composeFile": "<contenido de docker-compose.test.yml>"
 }
 ```
 
-Recordá: el `name` es **`App Test`** o **`App Preprod`** (§1.2). Devuelve `composeId` y un `appName` generado — anotá los dos.
+Recordá: el `name` es **`App Test`** o **`App Preprod`** (§1.2), y el contenido es el del compose **del ambiente que estás desplegando** (§1.5) — no el de la raíz, que es el de desarrollo local. Devuelve `composeId` y un `appName` generado — anotá los dos.
 
 ### 5.3 Variables y origen del código — Provider `Git`
 
@@ -336,12 +381,14 @@ POST /api/compose.update
   "sourceType": "git",
   "customGitUrl": "https://x-access-token:<TOKEN>@github.com/<org>/<repo>.git",
   "customGitBranch": "master",
-  "composePath": "./docker-compose.yml",
+  "composePath": "./docker-compose.test.yml",
   "composeType": "docker-compose",
   "env": "CLAVE=valor\nOTRA=valor\n...",
   "createEnvFile": true
 }
 ```
+
+> 🔴 **`composePath` apunta al compose del ambiente** (§1.5): `./docker-compose.test.yml` para `App Test`, `./docker-compose.preprod.yml` para `App Preprod`. Dejarlo en `./docker-compose.yml` despliega el compose de **desarrollo local** — con su puerto, sus nombres de contenedor y sus flags — y el síntoma aparece como una colisión de puerto o de nombre, no como un error de configuración.
 
 > 🔴 **`createEnvFile: true` es obligatorio si el compose tiene `env_file: - .env`.** Es lo que hace que Dokploy escriba ese archivo al lado del compose. Sin esto las variables no llegan al contenedor, la app arranca con los defaults y el síntoma aparece mucho después y en otro lado.
 
@@ -414,6 +461,7 @@ Antes de abrir nada, el PM agéntico del fork verifica **los cinco** puntos. Si 
    - `Dockerfile` (con `EXPOSE` coincidente con `requires.ports.app`)
    - **`.env.example` en la raíz** (`SE-009`) — enumera TODAS las vars con placeholders seguros; el `.env` real **nunca** commiteado
    - **`docker-compose.yml` en la raíz** (`IN-011`) — parsea, toma variables desde `.env`/`env_file`, **sin secretos hardcodeados**, con BD + healthcheck + `ports` coherentes
+   - **`docker-compose.test.yml` y `docker-compose.preprod.yml`** (§1.5) — los tres parsean y los tres pasan el grep anti-hardcode
    - `CHANGELOG.md` mencionando la nueva versión
    - `slo.yaml`, `observability.yaml` y bloque `data_policy` **según el tier**
 5. Emulación local completa del Gate 1 (Paso 3) sobre la propia máquina.
@@ -438,16 +486,15 @@ El comando checkoutea el head del PR **en un worktree aislado** (nunca la copia 
 | 2 | Build de imagen | `docker build`; **FAIL si > 500 MB**, WARN > 350 MB | `IN-004` |
 | 3 | Trivy | CRITICAL/HIGH → **FAIL** | `IN-006`/`CI-003` |
 | 4 | Gitleaks | Historial **completo** + diff del PR → FAIL si matchea | `SE-001`/`CI-004` |
-| 5 | Análisis estático | Lecturas de `X-Auth-*`; `company_id` en migraciones/queries; comparaciones inseguras de strings sensibles; `rejectUnauthorized: false`; secretos hardcodeados en el compose → **FAIL** | varios / `IN-011` |
+| 5 | Análisis estático | Lecturas de `X-Auth-*`; `company_id` en migraciones/queries; comparaciones inseguras de strings sensibles; `rejectUnauthorized: false`; secretos hardcodeados en **cualquiera** de los compose de §1.5 → **FAIL** | varios / `IN-011` |
 | 6 | Auditoría de tier | Cross-check del tier declarado contra el código (SPEC §3.4) → FAIL si inconsistente sin ADR | — |
 | 7 | Validadores transversales | `security-auditor`, `qa-tester`, `performance-analyst`, `compliance-analyst`, `code-reviewer` | — |
 
 Recetas de referencia:
 
 ```bash
-# Compose válido y sin hardcode (IN-011)
-docker compose -f docker-compose.yml config >/dev/null
-rg -n 'MAESTRO_API_KEY|_SECRET|_PASSWORD|SUPERADMIN' docker-compose.yml | rg -v '\$\{'
+# Compose válido y sin hardcode (IN-011) — los TRES archivos de §1.5
+for f in docker-compose.yml docker-compose.test.yml docker-compose.preprod.yml; do docker compose -f "$f" config >/dev/null; rg -n 'MAESTRO_API_KEY|_SECRET|_PASSWORD|SUPERADMIN' "$f" | rg -v '\$\{'; done
 ```
 
 ```bash
@@ -552,6 +599,7 @@ Mecánicamente idéntico a §5, con estas diferencias:
 
 - Tag del proyecto: **`Preprod`**.
 - Nombre del servicio: **`App Preprod`**.
+- `composePath`: **`./docker-compose.preprod.yml`** (§1.5). No el de Test, no el de la raíz.
 - Puerto del rango **`3200`–`3299`** (§2), verificado libre con §2.3.
 - `customGitBranch` apunta al **commit/tag evaluado y mergeado**, no a una rama móvil.
 - Secretos **generados nuevos** para `Preprod`: no se reutilizan los del `Test` del desarrollador (§10).
@@ -634,35 +682,36 @@ Qué entregar al cerrar un `Test` (la entrega del `Preprod` es distinta y está 
 2. API key de Dokploy (Settings → **Profile** → API/CLI Keys). Header `x-api-key`.
 3. Mapeá permisos: `registry`, `sshKey`, `server` suelen estar bloqueados.
 4. **Puerto libre** del rango de **Test: `3110-3199`**, de 10 en 10. Nunca `3000`, `3100`, `8080`, `8081`, `9090`, `80`, `443`.
-5. **Ensayo local:** formato de los secretos, `env_file`, volumen de Postgres, puerto.
+5. **`docker-compose.test.yml`** propio del ambiente (§1.5), autocontenido, con `name:` explícito de proyecto y de volúmenes, sin tocar el `docker-compose.yml` de la raíz.
+6. **Ensayo local con ese mismo archivo:** formato de los secretos, `env_file`, volumen de Postgres, puerto.
 
 **Alta del `Test` en Dokploy**
 
-6. Proyecto: **título + descripción + tag `Test`**.
-7. Servicio: **`App Test`**. Provider **`Git`**.
-8. `project.create` → `compose.create` → `compose.update` (**`createEnvFile: true`**, `sourceType: git`, `customGitUrl`) → `compose.deploy`.
-9. **`done` no prueba nada.** Contenedores `running`/`healthy`, commit clonado correcto, logs, y **login en navegador real** (cookie `Secure` off + nombre de cookie único).
+7. Proyecto: **título + descripción + tag `Test`**.
+8. Servicio: **`App Test`**. Provider **`Git`**.
+9. `project.create` → `compose.create` → `compose.update` (**`composePath: ./docker-compose.test.yml`**, **`createEnvFile: true`**, `sourceType: git`, `customGitUrl`) → `compose.deploy`.
+10. **`done` no prueba nada.** Contenedores `running`/`healthy`, commit clonado correcto, logs, y **login en navegador real** (cookie `Secure` off + nombre de cookie único).
 
 **Camino a Preprod — hasta acá llega el desarrollador**
 
-10. Pre-flight del fork (5 puntos) → PR `master del fork → tools/{app-name}`.
-11. `/evaluar-app-huesped <PR>` sobre su **propio** PR, **iterando hasta PASS**.
-12. Avisar al evaluador humano: head SHA evaluado, tier, URL del `Test`. **Y detenerse.** Sin Gate 2, sin merge, sin `Preprod`.
+11. Pre-flight del fork (5 puntos), con **los tres compose** parseando y sin hardcode → PR `master del fork → tools/{app-name}`.
+12. `/evaluar-app-huesped <PR>` sobre su **propio** PR, **iterando hasta PASS**.
+13. Avisar al evaluador humano: head SHA evaluado, tier, URL del `Test`. **Y detenerse.** Sin Gate 2, sin merge, sin `Preprod`.
 
 ### EVALUADOR HUMANO
 
-13. **Re-evaluar el Gate 1 desde cero**, aunque el sticky diga PASS. Investigar cualquier divergencia.
-14. Revisar a mano lo que ningún check cubre: tier real vs. declarado, arquitectura, riesgos. Resolver `NEEDS_REVIEW`. Decidir waivers (sólo él puede).
-15. **Gate 2** smoke contra el tenant `evaluation` + teardown.
-16. **Merge** a `tools/{app-name}`.
-17. **Desplegar el `Preprod`**: tag `Preprod`, servicio **`App Preprod`**, puerto **`3200-3299`**, `customGitBranch` al commit mergeado, **secretos nuevos**. Verificación de §6 completa.
-18. **Registrar en el Maestro:** `applications`, `deployments` en `healthy`, `user_application_access`.
-19. **Entregar el proyecto al desarrollador** (§9.4): URL, IDs de Dokploy, acceso al panel, credenciales en archivo, registro en el Maestro, evidencia y SHA desplegado.
+14. **Re-evaluar el Gate 1 desde cero**, aunque el sticky diga PASS. Investigar cualquier divergencia.
+15. Revisar a mano lo que ningún check cubre: tier real vs. declarado, arquitectura, riesgos. Resolver `NEEDS_REVIEW`. Decidir waivers (sólo él puede).
+16. **Gate 2** smoke contra el tenant `evaluation` + teardown.
+17. **Merge** a `tools/{app-name}`.
+18. **Desplegar el `Preprod`**: tag `Preprod`, servicio **`App Preprod`**, **`composePath: ./docker-compose.preprod.yml`**, puerto **`3200-3299`**, `customGitBranch` al commit mergeado, **secretos nuevos**. Verificación de §6 completa.
+19. **Registrar en el Maestro:** `applications`, `deployments` en `healthy`, `user_application_access`.
+20. **Entregar el proyecto al desarrollador** (§9.4): URL, IDs de Dokploy, acceso al panel, credenciales en archivo, registro en el Maestro, evidencia y SHA desplegado.
 
 ### SIEMPRE
 
-20. Credenciales en archivo, nunca en el chat. Vencimiento corto. Revocar al terminar.
-21. Cada versión nueva **reinicia el ciclo** en el punto 10. La entrega no es un permiso permanente.
+21. Credenciales en archivo, nunca en el chat. Vencimiento corto. Revocar al terminar.
+22. Cada versión nueva **reinicia el ciclo** en el punto 11. La entrega no es un permiso permanente.
 
 ---
 
@@ -686,4 +735,4 @@ Qué entregar al cerrar un `Test` (la entrega del `Preprod` es distinta y está 
 
 | Versión | Fecha | Cambios |
 |---|---|---|
-| 1.0.0 | 2026-09-22 | Versión inicial. Consolida los descubrimientos del despliegue de test sobre la instancia Dokploy `10.100.1.124:3000`, define la convención de nombres/tags, fija los rangos de puertos por ambiente (`Test` 3110–3199 / `Preprod` 3200–3299) y establece el reparto de responsabilidades entre desarrollador y evaluador humano (§0.1): el desarrollador despliega su `Test`, abre el PR y auto-evalúa hasta Gate 1 PASS; el evaluador humano re-evalúa de forma independiente, corre el Gate 2, mergea, **despliega el `Preprod`** y recién entonces entrega el proyecto al desarrollador. |
+| 1.0.0 | 2026-09-22 | Versión inicial. Consolida los descubrimientos del despliegue de test sobre la instancia Dokploy `10.100.1.124:3000`, define la convención de nombres/tags, fija los rangos de puertos por ambiente (`Test` 3110–3199 / `Preprod` 3200–3299), exige un `docker-compose` autocontenido por ambiente (`docker-compose.yml` desarrollo / `.test.yml` / `.preprod.yml`, §1.5) y establece el reparto de responsabilidades entre desarrollador y evaluador humano (§0.1): el desarrollador despliega su `Test`, abre el PR y auto-evalúa hasta Gate 1 PASS; el evaluador humano re-evalúa de forma independiente, corre el Gate 2, mergea, **despliega el `Preprod`** y recién entonces entrega el proyecto al desarrollador. |
