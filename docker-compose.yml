@@ -1,0 +1,66 @@
+# docker-compose.yml — DESARROLLO LOCAL (IN-011). No se sube a Dokploy.
+# App: inventario | APP_ID: 1 -> puerto local 3100 (README §5)
+# Uso: cp .env.example .env  (completar secretos)  &&  docker compose up -d --build
+name: inventario-dev
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: app-inventario-dev
+    restart: "no"
+    env_file: .env
+    environment:
+      - DATABASE_URL=postgresql+psycopg://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}
+      - APP_ENV=development
+    ports:
+      - "${APP_PORT:-3100}:8000"
+    volumes:
+      - app-storage:/app/storage
+    networks:
+      - app-net
+    depends_on:
+      db:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4).status == 200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
+
+  db:
+    image: postgres:16-alpine
+    container_name: db-inventario-dev
+    restart: "no"
+    environment:
+      - POSTGRES_DB=${DB_NAME}
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    networks:
+      - app-net
+    # Sin puertos al host: para consultar la base, `docker compose exec db psql -U <usuario> <base>`.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  db-data:
+    name: inventario-dev_pgdata
+  app-storage:
+    name: inventario-dev_storage
+
+networks:
+  app-net:
+    driver: bridge
+    name: app-inventario-dev-net

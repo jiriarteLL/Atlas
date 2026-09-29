@@ -1,0 +1,45 @@
+apiVersion: maestro.platform/v2
+kind: Application
+metadata:
+  name: inventario
+  version: 2.0.0
+  description: "Inventario LLYA: activos de TI, garantias, proyectos de IT y relevamiento automatico de equipos"
+requires:
+  database: postgres
+  ports:
+    app: 8000
+health:
+  endpoint: /health
+  timeout_seconds: 5
+auth:
+  mode: own
+  login_path: /login           # POST /login (JSON o form); /auth/login es el mismo endpoint
+  logout_path: /auth/logout
+branding:
+  url: /maestro/branding
+seeding:
+  superadmin_email: admin@llyasoc.com
+  additional_users: []
+resources:
+  memory: 512m
+  cpu: 0.5
+ui:
+  tailwise: false
+  reason: "App existente migrada con su propio sistema de diseno (styles.css con temas por variables CSS); reescribir la UI en Tailwise queda fuera del alcance de esta version."
+env:
+  - APP_URL
+  - CORS_ORIGINS
+  - JWT_EXPIRE_MINUTES
+  - BCRYPT_COST
+  - LOGIN_RATE_LIMIT
+  - COMPANY_NAME
+  - COMPANY_LOGO_URL
+  - COMPANY_PRIMARY_COLOR
+  - SYNC_API_KEY
+  - SNAPSHOT_DIAS
+  - SMTP_HOST
+  - SMTP_PORT
+  - SMTP_USER
+  - SMTP_PASS
+  - SMTP_FROM_NAME
+  - SMTP_DOMINIO

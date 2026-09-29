@@ -2,7 +2,10 @@
 """Login propio, logout con revocacion, rate limit y permisos (README §7-§8, Gate 2)."""
 import pytest
 
-from conftest import SUPERADMIN_PASS, bearer, login
+from conftest import SUPERADMIN_PASS, bearer, clave_mala, clave_valida, login
+
+CLAVE_USUARIO = clave_valida()
+CLAVE_NUEVA = clave_valida()
 
 PROTEGIDOS = ["/api/assets", "/api/proyectos", "/api/tickets", "/api/equipo", "/api/tendencias",
               "/api/tendencias/metricas", "/api/garantias/vencimientos", "/api/glpi/resumen",
@@ -19,14 +22,32 @@ def test_login_valido_200_con_email(client):
 
 
 def test_login_invalido_401(client):
-    assert login(client, password="PRUEBA").status_code == 401
+    assert login(client, password=clave_mala()).status_code == 401
     assert login(client, usuario="nadie@llyasoc.com").status_code == 401
 
 
 def test_rate_limit_login_429(client):
-    codigos = [login(client, password="PRUEBA").status_code for _ in range(6)]
+    codigos = [login(client, password=clave_mala()).status_code for _ in range(6)]
     assert codigos[:5] == [401] * 5
     assert codigos[5] == 429
+
+
+def test_login_path_de_maestro_acepta_json(client):
+    r = client.post("/login", json={"email": "admin@llyasoc.com", "password": SUPERADMIN_PASS})
+    assert r.status_code == 200 and r.json()["access_token"]
+    assert client.post("/login", json={"email": "admin@llyasoc.com", "password": clave_mala()}).status_code == 401
+    assert client.post("/login", json={}).status_code == 401
+
+
+def test_rate_limit_compartido_entre_login_y_auth_login(client):
+    codigos = [client.post("/login", json={"email": "x@y.com", "password": clave_mala()}).status_code for _ in range(3)]
+    codigos += [login(client, password=clave_mala()).status_code for _ in range(3)]
+    assert codigos[:5] == [401] * 5 and codigos[5] == 429
+
+
+def test_placeholder_de_env_example_no_sirve_como_password():
+    from auth import validar_password
+    assert validar_password("cambiar" + clave_valida()) is not None
 
 
 @pytest.mark.parametrize("ruta", PROTEGIDOS)
@@ -49,7 +70,7 @@ def test_token_invalido_401(client):
     assert client.get("/api/assets", headers=bearer("no.es.un.jwt")).status_code == 401
 
 
-def _crear(client, token, username, rol, password="PRUEBA"):
+def _crear(client, token, username, rol, password=CLAVE_USUARIO):
     r = client.post("/auth/usuarios", headers=bearer(token),
                     json={"username": username, "password": password, "nombre": username, "rol": rol})
     assert r.status_code == 200, r.text
@@ -83,11 +104,11 @@ def test_password_debil_rechazada(client, token):
 
 def test_cambio_de_password_invalida_sesiones_viejas(client, token):
     r = client.post("/auth/cambiar-password", headers=bearer(token),
-                    json={"password_actual": SUPERADMIN_PASS, "password_nuevo": "PRUEBA"})
+                    json={"password_actual": SUPERADMIN_PASS, "password_nuevo": CLAVE_NUEVA})
     assert r.status_code == 200
     assert client.get("/api/assets", headers=bearer(token)).status_code == 401
     assert login(client).status_code == 401
-    nuevo = login(client, password="PRUEBA").json()["access_token"]
+    nuevo = login(client, password=CLAVE_NUEVA).json()["access_token"]
     assert client.get("/api/assets", headers=bearer(nuevo)).status_code == 200
 
 
@@ -100,7 +121,7 @@ def test_usuario_desactivado_pierde_la_sesion(client, token):
 
 def test_superadmin_no_se_puede_degradar_ni_borrar(client, token):
     _crear(client, token, "admin2", "admin")
-    t2 = login(client, "admin2", "PRUEBA").json()["access_token"]
+    t2 = login(client, "admin2", CLAVE_USUARIO).json()["access_token"]
     assert client.put("/auth/usuarios/admin@llyasoc.com", headers=bearer(t2), json={"rol": "viewer"}).status_code == 400
     assert client.delete("/auth/usuarios/admin@llyasoc.com", headers=bearer(t2)).status_code == 400
 
@@ -108,7 +129,7 @@ def test_superadmin_no_se_puede_degradar_ni_borrar(client, token):
 def test_audit_log_registra_eventos_de_auth(client, token):
     import database
     client.post("/auth/logout", headers=bearer(token))
-    login(client, password="PRUEBA")
+    login(client, password=clave_mala())
     db = database.SessionLocal()
     acciones = {a.accion for a in db.query(database.AuditLog).all()}
     db.close()

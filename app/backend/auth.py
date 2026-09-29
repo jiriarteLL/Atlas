@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel
@@ -145,6 +145,8 @@ def validar_password(p):
         return "La contrasena debe tener al menos 12 caracteres."
     if p.lower() in _BLACKLIST or any(p.lower().startswith(b) and len(set(p.lower()[len(b):])) <= 1 for b in _BLACKLIST):
         return "La contrasena es demasiado comun."
+    if "cambiar" in p.lower():
+        return "La contrasena parece el valor de ejemplo de .env.example."
     clases = sum(bool(re.search(x, p)) for x in (r"[a-z]", r"[A-Z]", r"\d", r"[^A-Za-z0-9]"))
     if clases < 3:
         return "La contrasena debe combinar al menos 3 de: minusculas, mayusculas, numeros y simbolos."
@@ -257,16 +259,31 @@ require_admin = require_permiso("usuarios.administrar")
 
 
 # ---------------------------------------------------------------- endpoints
-@auth_router.post("/login", response_model=TokenResponse)
-@limiter.limit(config.LOGIN_RATE_LIMIT)
-def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends()):
+async def _credenciales(request):
+    """Acepta form (username/password, lo que manda el frontend) o JSON (email|username|usuario + password)."""
+    if "application/json" in (request.headers.get("content-type") or ""):
+        try:
+            d = await request.json()
+        except ValueError:
+            d = {}
+        d = d if isinstance(d, dict) else {}
+        ident = d.get("email") or d.get("username") or d.get("usuario") or ""
+        return str(ident).strip(), str(d.get("password") or "")
+    f = await request.form()
+    return str(f.get("username") or f.get("email") or "").strip(), str(f.get("password") or "")
+
+
+async def login(request: Request):
     ip = _ip(request)
-    ident = (form_data.username or "").strip()
+    ident, password = await _credenciales(request)
+    if not ident or not password:
+        log_action(usuario=ident, accion="LOGIN_FAILED", ip=ip, resultado="failure")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuario o contrasena incorrectos.")
     db = SessionLocal()
     try:
         u = (db.query(User).filter(User.activo == "1")
              .filter((User.username == ident) | (func.lower(User.email) == ident.lower())).first())
-        if not u or not verify_password(form_data.password, u.password_hash):
+        if not u or not verify_password(password, u.password_hash):
             log_action(usuario=ident, accion="LOGIN_FAILED", ip=ip, resultado="failure")
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuario o contrasena incorrectos.")
         u.last_login_at = datetime.utcnow()
@@ -276,6 +293,13 @@ def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends()):
         db.close()
     log_action(usuario=out.username, accion="LOGIN_SUCCESS", ip=ip, resultado="success")
     return TokenResponse(access_token=create_token(out.username), expires_in=config.JWT_EXPIRE_MINUTES * 60, user=out)
+
+
+# Un solo limitador para las dos rutas: /auth/login (frontend) y /login (auth.login_path de maestro.yaml).
+login = limiter.shared_limit(config.LOGIN_RATE_LIMIT, scope="login")(login)
+auth_router.add_api_route("/login", login, methods=["POST"], response_model=TokenResponse)
+login_router = APIRouter(tags=["auth"])
+login_router.add_api_route("/login", login, methods=["POST"], response_model=TokenResponse)
 
 
 @auth_router.post("/logout")

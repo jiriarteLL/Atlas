@@ -1,0 +1,75 @@
+# docker-compose.preprod.yml — ambiente PREPRODUCCION en Dokploy (servicio "App Preprod").
+# Lo despliega SOLO el evaluador humano (AGENTS.md §3, MANUAL §9). Autocontenido; requiere createEnvFile: true.
+# APP_PORT es obligatorio: rango Preprod 3200-3299, de 10 en 10, verificado libre (MANUAL §2.3).
+name: inventario
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: app-inventario
+    restart: always
+    env_file: .env
+    environment:
+      - DATABASE_URL=postgresql+psycopg://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}
+      - APP_ENV=preprod
+    ports:
+      - "${APP_PORT:?definir APP_PORT del rango Preprod 3200-3299}:8000"
+    volumes:
+      - app-storage:/app/storage
+    networks:
+      - app-net
+    depends_on:
+      db:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "0.5"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4).status == 200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
+
+  db:
+    image: postgres:16-alpine
+    container_name: db-inventario
+    restart: always
+    environment:
+      - POSTGRES_DB=${DB_NAME}
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    networks:
+      - app-net
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "1.0"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  db-data:
+    name: inventario_pgdata
+  app-storage:
+    name: inventario_storage
+
+networks:
+  app-net:
+    driver: bridge
+    name: app-inventario-net

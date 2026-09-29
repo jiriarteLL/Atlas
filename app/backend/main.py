@@ -24,7 +24,7 @@ from sqlalchemy import func, text as _sqltext
 
 import config
 from audit import log_action
-from auth import (User, UserOut, auth_router, get_current_user, require_admin, require_escritura,
+from auth import (User, UserOut, auth_router, login_router, require_admin, require_escritura,
                   require_lectura, require_permiso)
 from database import (Adjunto, Asset, AssetGlpi, Historial, Proyecto, ProyectoActivo, ProyectoResponsable,
                       ProyectoTarea, SessionLocal, Snapshot, Ticket, init_db)
@@ -45,6 +45,7 @@ app = FastAPI(title="Inventario LLYA", version=config.APP_VERSION, lifespan=life
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.include_router(auth_router)
+app.include_router(login_router)
 if config.CORS_ORIGINS:
     app.add_middleware(CORSMiddleware, allow_origins=config.CORS_ORIGINS, allow_methods=["*"], allow_headers=["*"])
 

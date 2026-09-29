@@ -5,7 +5,7 @@ import pytest
 import database
 import seed
 from auth import User, UserRole, permisos_de, rol_de, verify_password, PERMISOS
-from conftest import SUPERADMIN_PASS, login
+from conftest import SUPERADMIN_PASS, clave_valida, login
 
 
 def _superadmins():
@@ -37,7 +37,7 @@ def test_primera_ejecucion_crea_superadmin_con_todos_los_permisos():
 
 def test_segunda_ejecucion_no_duplica_ni_cambia_password(monkeypatch):
     antes = _superadmins()
-    monkeypatch.setenv("SUPERADMIN_INITIAL_PASSWORD", "PRUEBA")
+    monkeypatch.setenv("SUPERADMIN_INITIAL_PASSWORD", clave_valida())
     assert seed.main() == 0
     despues = _superadmins()
     assert len(despues) == 1

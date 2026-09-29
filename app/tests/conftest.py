@@ -1,19 +1,31 @@
 # -*- coding: utf-8 -*-
 """Tests sin Docker: SQLite en un archivo temporal. El entorno se fija ANTES de importar la app."""
 import os
+import secrets
 import sys
 import tempfile
 
 import pytest
 
+
+def clave_valida():
+    """Password que cumple la politica, generada en cada corrida (sin secretos literales en el repo)."""
+    return "Aa1-" + secrets.token_hex(8)
+
+
+def clave_mala():
+    """Password bien formada pero que no es la de nadie."""
+    return "Zz9-" + secrets.token_hex(8)
+
+
 _TMP = tempfile.mkdtemp(prefix="inventario-tests-")
-SUPERADMIN_PASS = "PRUEBA"
-MAESTRO_KEY = "PRUEBA"
-SYNC_KEY = "PRUEBA"
+SUPERADMIN_PASS = clave_valida()
+MAESTRO_KEY = secrets.token_hex(16)
+SYNC_KEY = secrets.token_hex(16)
 
 os.environ.update({
     "DATABASE_URL": "sqlite:///" + os.path.join(_TMP, "test.db").replace("\\", "/"),
-    "JWT_SECRET": "PRUEBA",
+    "JWT_SECRET": secrets.token_hex(32),
     "MAESTRO_API_KEY": MAESTRO_KEY,
     "SYNC_API_KEY": SYNC_KEY,
     "SUPERADMIN_INITIAL_PASSWORD": SUPERADMIN_PASS,
