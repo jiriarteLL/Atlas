@@ -1,6 +1,10 @@
 #!/bin/bash
 # AssetManager Agent v1.0 - Linux
-SERVER="http://192.168.100.116:8000"
+# Configuracion: /etc/assetmanager-agent.conf (la escribe instalar_linux.sh) o variables de entorno.
+[ -r /etc/assetmanager-agent.conf ] && . /etc/assetmanager-agent.conf
+SERVER="${INVENTARIO_URL:?Falta INVENTARIO_URL}"
+SYNC_KEY="${INVENTARIO_SYNC_KEY:?Falta INVENTARIO_SYNC_KEY}"
+SERVER="${SERVER%/}"
 
 NOMBRE=$(hostname -s)
 SERIAL=$(sudo dmidecode -s system-serial-number 2>/dev/null | tr -d '[:space:]' || echo "sin-serial")
@@ -47,6 +51,7 @@ PAYLOAD="{\"nombre\":\"$NOMBRE\",\"tipo\":\"Servidor\",\"marca\":\"$MARCA\",\"mo
 
 RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$SERVER/api/sync" \
   -H "Content-Type: application/json; charset=utf-8" \
+  -H "X-Sync-Key: $SYNC_KEY" \
   -d "$PAYLOAD")
 
 if [ "$RESPONSE" = "200" ]; then

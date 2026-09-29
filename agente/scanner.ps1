@@ -1,5 +1,12 @@
 ﻿# AssetManager Network Scanner v2.1
-$server = "http://192.168.0.88:8000"
+param(
+    # URL del Inventario (ej. la del ambiente Test). Tambien: variable de entorno INVENTARIO_URL.
+    [string]$Server = $env:INVENTARIO_URL,
+    # SYNC_API_KEY del ambiente. Tambien: variable de entorno INVENTARIO_SYNC_KEY. Nunca escribirla en el script.
+    [string]$SyncKey = $env:INVENTARIO_SYNC_KEY
+)
+if (-not $Server -or -not $SyncKey) { Write-Error "Faltan -Server y/o -SyncKey (o INVENTARIO_URL / INVENTARIO_SYNC_KEY)"; exit 1 }
+$server = $Server.TrimEnd("/")
 
 function Clean($s) { if ($null -eq $s) { return "" } return ($s -replace '[\"\\\/\x00-\x1F]', ' ').Trim() }
 
@@ -119,7 +126,7 @@ foreach ($r in $redes) {
                 }
 
                 $payload = $body | ConvertTo-Json -Depth 2 -Compress
-                Invoke-RestMethod -Uri "$server/api/sync" -Method POST -ContentType "application/json; charset=utf-8" -Body ([System.Text.Encoding]::UTF8.GetBytes($payload))
+                Invoke-RestMethod -Uri "$server/api/sync" -Method POST -Headers @{ "X-Sync-Key" = $SyncKey } -ContentType "application/json; charset=utf-8" -Body ([System.Text.Encoding]::UTF8.GetBytes($payload))
                 Write-Host "    OK - Registrado: $nombre ($ubicacion)" -ForegroundColor Green
                 $totalRegistrados++
             } catch {

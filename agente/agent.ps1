@@ -1,5 +1,12 @@
 ﻿# AssetManager Agent v3.4 - Compatible Windows Server 2008 R2+
-$server = "http://192.168.100.116:8000"
+param(
+    # URL del Inventario (ej. la del ambiente Test). Tambien: variable de entorno INVENTARIO_URL.
+    [string]$Server = $env:INVENTARIO_URL,
+    # SYNC_API_KEY del ambiente. Tambien: variable de entorno INVENTARIO_SYNC_KEY. Nunca escribirla en el script.
+    [string]$SyncKey = $env:INVENTARIO_SYNC_KEY
+)
+if (-not $Server -or -not $SyncKey) { Write-Error "Faltan -Server y/o -SyncKey (o INVENTARIO_URL / INVENTARIO_SYNC_KEY)"; exit 1 }
+$server = $Server.TrimEnd("/")
 
 try {
     # Forzar TLS 1.2 para versiones antiguas
@@ -110,11 +117,12 @@ try {
     # HTTP Request - compatible con PS 2.0 (sin Invoke-RestMethod en algunos casos)
     try {
         # Intentar con Invoke-RestMethod (PS 3.0+)
-        Invoke-RestMethod -Uri "$server/api/sync" -Method POST -ContentType "application/json; charset=utf-8" -Body ([System.Text.Encoding]::UTF8.GetBytes($payload))
+        Invoke-RestMethod -Uri "$server/api/sync" -Method POST -Headers @{ "X-Sync-Key" = $SyncKey } -ContentType "application/json; charset=utf-8" -Body ([System.Text.Encoding]::UTF8.GetBytes($payload))
     } catch {
         # Fallback con WebClient para PS 2.0
         $client = New-Object System.Net.WebClient
         $client.Headers.Add("Content-Type", "application/json; charset=utf-8")
+        $client.Headers.Add("X-Sync-Key", $SyncKey)
         $client.UploadData("$server/api/sync", "POST", [System.Text.Encoding]::UTF8.GetBytes($payload)) | Out-Null
     }
 
