@@ -37,7 +37,7 @@ export default function LoginPage({ onSuccess }) {
               style={S.input}
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="nombre.apellido"
+              placeholder="usuario o email"
               autoComplete="username"
               required
             />

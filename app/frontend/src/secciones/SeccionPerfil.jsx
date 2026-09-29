@@ -35,14 +35,19 @@ export function SeccionPerfil() {
   async function cambiarPass(){
     if(!pass.actual||!pass.nuevo){ setPassMsg2("Completa los campos."); return; }
     if(pass.nuevo!==pass.confirmar){ setPassMsg2("Las contrasenas no coinciden."); return; }
-    if(pass.nuevo.length<6){ setPassMsg2("Minimo 6 caracteres."); return; }
+    if(pass.nuevo.length<12){ setPassMsg2("Minimo 12 caracteres, combinando mayusculas, minusculas, numeros o simbolos."); return; }
     const t = localStorage.getItem("abm_token");
     try{
       const r = await fetch(BASE+"/auth/cambiar-password", { method:"POST",
         headers:{ "Content-Type":"application/json", Authorization:"Bearer "+t },
         body: JSON.stringify({ password_actual:pass.actual, password_nuevo:pass.nuevo }) });
       const d = await r.json().catch(()=>({}));
-      if(r.ok){ setPassMsg2("Contrasena cambiada correctamente."); setPass({actual:"",nuevo:"",confirmar:""}); }
+      if(r.ok){
+        // El backend invalida las sesiones anteriores al cambio: hay que volver a entrar.
+        alert("Contrasena cambiada. Volve a iniciar sesion con la nueva.");
+        localStorage.removeItem("abm_token"); localStorage.removeItem("abm_user");
+        window.location.reload();
+      }
       else setPassMsg2("Error: "+(d.detail||r.status));
     } catch(e){ setPassMsg2("Error: "+e.message); }
   }
@@ -50,7 +55,7 @@ export function SeccionPerfil() {
   if(!p) return <div className="loading-wrap"><div className="spinner"/><span className="loading-text">Cargando perfil...</span></div>;
 
   const ini = (p.nombre||p.username||"?").split(" ").map(x=>x[0]).slice(0,2).join("").toUpperCase();
-  const rolLabel = {admin:"Administrador", editor:"Editor", viewer:"Solo lectura"}[p.rol] || p.rol;
+  const rolLabel = {superadmin:"Superadministrador", admin:"Administrador", editor:"Editor", viewer:"Solo lectura"}[p.rol] || p.rol;
 
   return (
     <div style={{maxWidth:820}}>

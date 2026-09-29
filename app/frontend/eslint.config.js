@@ -5,7 +5,7 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist', 'dist_nuevo', 'dist_viejo', '_archivo_versiones_viejas']),
+  globalIgnores(['dist']),
   {
     files: ['**/*.{js,jsx}'],
     extends: [
@@ -14,7 +14,8 @@ export default defineConfig([
       reactRefresh.configs.vite,
     ],
     languageOptions: {
-      globals: globals.browser,
+      // __APP_VERSION__ lo inyecta vite.config.js (define) desde package.json.
+      globals: { ...globals.browser, __APP_VERSION__: 'readonly' },
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
     rules: {
@@ -25,5 +26,10 @@ export default defineConfig([
       // archivos exportan componentes junto con helpers o constantes a proposito.
       'react-refresh/only-export-components': 'off',
     },
+  },
+  {
+    // Configuracion de build: corre en Node, no en el navegador.
+    files: ['vite.config.js', 'eslint.config.js'],
+    languageOptions: { globals: globals.node },
   },
 ])

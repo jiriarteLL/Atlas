@@ -1,18 +1,13 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useGraficos } from "./graficos";
-import ABMForm, { OFICINA_TO_SEDE, clasificarSectorCentro } from "./ABMForm";
-import { useAuth } from "./AuthContext";
-import { LayoutGrid, Laptop, KeyRound, BarChart3, Bot, Settings, Power, Menu, Upload, Download, RefreshCw, Plus, FolderKanban, Users, UserCircle } from "lucide-react";
-import AlertasNomina from "./AlertasNomina";
+import { useAuth, tienePermiso } from "./AuthContext";
+import { LayoutGrid, Laptop, BarChart3, Bot, Settings, Power, Menu, Upload, Download, RefreshCw, Plus, FolderKanban, UserCircle } from "lucide-react";
 import { useTablaTarjetas } from "./tablaTarjetas";
-import { API, API_UM, conUsuario, authHeaders, umFetch, http, setUsuarioActual } from "./api";
-import { SEDES, COLORES, TIPOS, estadoClass, Badge, Tag, QR, Field, emptyAsset, fmtDate } from "./ui";
+import { API, AUTH, authHeaders, http, setUsuarioActual } from "./api";
+import { SEDES, COLORES, TIPOS, estadoClass, Badge, QR, Field, emptyAsset, fmtDate } from "./ui";
 import { SeccionTendencias } from "./secciones/SeccionTendencias";
 import { AdjuntosActivo } from "./secciones/AdjuntosActivo";
 import { HistorialActivo } from "./secciones/HistorialActivo";
-import { generarResumenABM } from "./resumenABM";
-import { SeccionUsuarios } from "./secciones/SeccionUsuarios";
-import { SeccionLicencias } from "./secciones/SeccionLicencias";
 import { SeccionProyectos } from "./secciones/SeccionProyectos";
 import { SeccionPerfil } from "./secciones/SeccionPerfil";
 import "./styles.css";
@@ -61,7 +56,6 @@ export default function App() {
         setFEstado(p.get("estado") || "");
       }
       setSelected(null);
-      setEmpleadoSelected(null);
       setEditando(false);
     };
     aplicarHash();
@@ -89,65 +83,14 @@ export default function App() {
   const [editAsset, setEditAsset] = useState(null);
   const [showQR, setShowQR] = useState(false);
   const [showModal, setShowModal] = useState(false);
-  const [showModalUser, setShowModalUser] = useState(false);
-  const [showAltaABM, setShowAltaABM] = useState(false);
-
-  async function manejarSubmitAlta(tipoAbm, formData) {
-    const nombreCompleto = (formData.apellidos+", "+formData.nombres).trim();
-    const body = {
-      legajo: formData.legajo ? parseInt(formData.legajo,10) : null,
-      nombre: nombreCompleto,
-      centro_costo: formData.centroCostos,
-      subauxiliar: formData.sector,
-      categoria: formData.puesto,
-      fecha_ingreso: formData.fechaEjecucion,
-      email: "",
-      sede: OFICINA_TO_SEDE[formData.oficina] || "",
-      estado: "Activo"
-    };
-    const r = await umFetch(API_UM+"/empleados?usuario="+encodeURIComponent(formData.solicitante||""),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
-    if(!r.ok) throw new Error("HTTP "+r.status);
-
-    const hoy = new Date().toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'});
-    const filas = [
-      ["N° de Legajo", formData.legajo],
-      ["Tipo de ABM", "Alta"],
-      ["Fecha de generación", hoy],
-      ["Solicitante de ABM", formData.solicitante],
-      ["Fecha de ingreso", formData.fechaEjecucion],
-      ["__sep__"],
-      ["Nombres", formData.nombres],
-      ["Apellidos", formData.apellidos],
-      ["Responsable / Tutor", formData.manager],
-      ["Oficina", formData.oficina],
-      ["Puesto / Categoría", formData.puesto],
-      ["__sep__"],
-      ["Sector / Departamento", formData.sector],
-      ["Centro de Costos", formData.centroCostos],
-    ];
-    if(formData.rutaFileServer||formData.rutaSharepoint||formData.sistemasApps){
-      filas.push(["__sep__"]);
-      if(formData.rutaFileServer) filas.push(["Ruta File Server", formData.rutaFileServer]);
-      if(formData.rutaSharepoint) filas.push(["Ruta SharePoint", formData.rutaSharepoint]);
-      if(formData.sistemasApps) filas.push(["Sistemas o aplicaciones", formData.sistemasApps]);
-    }
-    filas.push(["__sep__"]);
-    filas.push(["Características Especiales", formData.caracEspeciales||"-"]);
-
-    generarResumenABM("Alta", filas);
-    setShowAltaABM(false);
-
-    const data = await umFetch(API_UM+"/empleados/con-licencias").then(x=>x.json());
-    setEmpleados(data);
-  }
   const [nbFiltro, setNbFiltro] = useState("total");
-  const [newUser, setNewUser] = useState({nombre:"",legajo:"",email:"",sede:"CABA1",categoria:"",centro_costo:"",estado:"Activo"});
-  const [savingUser, setSavingUser] = useState(false);
   const [saving, setSaving] = useState(false);
   const [newAsset, setNewAsset] = useState(emptyAsset);
   const fileRef = useRef(null);
   const spotRef = useRef(null);
   const { user, logout } = useAuth();
+  const esAdmin = tienePermiso(user, "usuarios.administrar");
+  const puedeEditar = tienePermiso(user, "inventario.editar");
   useEffect(()=>{ setUsuarioActual(user?.username); }, [user]);
   const [glpiMap, setGlpiMap] = useState({});
   async function cargarGlpi(){
@@ -161,41 +104,17 @@ export default function App() {
     } catch { /* GLPI no disponible: la ficha se muestra sin esos datos */ }
   }
   useEffect(()=>{ if(user) cargarGlpi(); }, [user]);
-  function verFicha(a){ setSelected(a); fetch(conUsuario(API+"/assets/"+a.id+"/ficha"), { headers: authHeaders() }).catch(()=>{}); }
+  function verFicha(a){ setSelected(a); fetch(API+"/assets/"+a.id+"/ficha", { headers: authHeaders() }).catch(()=>{}); }
   const [showConfig, setShowConfig] = useState(false);
-  const [empleados, setEmpleados] = useState([]);
-  const [empleadoSelected, setEmpleadoSelected] = useState(null);
-  const [searchEmp, setSearchEmp] = useState("");
-  const [fSedeEmp, setFSedeEmp] = useState("Todas");
-  const [empLicencias, setEmpLicencias] = useState([]);
-  const [empHardware, setEmpHardware] = useState([]);
-  const [empActivo, setEmpActivo] = useState(null);
   const [usuarios, setUsuarios] = useState([]);
-  const [nuevoUser, setNuevoUser] = useState({username:"",password:"",nombre:"",rol:"viewer"});
+  const [nuevoUser, setNuevoUser] = useState({username:"",password:"",nombre:"",email:"",rol:"viewer"});
   const [userMsg, setUserMsg] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarHidden, setSidebarHidden] = useState(false);
-  async function loadEmpleados() {
-    try { const r = await umFetch(API_UM + "/empleados/con-licencias"); setEmpleados(await r.json()); } catch { /* sin conexion al UserManager: la nomina queda vacia */ }
-  }
-
-  async function loadEmpleadoDetalle(emp) {
-    setEmpleadoSelected(emp);
-    try {
-      const [lics, hw] = await Promise.all([
-        umFetch(API_UM + "/empleados/" + emp.id + "/licencias").then(r=>r.json()),
-        umFetch(API_UM + "/empleados/" + emp.id + "/hardware").then(r=>r.json())
-      ]);
-      setEmpLicencias(lics); setEmpHardware(hw);
-      const prefijo = emp.email?.split("@")[0]?.toLowerCase().trim();
-      setEmpActivo(assets.find(a=>a.usuario?.toLowerCase().trim()===prefijo)||null);
-    } catch(e) { console.error("Error detalle empleado:", e); alert("No se pudo cargar el detalle: " + e.message); }
-  }
 
   async function loadUsuarios() {
     try {
-      const token = localStorage.getItem("abm_token");
-      const r = await fetch(API.replace("/api","") + "/auth/usuarios", { headers: { Authorization: "Bearer " + token } });
+      const r = await fetch(AUTH + "/usuarios", { headers: authHeaders() });
       if (r.ok) setUsuarios(await r.json());
       else if (r.status === 401) setUserMsg("Error: sesion expirada, volve a iniciar sesion."); else setUserMsg("Error al listar usuarios (" + r.status + ")");
     } catch { setUserMsg("Error de conexion al listar usuarios"); }
@@ -203,21 +122,19 @@ export default function App() {
 
   async function crearUsuario() {
     try {
-      const token = localStorage.getItem("abm_token");
-      const r = await fetch(API.replace("/api","") + "/auth/usuarios", {
-        method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+      const r = await fetch(AUTH + "/usuarios", {
+        method: "POST", headers: authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify(nuevoUser)
       });
-      if (r.ok) { setUserMsg("Usuario creado!"); setNuevoUser({username:"",password:"",nombre:"",rol:"viewer"}); loadUsuarios(); }
+      if (r.ok) { setUserMsg("Usuario creado!"); setNuevoUser({username:"",password:"",nombre:"",email:"",rol:"viewer"}); loadUsuarios(); }
       else { const d = await r.json(); setUserMsg("Error: " + d.detail); }
     } catch { setUserMsg("Error al crear usuario"); }
   }
 
   async function guardarUsuario(u, cambios) {
-    const token = localStorage.getItem("abm_token");
     try {
-      const r = await fetch(API.replace("/api","") + "/auth/usuarios/" + u.username, {
-        method: "PUT", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+      const r = await fetch(AUTH + "/usuarios/" + encodeURIComponent(u.username), {
+        method: "PUT", headers: authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify(cambios)
       });
       const d = await r.json().catch(()=>({}));
@@ -228,11 +145,9 @@ export default function App() {
 
   async function eliminarUsuario(username) {
     if (!confirm("Eliminar usuario " + username + "?")) return;
-    const token = localStorage.getItem("abm_token");
-    await fetch(API.replace("/api","") + "/auth/usuarios/" + username, { method: "DELETE", headers: { Authorization: "Bearer " + token } });
+    await fetch(AUTH + "/usuarios/" + encodeURIComponent(username), { method: "DELETE", headers: authHeaders() });
     loadUsuarios();
   }
-
   async function loadData() {
     setLoading(true);
     try { const a = await http.get(`${API}/assets`); setAssets(a); }
@@ -258,8 +173,6 @@ export default function App() {
     document.addEventListener("mousemove", onMove, { passive: true });
     return () => document.removeEventListener("mousemove", onMove);
   },[]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- solo carga la nomina al entrar a la pestana si todavia no esta cargada
-  useEffect(()=>{ if((tab==="usuarios"||tab==="dashboard"||tab==="reportes"||tab==="licencias") && empleados.length===0) loadEmpleados(); },[tab]);
 
   async function crearActivo() {
     if(!newAsset.marca||!newAsset.modelo||!newAsset.serial) return alert("Fabricante, modelo y serial son obligatorios.");
@@ -267,22 +180,6 @@ export default function App() {
     try { await http.post(`${API}/assets`,newAsset); await loadData(); setShowModal(false); setNewAsset(emptyAsset); }
     catch(e) { alert("Error: "+e.message); }
     setSaving(false);
-  }
-
-  // Alta manual de empleado en el UserManager (modal "Nuevo usuario"). Se llamaba igual que
-  // crearUsuario (alta de login en Configuracion) y la pisaba: ese boton no creaba nada.
-  async function crearEmpleadoManual() {
-    if(!newUser.nombre||!newUser.email) return alert("Nombre y email son obligatorios.");
-    setSavingUser(true);
-    try {
-      const r = await umFetch(API_UM+"/empleados",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...newUser, editado_manual:"1"})});
-      if(!r.ok) throw new Error("HTTP "+r.status);
-      const res = await umFetch(API_UM+"/empleados/con-licencias");
-      setEmpleados(await res.json());
-      setShowModalUser(false);
-      setNewUser({nombre:"",legajo:"",email:"",sede:"CABA1",categoria:"",centro_costo:"",estado:"Activo"});
-    } catch(e) { alert("Error al crear usuario: "+e.message); }
-    setSavingUser(false);
   }
 
   const [consultandoGar, setConsultandoGar] = useState(false);
@@ -396,8 +293,6 @@ export default function App() {
     const d = (f - hoy)/(1000*60*60*24);
     return d >= 0 && d <= 90;
   }).length;
-  const totalLicencias = empleados.reduce((sum,e)=>sum+(e.licencias||[]).length,0);
-  const licenciasClaude = empleados.filter(e=>(e.licencias||[]).some(l=>l.includes("Claude"))).length;
 
   const [ordAct, setOrdAct] = useState({col:null,asc:true});
   const [pagAct, setPagAct] = useState(1);
@@ -431,8 +326,8 @@ export default function App() {
     return mq&&(!fTipo||a.tipo===fTipo)&&mEstado&&(!fSede||(a.ubicacion||"").toLowerCase()===fSede.toLowerCase());
   });
 
-  const titles = { dashboard:"Dashboard", activos:"Activos", licencias:"Licencias", proyectos:"Proyectos", reportes:"Reportes", tendencias:"Tendencias", agente:"Agente", usuarios:"Usuarios", perfil:"Mi perfil" };
-  const subs = { dashboard:"— Vista general", activos:"— Inventario completo", licencias:"— Claude y Adobe", proyectos:"— Seguimiento de IT", reportes:"— Análisis", agente:"— Scripts de sincronización", usuarios:"— Nomina LLYA", perfil:"— Cuenta, permisos y seguridad" };
+  const titles = { dashboard:"Dashboard", activos:"Activos", proyectos:"Proyectos", reportes:"Reportes", tendencias:"Tendencias", agente:"Agente", perfil:"Mi perfil" };
+  const subs = { dashboard:"— Vista general", activos:"— Inventario completo", proyectos:"— Seguimiento de IT", reportes:"— Análisis", agente:"— Scripts de sincronización", perfil:"— Cuenta, permisos y seguridad" };
 
   if(loading) return <div className="loading-wrap"><div className="spinner"/><span className="loading-text">Cargando datos...</span></div>;
 
@@ -441,7 +336,7 @@ export default function App() {
       <div id="spot" ref={spotRef}/>
 
       {/* MODAL CONFIGURACION */}
-      {showConfig && user?.rol === "admin" && (
+      {showConfig && esAdmin && (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center"}}>
           <div style={{background:"#fff",borderRadius:12,padding:28,width:600,maxWidth:"95vw",maxHeight:"85vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
@@ -452,8 +347,9 @@ export default function App() {
               <h4 style={{margin:"0 0 12px",color:"#0D2B45",fontSize:14}}>Nuevo usuario</h4>
               <div className="form-cols" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
                 <div><label style={{fontSize:12,fontWeight:600,display:"block",marginBottom:4,color:"#0D2B45"}}>Usuario</label><input value={nuevoUser.username} onChange={e=>setNuevoUser({...nuevoUser,username:e.target.value})} placeholder="nombre.apellido" style={{width:"100%",padding:"8px 10px",border:"1px solid #dde3e6",borderRadius:6,fontSize:13,boxSizing:"border-box",color:"#333",background:"#fff"}}/></div>
-                <div><label style={{fontSize:12,fontWeight:600,display:"block",marginBottom:4,color:"#0D2B45"}}>Contraseña</label><input type="password" value={nuevoUser.password} onChange={e=>setNuevoUser({...nuevoUser,password:e.target.value})} placeholder="********" style={{width:"100%",padding:"8px 10px",border:"1px solid #dde3e6",borderRadius:6,fontSize:13,boxSizing:"border-box",color:"#333",background:"#fff"}}/></div>
+                <div><label style={{fontSize:12,fontWeight:600,display:"block",marginBottom:4,color:"#0D2B45"}}>Contraseña</label><input type="password" value={nuevoUser.password} onChange={e=>setNuevoUser({...nuevoUser,password:e.target.value})} placeholder="Mínimo 12 caracteres" style={{width:"100%",padding:"8px 10px",border:"1px solid #dde3e6",borderRadius:6,fontSize:13,boxSizing:"border-box",color:"#333",background:"#fff"}}/></div>
                 <div><label style={{fontSize:12,fontWeight:600,display:"block",marginBottom:4,color:"#0D2B45"}}>Nombre completo</label><input value={nuevoUser.nombre} onChange={e=>setNuevoUser({...nuevoUser,nombre:e.target.value})} placeholder="Juan Pérez" style={{width:"100%",padding:"8px 10px",border:"1px solid #dde3e6",borderRadius:6,fontSize:13,boxSizing:"border-box",color:"#333",background:"#fff"}}/></div>
+                <div><label style={{fontSize:12,fontWeight:600,display:"block",marginBottom:4,color:"#0D2B45"}}>Email</label><input value={nuevoUser.email} onChange={e=>setNuevoUser({...nuevoUser,email:e.target.value})} placeholder="nombre@llyasoc.com" style={{width:"100%",padding:"8px 10px",border:"1px solid #dde3e6",borderRadius:6,fontSize:13,boxSizing:"border-box",color:"#333",background:"#fff"}}/></div>
                 <div><label style={{fontSize:12,fontWeight:600,display:"block",marginBottom:4,color:"#0D2B45"}}>Rol</label><select value={nuevoUser.rol} onChange={e=>setNuevoUser({...nuevoUser,rol:e.target.value})} style={{width:"100%",padding:"8px 10px",border:"1px solid #dde3e6",borderRadius:6,fontSize:13,boxSizing:"border-box",color:"#333",background:"#fff"}}><option value="viewer">Solo ver</option><option value="editor">Editor</option><option value="admin">Admin</option></select></div>
               </div>
               {userMsg && <div style={{fontSize:13,color:userMsg.includes("Error")?"#c0392b":"#27ae60",marginBottom:8}}>{userMsg}</div>}
@@ -479,14 +375,14 @@ export default function App() {
                         style={{border:"1px solid transparent",borderRadius:4,padding:"3px 6px",fontSize:13,background:"transparent",color:"#333",width:"92%"}}/>
                     </td>
                     <td style={{padding:"8px 12px",color:"#333"}}>
-                      <select value={u.rol} onChange={e=>guardarUsuario(u,{rol:e.target.value})} disabled={u.username==="admin"}
-                        style={{background:u.rol==="admin"?"#0D2B45":u.rol==="editor"?"#00B0B9":"#6b8090",color:"#fff",border:"none",borderRadius:4,padding:"3px 8px",fontSize:11,fontWeight:700,minWidth:82,cursor:u.username==="admin"?"default":"pointer"}}>
-                        {["admin","editor","viewer"].map(r=><option key={r} value={r} style={{background:"#fff",color:"#333"}}>{r}</option>)}
+                      <select value={u.rol} onChange={e=>guardarUsuario(u,{rol:e.target.value})} disabled={u.rol==="superadmin"}
+                        style={{background:u.rol==="admin"||u.rol==="superadmin"?"#0D2B45":u.rol==="editor"?"#00B0B9":"#6b8090",color:"#fff",border:"none",borderRadius:4,padding:"3px 8px",fontSize:11,fontWeight:700,minWidth:82,cursor:u.rol==="superadmin"?"default":"pointer"}}>
+                        {(u.rol==="superadmin"?["superadmin"]:["admin","editor","viewer"]).map(r=><option key={r} value={r} style={{background:"#fff",color:"#333"}}>{r}</option>)}
                       </select></td>
                     <td style={{padding:"8px 12px",color:"#333"}}>
-                      <button onClick={()=>{ const p=prompt("Nueva contrasena para "+u.username+":"); if(p&&p.length>=6) guardarUsuario(u,{password:p}); else if(p) alert("Minimo 6 caracteres."); }}
+                      <button onClick={()=>{ const p=prompt("Nueva contrasena para "+u.username+" (minimo 12 caracteres, con mayusculas, minusculas, numeros o simbolos):"); if(p&&p.length>=12) guardarUsuario(u,{password:p}); else if(p) alert("Minimo 12 caracteres."); }}
                         style={{background:"#6b8090",color:"#fff",border:"none",borderRadius:4,padding:"4px 10px",cursor:"pointer",fontSize:12,marginRight:6}}>Reset pass</button>
-                      {u.username !== "admin" && (<button onClick={()=>eliminarUsuario(u.username)} style={{background:"#e74c3c",color:"#fff",border:"none",borderRadius:4,padding:"4px 10px",cursor:"pointer",fontSize:12}}>Eliminar</button>)}</td>
+                      {u.rol !== "superadmin" && u.username !== user?.username && (<button onClick={()=>eliminarUsuario(u.username)} style={{background:"#e74c3c",color:"#fff",border:"none",borderRadius:4,padding:"4px 10px",cursor:"pointer",fontSize:12}}>Eliminar</button>)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -503,12 +399,11 @@ export default function App() {
         </div>
         <div className="sidebar-nav">
           <div className="nav-section">Principal</div>
-          {[["dashboard",LayoutGrid,"Dashboard"],["activos",Laptop,"Activos"],["licencias",KeyRound,"Licencias"],["proyectos",FolderKanban,"Proyectos"],["reportes",BarChart3,"Reportes"],["tendencias",BarChart3,"Tendencias"],["usuarios",Users,"Usuarios"],["perfil",UserCircle,"Mi perfil"]].map(([k,Icon,l])=>(
+          {[["dashboard",LayoutGrid,"Dashboard"],["activos",Laptop,"Activos"],["proyectos",FolderKanban,"Proyectos"],["reportes",BarChart3,"Reportes"],["tendencias",BarChart3,"Tendencias"],["perfil",UserCircle,"Mi perfil"]].map(([k,Icon,l])=>(
             <React.Fragment key={k}>
-            <a href={"#"+k} className={`nav-item${tab===k&&!selected?" active":""}`} style={{textDecoration:"none",color:"inherit"}} onClick={(e)=>{ if(e.ctrlKey||e.metaKey||e.shiftKey||e.button===1) return; e.preventDefault(); setTab(k);setSelected(null);setEditando(false);setEmpleadoSelected(null);if(k==="activos")setFTipo(""); }}>
+            <a href={"#"+k} className={`nav-item${tab===k&&!selected?" active":""}`} style={{textDecoration:"none",color:"inherit"}} onClick={(e)=>{ if(e.ctrlKey||e.metaKey||e.shiftKey||e.button===1) return; e.preventDefault(); setTab(k);setSelected(null);setEditando(false);if(k==="activos")setFTipo(""); }}>
               <Icon size={16} strokeWidth={1.75}/><span>{l}</span>
               {k==="activos"&&<span className="nav-badge">{assets.length}</span>}
-              {k==="licencias"&&totalLicencias>0&&<span className="nav-badge">{totalLicencias}</span>}
             </a>
             {k==="activos"&&tab==="activos"&&!selected&&<div className="nav-subitems">
               {[["","Todos"],["Notebook","Notebooks"],["Impresora","Impresoras"]].map(([tp,lb])=>(
@@ -523,18 +418,18 @@ export default function App() {
           ))}
           <div className="nav-section">Herramientas</div>
           <div className={`nav-item${tab==="agente"&&!selected?" active":""}`} onClick={()=>{setTab("agente");setSelected(null);}}><Bot size={16} strokeWidth={1.75}/><span>Agente</span></div>
-          <div className="nav-item" onClick={()=>fileRef.current.click()}><Upload size={16} strokeWidth={1.75}/><span>Importar CSV</span></div>
+          {puedeEditar&&<div className="nav-item" onClick={()=>fileRef.current.click()}><Upload size={16} strokeWidth={1.75}/><span>Importar CSV</span></div>}
           <input ref={fileRef} type="file" accept=".csv" onChange={importCSV} style={{display:"none"}}/>
           <div className="nav-item" onClick={exportCSV}><Download size={16} strokeWidth={1.75}/><span>Exportar CSV</span></div>
         </div>
         <div className="sidebar-footer">
-          {user?.rol === "admin" && (
+          {esAdmin && (
             <div className="nav-item" onClick={()=>{setShowConfig(true);loadUsuarios();}} style={{cursor:"pointer"}}>
               <Settings size={16} strokeWidth={1.75}/><span>Configuracion</span>
             </div>
           )}
           <div className="nav-item" onClick={logout} style={{cursor:"pointer",color:"var(--critical-text)",fontWeight:700}}><Power size={16} strokeWidth={1.75}/><span>Cerrar sesion</span></div>
-          <div className="nav-item"><span className="sync-dot"/>v3.4 · 192.168.100.116</div>
+          <div className="nav-item"><span className="sync-dot"/>v{__APP_VERSION__}</div>
         </div>
       </div>
 
@@ -549,10 +444,10 @@ export default function App() {
           </div>
           <div className="topbar-right">
             {selected && <>
-              {!editando&&<button className="btn btn-primary" onClick={()=>{setEditando(true);setEditAsset({...selected});}}>✏<span className="btn-label"> Editar</span></button>}
+              {!editando&&puedeEditar&&<button className="btn btn-primary" onClick={()=>{setEditando(true);setEditAsset({...selected});}}>✏<span className="btn-label"> Editar</span></button>}
               {editando&&<button className="btn btn-primary" onClick={guardarEdicion}>💾<span className="btn-label">{saving?" Guardando...":" Guardar"}</span></button>}
               {editando&&<button className="btn" onClick={()=>setEditando(false)}>Cancelar</button>}
-              {!editando&&<button className="btn btn-danger" onClick={()=>eliminar(selected.id,null)}>🗑<span className="btn-label"> Eliminar</span></button>}
+              {!editando&&tienePermiso(user,"activos.eliminar")&&<button className="btn btn-danger" onClick={()=>eliminar(selected.id,null)}>🗑<span className="btn-label"> Eliminar</span></button>}
               <button className="btn" onClick={()=>{setSelected(null);setEditando(false);setShowQR(false);}}>←<span className="btn-label"> Volver</span></button>
             </>}
             {!selected&&<>
@@ -562,8 +457,7 @@ export default function App() {
                   background:"linear-gradient(135deg,var(--accent-2),var(--accent-hover))"}}/>
               </button>
               <button className="btn" style={{whiteSpace:"nowrap"}} onClick={loadData}><RefreshCw size={13} strokeWidth={2}/><span className="btn-label">Actualizar</span></button>
-              {tab==="activos"&&<button className="btn btn-primary" style={{whiteSpace:"nowrap"}} onClick={()=>setShowModal(true)}><Plus size={13} strokeWidth={2}/><span className="btn-label">Nuevo activo</span></button>}
-              {tab==="usuarios"&&<button className="btn btn-primary" style={{whiteSpace:"nowrap"}} onClick={()=>setShowAltaABM(true)}><Plus size={13} strokeWidth={2}/><span className="btn-label">Nuevo usuario</span></button>}
+              {tab==="activos"&&puedeEditar&&<button className="btn btn-primary" style={{whiteSpace:"nowrap"}} onClick={()=>setShowModal(true)}><Plus size={13} strokeWidth={2}/><span className="btn-label">Nuevo activo</span></button>}
             </>}
           </div>
         </div>
@@ -587,11 +481,6 @@ export default function App() {
                 <div className="metric-val">{garVencen}</div>
                 <div className="metric-label">Garantias por vencer</div>
                 <div className={`metric-trend ${garVencen>0?"trend-warn":"trend-up"}`}>{garVencen>0?"Proximos 90 dias":"Sin vencimientos"}</div>
-              </div>
-              <div className="metric metric-clickable" onClick={()=>setTab("licencias")}>
-                <div className="metric-val">{licenciasClaude}</div>
-                <div className="metric-label">Licencias Claude</div>
-                <div className="metric-trend trend-up">Ver licencias -&gt;</div>
               </div>
 
               <div className="metric">
@@ -622,16 +511,7 @@ export default function App() {
                 <div className="metric-label">Servidores</div>
                 <div className="metric-trend trend-up">Ver inventario -&gt;</div>
               </div>
-              <div className="metric metric-clickable" onClick={()=>{setTab("usuarios");}}>
-                <div className="metric-val">{totalLicencias}</div>
-                <div className="metric-label">Licencias asignadas</div>
-                <div className="metric-trend trend-up">Ver nomina -&gt;</div>
-              </div>
             </div>
-            <AlertasNomina empleados={empleados} assets={assets}
-              cargarEquiposClaude={()=>http.get(API_UM+"/equipos/licencias")}
-              abrirEmpleado={e=>{setTab("usuarios");loadEmpleadoDetalle(e);}}
-              abrirActivo={a=>{setTab("activos");verFicha(a);}}/>
             <div className="grid-3">
               <div className="card">
                 <div className="card-head"><div className="card-title">Activos por sede</div></div>
@@ -715,7 +595,7 @@ export default function App() {
               <select value={fEstado} onChange={e=>setFEstado(e.target.value)}>
                 <option value="">Todos los estados</option>
                 {["Activo","Mantenimiento","Libre","Stock","Robado","Dado de baja"].map(s=><option key={s}>{s}</option>)}
-                {user?.rol==="admin"&&<option value="__sin_usuario__">Sin usuario asignado</option>}
+                {esAdmin&&<option value="__sin_usuario__">Sin usuario asignado</option>}
                 <option value="__sin_reportar__">Sin reportar +30 dias</option>
                 <option value="__gar_vencen__">Garantia vence en 90 dias</option>
                 <option value="__sin_edr__">Sin CrowdStrike activo</option>
@@ -868,39 +748,6 @@ export default function App() {
                     <Field label="Últ. sync" value={fmtDate(selected.updated)}/>
                   </div>
                 </div>
-                {(()=>{
-                  const prefijo = selected.usuario?.toLowerCase().trim();
-                  const emp = prefijo ? empleados.find(e=>e.email?.split("@")[0]?.toLowerCase().trim()===prefijo) : null;
-                  if (!emp) return null;
-                  const sedeBg = s => ({CABA1:"#0B4F6C",CABA2:"#0B4F6C",Rosario:"#8E44AD",Cordoba:"#E67E22",Corrientes:"#16A085",Mendoza:"#C0392B",Tigre:"#27AE60",Neuquen:"#2980B9"}[s]||"#666");
-                  return (
-                    <div className="card" style={{borderTop:"2px solid var(--accent)"}}>
-                      <div className="card-head"><div className="card-title">🧑‍💼 Empleado asignado</div></div>
-                      <div className="card-body">
-                        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12,paddingBottom:12,borderBottom:"1px solid var(--border)"}}>
-                          <div style={{width:40,height:40,borderRadius:"50%",background:"linear-gradient(135deg,var(--accent),var(--accent-teal))",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,fontWeight:700,flexShrink:0}}>
-                            {emp.nombre?.split(",")[0]?.trim()[0]||"?"}
-                          </div>
-                          <div>
-                            <div style={{fontWeight:700,color:"var(--text)",fontSize:13}}>{emp.nombre}</div>
-                            <div style={{fontSize:11,color:"var(--text-muted)"}}>{emp.categoria}</div>
-                          </div>
-                          <span style={{marginLeft:"auto"}}><Tag color={sedeBg(emp.sede)} label={emp.sede}/></span>
-                        </div>
-                        <div className="field"><span className="field-label">Legajo</span><span className="field-value">{emp.legajo}</span></div>
-                        <div className="field"><span className="field-label">Área</span><span className="field-value">{clasificarSectorCentro(emp.subauxiliar, emp.centro_costo).centroCostos}</span></div>
-                        <div className="field"><span className="field-label">Email</span><span className="field-value">{emp.email}</span></div>
-                        <div className="field"><span className="field-label">Ingreso</span><span className="field-value">{emp.fecha_ingreso}</span></div>
-                        {(emp.licencias||[]).length>0&&<div className="field">
-                          <span className="field-label">Licencias</span>
-                          <span className="field-value">{(emp.licencias||[]).map(l=>(
-                            <span key={l} style={{marginRight:4,display:"inline-block"}}><Tag color={l.includes("Claude")?"#9085e9":l==="Adobe Acrobat"?"#e66767":l==="IDEA"?"#3987e5":l==="Datasnipper"?"#d95926":"#6E7A90"} label={l.replace("Adobe Acrobat","Adobe").replace("Claude Standard","Claude Std").replace("Claude Premium","Claude Pro")}/></span>
-                          ))}</span>
-                        </div>}
-                      </div>
-                    </div>
-                  );
-                })()}
                 {selected.impresoras&&selected.impresoras!==""&&<div className="card">
                   <div className="card-head"><div className="card-title">🖨️ Impresoras ({selected.impresoras.split("|").filter(s=>s.trim()).length})</div></div>
                   <div className="card-body">
@@ -925,9 +772,6 @@ export default function App() {
             )}
           </div>}
 
-          {/* LICENCIAS */}
-          {tab==="licencias"&&!selected&&<SeccionLicencias empleados={empleados}/>}
-
           {/* PROYECTOS */}
           {tab==="proyectos"&&!selected&&<SeccionProyectos assets={assets} user={user}/>}
 
@@ -939,9 +783,6 @@ export default function App() {
             const dSede=SEDES.map(s=>({name:s,value:assets.filter(a=>(a.ubicacion||"").toLowerCase()===s.toLowerCase()).length}));
             const dEstado=["Activo","Mantenimiento","Libre","Stock","Robado","Dado de baja"].map(s=>({name:s,value:assets.filter(a=>a.estado===s).length})).filter(d=>d.value>0);
             const dTipo=TIPOS.map(t=>({name:t,value:assets.filter(a=>a.tipo===t).length})).filter(d=>d.value>0);
-            const licCount={};
-            empleados.forEach(e=>(e.licencias||[]).forEach(l=>{licCount[l]=(licCount[l]||0)+1;}));
-            const dLic=Object.keys(licCount).map(k=>({name:k,value:licCount[k]})).sort((a,b)=>b.value-a.value);
             const ESTADO_COL={"Activo":"#0ca30c","Mantenimiento":"#fab219","Libre":"#00B0B9","Stock":"#3987e5","Robado":"#c0392b","Dado de baja":"#6E7A90"};
             return (
               <>
@@ -983,89 +824,6 @@ export default function App() {
                     </G.ResponsiveContainer>
                   </div>
                 </div>
-                <div className="card" style={{gridColumn:"1 / -1"}}>
-                  <div className="card-head"><div className="card-title">Licencias asignadas por tipo</div><button className="btn" onClick={()=>exportarGrafico("rep-lic","Licencias asignadas por tipo",dLic)}>Excel</button></div>
-                  <div className="card-body" style={{paddingTop:8}} id="rep-lic">
-                    {dLic.length===0 ? <div className="empty">Sin datos de licencias (entra a Usuarios para sincronizar)</div> :
-                    <G.ResponsiveContainer width="100%" height={280}>
-                      <G.BarChart data={dLic} layout="vertical" margin={{top:8,right:24,left:60,bottom:8}}>
-                        <G.XAxis type="number" tick={{fontSize:11,fill:"var(--text-muted)"}} axisLine={false} tickLine={false} allowDecimals={false}/>
-                        <G.YAxis type="category" dataKey="name" tick={{fontSize:11,fill:"var(--text-muted)"}} axisLine={false} tickLine={false} width={140}/>
-                        <G.Tooltip cursor={{fill:"rgba(74,21,75,0.06)"}} contentStyle={{borderRadius:8,border:"1px solid var(--border)",background:"var(--surface-2)",color:"var(--text)",fontSize:12}} itemStyle={{color:"var(--text)"}} labelStyle={{color:"var(--text-secondary)"}}/>
-                        <G.Bar dataKey="value" radius={[0,3,3,0]}>{dLic.map((d,i)=><G.Cell key={i} fill={COLORES[i%COLORES.length]}/>)}</G.Bar>
-                      </G.BarChart>
-                    </G.ResponsiveContainer>}
-                  </div>
-                </div>
-              </div>
-
-              <div style={{margin:"24px 0 12px",fontSize:15,fontWeight:700,color:"#0A2540",borderBottom:"2px solid #00B0B9",paddingBottom:6}}>Reporte de usuarios</div>
-              <div className="grid-2">
-                <div className="card">
-                  <div className="card-head"><div className="card-title">Empleados por sede</div><button className="btn" onClick={()=>exportarGrafico("usr-sede","Empleados por sede",[...new Set(empleados.map(e=>e.sede))].filter(Boolean).map(s=>({name:s,value:empleados.filter(e=>e.sede===s).length})).sort((a,b)=>b.value-a.value))}>Excel</button></div>
-                  <div className="card-body" style={{paddingTop:8}} id="usr-sede">
-                    {(()=>{ const d=[...new Set(empleados.map(e=>e.sede))].filter(Boolean).map(s=>({name:s,value:empleados.filter(e=>e.sede===s).length})).sort((a,b)=>b.value-a.value);
-                    return d.length===0 ? <div className="empty">Sin datos de empleados</div> :
-                    <G.ResponsiveContainer width="100%" height={260}>
-                      <G.BarChart data={d} margin={{top:8,right:16,left:-8,bottom:8}}>
-                        <G.XAxis dataKey="name" tick={{fontSize:11,fill:"var(--text-muted)"}} axisLine={{stroke:"var(--border)"}} tickLine={false}/>
-                        <G.YAxis tick={{fontSize:11,fill:"var(--text-muted)"}} axisLine={false} tickLine={false} allowDecimals={false}/>
-                        <G.Tooltip cursor={{fill:"rgba(11,114,133,0.06)"}} contentStyle={{borderRadius:8,border:"1px solid var(--border)",background:"var(--surface-2)",color:"var(--text)",fontSize:12}} itemStyle={{color:"var(--text)"}} labelStyle={{color:"var(--text-secondary)"}}/>
-                        <G.Bar dataKey="value" radius={[3,3,0,0]}>{d.map((x,i)=><G.Cell key={i} fill={COLORES[i%COLORES.length]}/>)}</G.Bar>
-                      </G.BarChart>
-                    </G.ResponsiveContainer>; })()}
-                  </div>
-                </div>
-                <div className="card">
-                  <div className="card-head"><div className="card-title">Empleados por categoria</div><button className="btn" onClick={()=>exportarGrafico("usr-cat","Empleados por categoria",[...new Set(empleados.map(e=>e.categoria))].filter(Boolean).map(c=>({name:c,value:empleados.filter(e=>e.categoria===c).length})).sort((a,b)=>b.value-a.value))}>Excel</button></div>
-                  <div className="card-body" style={{paddingTop:8}} id="usr-cat">
-                    {(()=>{ const d=[...new Set(empleados.map(e=>e.categoria))].filter(Boolean).map(c=>({name:c,value:empleados.filter(e=>e.categoria===c).length})).sort((a,b)=>b.value-a.value);
-                    return d.length===0 ? <div className="empty">Sin datos</div> :
-                    <G.ResponsiveContainer width="100%" height={260}>
-                      <G.BarChart data={d} layout="vertical" margin={{top:8,right:24,left:40,bottom:8}}>
-                        <G.XAxis type="number" tick={{fontSize:11,fill:"var(--text-muted)"}} axisLine={false} tickLine={false} allowDecimals={false}/>
-                        <G.YAxis type="category" dataKey="name" tick={{fontSize:10,fill:"var(--text-muted)"}} axisLine={false} tickLine={false} width={120}/>
-                        <G.Tooltip cursor={{fill:"rgba(11,114,133,0.06)"}} contentStyle={{borderRadius:8,border:"1px solid var(--border)",background:"var(--surface-2)",color:"var(--text)",fontSize:12}} itemStyle={{color:"var(--text)"}} labelStyle={{color:"var(--text-secondary)"}}/>
-                        <G.Bar dataKey="value" radius={[0,3,3,0]}>{d.map((x,i)=><G.Cell key={i} fill={COLORES[i%COLORES.length]}/>)}</G.Bar>
-                      </G.BarChart>
-                    </G.ResponsiveContainer>; })()}
-                  </div>
-                </div>
-                <div className="card">
-                  <div className="card-head"><div className="card-title">Empleados activos vs inactivos</div><button className="btn" onClick={()=>exportarGrafico("usr-estado","Empleados activos vs inactivos",[{name:"Activo",value:empleados.filter(e=>e.estado==="Activo").length},{name:"Inactivo",value:empleados.filter(e=>e.estado!=="Activo").length}].filter(x=>x.value>0))}>Excel</button></div>
-                  <div className="card-body" style={{paddingTop:8}} id="usr-estado">
-                    {(()=>{ const act=empleados.filter(e=>e.estado==="Activo").length; const inact=empleados.length-act;
-                    const d=[{name:"Activo",value:act},{name:"Inactivo",value:inact}].filter(x=>x.value>0);
-                    return d.length===0 ? <div className="empty">Sin datos</div> :
-                    <G.ResponsiveContainer width="100%" height={260}>
-                      <G.PieChart>
-                        <G.Pie data={d} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={55} outerRadius={95} paddingAngle={2}>
-                          <G.Cell fill="#0ca30c" stroke="var(--surface)" strokeWidth={2}/><G.Cell fill="#6E7A90" stroke="var(--surface)" strokeWidth={2}/>
-                        </G.Pie>
-                        <G.Tooltip contentStyle={{borderRadius:8,border:"1px solid var(--border)",background:"var(--surface-2)",color:"var(--text)",fontSize:12}} itemStyle={{color:"var(--text)"}} labelStyle={{color:"var(--text-secondary)"}}/>
-                        <G.Legend wrapperStyle={{fontSize:11,color:"var(--text-secondary)"}}/>
-                      </G.PieChart>
-                    </G.ResponsiveContainer>; })()}
-                  </div>
-                </div>
-                <div className="card">
-                  <div className="card-head"><div className="card-title">Con equipo vs sin equipo asignado</div><button className="btn" onClick={()=>{const u=new Set(assets.map(a=>a.usuario?.toLowerCase().trim()).filter(Boolean));let c=0,s=0;empleados.filter(e=>e.estado==="Activo").forEach(e=>{const p=e.email?.split("@")[0]?.toLowerCase().trim();if(p&&u.has(p))c++;else s++;});exportarGrafico("usr-equipo","Con equipo vs sin equipo",[{name:"Con equipo",value:c},{name:"Sin equipo",value:s}].filter(x=>x.value>0));}}>Excel</button></div>
-                  <div className="card-body" style={{paddingTop:8}} id="usr-equipo">
-                    {(()=>{ const usados=new Set(assets.map(a=>a.usuario?.toLowerCase().trim()).filter(Boolean));
-                    let con=0,sin=0; empleados.filter(e=>e.estado==="Activo").forEach(e=>{ const p=e.email?.split("@")[0]?.toLowerCase().trim(); if(p&&usados.has(p))con++; else sin++; });
-                    const d=[{name:"Con equipo",value:con},{name:"Sin equipo",value:sin}].filter(x=>x.value>0);
-                    return d.length===0 ? <div className="empty">Sin datos</div> :
-                    <G.ResponsiveContainer width="100%" height={260}>
-                      <G.PieChart>
-                        <G.Pie data={d} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={55} outerRadius={95} paddingAngle={2}>
-                          <G.Cell fill="#3987e5" stroke="var(--surface)" strokeWidth={2}/><G.Cell fill="#fab219" stroke="var(--surface)" strokeWidth={2}/>
-                        </G.Pie>
-                        <G.Tooltip contentStyle={{borderRadius:8,border:"1px solid var(--border)",background:"var(--surface-2)",color:"var(--text)",fontSize:12}} itemStyle={{color:"var(--text)"}} labelStyle={{color:"var(--text-secondary)"}}/>
-                        <G.Legend wrapperStyle={{fontSize:11,color:"var(--text-secondary)"}}/>
-                      </G.PieChart>
-                    </G.ResponsiveContainer>; })()}
-                  </div>
-                </div>
               </div>
               </>
             );
@@ -1075,8 +833,8 @@ export default function App() {
           {tab==="agente"&&!selected&&<div>
             <div className="grid-2">
               {[
-                ["🪟 Agente Windows v4.3","Manual: \\\\192.168.100.18\\varios\\Sincronizar.bat",`# AssetManager Agent v4.3\n# Reporta cada 2 horas y al iniciar sesion\n$server = "http://192.168.100.116:8000"`],
-                ["🐧 Agente Linux","bash agent.sh",`#!/bin/bash\n# AssetManager Agent v3.4\nSERVER="http://192.168.100.116:8000"`],
+                ["🪟 Agente Windows v4.3","powershell -ExecutionPolicy Bypass -File agent.ps1 -Server <url> -SyncKey <clave>",`# Servidor de este ambiente\n-Server "${window.location.origin}"\n# La clave (SYNC_API_KEY) la entrega el administrador;\n# no se escribe dentro del script.`],
+                ["🐧 Agente Linux",`curl -s ${window.location.origin}/agent_linux.sh -o agent.sh`,`INVENTARIO_URL="${window.location.origin}" \\\nINVENTARIO_SYNC_KEY="<clave>" bash agent.sh`],
               ].map(([title,cmd,code])=>(
                 <div key={title} className="card">
                   <div className="card-head"><div className="card-title">{title}</div></div>
@@ -1090,37 +848,14 @@ export default function App() {
             <div className="card" style={{marginTop:14}}>
               <div className="card-head"><div className="card-title">📁 Distribución</div></div>
               <div className="card-body">
-                {[["Distribuci\u00f3n","GPO: script de arranque (SYSVOL)"],["Copia manual","\\\\192.168.100.18\\varios\\agent.ps1"],["Frecuencia","Cada 2 horas (8 a 22) y al iniciar sesi\u00f3n, de fondo"],["Identificador","Serial del equipo (sin serial: comparten registro)"]].map(([k,v])=>(
+                {[["Distribuci\u00f3n","GPO: script de arranque (SYSVOL), con -Server y -SyncKey"],["Endpoint","POST "+window.location.origin+"/api/sync (header X-Sync-Key)"],["Frecuencia","Cada 2 horas (8 a 22) y al iniciar sesi\u00f3n, de fondo"],["Identificador","Serial del equipo (sin serial: comparten registro)"]].map(([k,v])=>(
                   <div key={k} className="field"><span className="field-label">{k}</span><code>{v}</code></div>
                 ))}
               </div>
             </div>
           </div>}
 
-          {/* USUARIOS */}
           {tab==="tendencias"&&!selected&&<SeccionTendencias/>}
-
-          {tab==="usuarios"&&!selected&&(
-            <SeccionUsuarios
-              empleados={empleados}
-              setEmpleados={setEmpleados}
-              assets={assets}
-              user={user}
-              searchEmp={searchEmp}
-              setSearchEmp={setSearchEmp}
-              fSedeEmp={fSedeEmp}
-              setFSedeEmp={setFSedeEmp}
-              loadEmpleadoDetalle={loadEmpleadoDetalle}
-              empleadoSelected={empleadoSelected}
-              setEmpleadoSelected={setEmpleadoSelected}
-              empLicencias={empLicencias}
-              empHardware={empHardware}
-              empActivo={empActivo}
-              setEmpLicencias={setEmpLicencias}
-              setEmpHardware={setEmpHardware}
-              setEmpActivo={setEmpActivo}
-            />
-          )}
 
         </div>
       </div>
@@ -1200,42 +935,6 @@ export default function App() {
         </div>
       </div>}
 
-      {showAltaABM && (
-        <ABMForm
-          tipoInicial="Alta"
-          empleado={null}
-          empleados={empleados}
-          hardware={[]}
-          licencias={[]}
-          onClose={()=>setShowAltaABM(false)}
-          onSubmit={manejarSubmitAlta}
-        />
-      )}
-
-      {/* MODAL NUEVO USUARIO */}
-      {showModalUser&&<div className="modal-overlay" onClick={()=>setShowModalUser(false)}>
-        <div className="modal" onClick={e=>e.stopPropagation()}>
-          <div className="modal-head">
-            <div className="modal-icon">👤</div>
-            <div className="modal-title">Nuevo usuario</div>
-            <button className="btn" style={{marginLeft:"auto"}} onClick={()=>setShowModalUser(false)}>✕</button>
-          </div>
-          <div className="form-grid">
-            {[["nombre","Nombre completo *","text"],["legajo","Legajo","text"],["email","Email *","text"],["sede","Sede","select-sede"],["categoria","Categoria","text"],["centro_costo","Centro de costo","text"],["estado","Estado","select-estado"]].map(([k,l,t])=>(
-              <div key={k} className="form-group">
-                <label className="form-label">{l}</label>
-                {t==="select-sede"?<select value={newUser[k]} onChange={e=>setNewUser({...newUser,[k]:e.target.value})}>{["CABA1","CABA2","Rosario","Cordoba","Corrientes","Mendoza","Neuquen","Tigre","Resguarda"].map(v=><option key={v}>{v}</option>)}</select>
-                :t==="select-estado"?<select value={newUser[k]} onChange={e=>setNewUser({...newUser,[k]:e.target.value})}>{["Activo","Inactivo"].map(v=><option key={v}>{v}</option>)}</select>
-                :<input value={newUser[k]} onChange={e=>setNewUser({...newUser,[k]:e.target.value})}/>}
-              </div>
-            ))}
-          </div>
-          <div className="modal-actions">
-            <button className="btn" onClick={()=>setShowModalUser(false)}>Cancelar</button>
-            <button className="btn btn-primary" onClick={crearEmpleadoManual}>{savingUser?"Guardando...":"Guardar usuario"}</button>
-          </div>
-        </div>
-      </div>}
 
     </div>
   );

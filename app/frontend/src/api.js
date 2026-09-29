@@ -1,13 +1,10 @@
-// api.js — URLs de los backends y cliente HTTP con token (Inventario y UserManager).
+// api.js — cliente HTTP con token. El backend sirve este frontend: todas las rutas son del mismo origen.
 
-export const API = window.location.protocol === "https:" ? "https://192.168.100.116:8443/api" : "http://192.168.100.116:8000/api";
-export const API_UM = window.location.protocol === "https:" ? "https://192.168.100.116:8444/api" : "http://192.168.100.116:8001/api";
+export const API = "/api";
+export const AUTH = "/auth";
 let currentUsername = "";
 export function setUsuarioActual(u) { currentUsername = u || ""; }
-export function conUsuario(url) {
-  const sep = url.includes("?") ? "&" : "?";
-  return url + sep + "usuario=" + encodeURIComponent(currentUsername || "");
-}
+export function usuarioActual() { return currentUsername; }
 export function authHeaders(extra) {
   const token = localStorage.getItem("abm_token");
   return { ...(extra || {}), ...(token ? { Authorization: "Bearer " + token } : {}) };
@@ -34,11 +31,9 @@ export function chequear401(r) {
   }
   return r;
 }
-// Llamadas al UserManager que necesitan la Response cruda: mismo token y manejo de 401/403/422 que http.
-export const umFetch = (url, opts = {}) => fetch(url, { ...opts, headers: authHeaders(opts.headers) }).then(chequear401);
 export const http = {
   get: (url) => fetch(url, { headers: authHeaders() }).then(chequear401).then(r => r.json()),
-  post: (url, data) => fetch(conUsuario(url), { method:"POST", headers: authHeaders({"Content-Type":"application/json"}), body:JSON.stringify(data) }).then(chequear401).then(r => r.json()),
-  put: (url, data) => fetch(conUsuario(url), { method:"PUT", headers: authHeaders({"Content-Type":"application/json"}), body:JSON.stringify(data) }).then(chequear401).then(r => r.json()),
-  del: (url) => fetch(conUsuario(url), { method:"DELETE", headers: authHeaders() }).then(chequear401).then(r => r.json()),
+  post: (url, data) => fetch(url, { method:"POST", headers: authHeaders({"Content-Type":"application/json"}), body:JSON.stringify(data) }).then(chequear401).then(r => r.json()),
+  put: (url, data) => fetch(url, { method:"PUT", headers: authHeaders({"Content-Type":"application/json"}), body:JSON.stringify(data) }).then(chequear401).then(r => r.json()),
+  del: (url) => fetch(url, { method:"DELETE", headers: authHeaders() }).then(chequear401).then(r => r.json()),
 };

@@ -1,6 +1,6 @@
 // HistorialActivo.jsx — Historial de cambios de la ficha del activo.
 import { useState, useEffect } from "react";
-import { API } from "../api";
+import { API, authHeaders } from "../api";
 import { Tag } from "../ui";
 
 export function HistorialActivo({ assetId }) {
@@ -8,8 +8,8 @@ export function HistorialActivo({ assetId }) {
   const [filtro, setFiltro] = useState("todo");
   useEffect(() => {
     if (!assetId) return;
-    fetch(`${API.replace("/api","")}/api/assets/${assetId}/historial`)
-      .then(r => r.json()).then(setHistorial).catch(() => {});
+    fetch(`${API}/assets/${assetId}/historial`, { headers: authHeaders() })
+      .then(r => r.json()).then(d => setHistorial(Array.isArray(d) ? d : [])).catch(() => {});
   }, [assetId]);
 
   const GRUPOS = {

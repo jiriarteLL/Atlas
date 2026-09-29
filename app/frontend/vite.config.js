@@ -1,7 +1,16 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { readFileSync } from 'node:fs'
 
-// https://vite.dev/config/
+const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'))
+
+// En produccion el backend sirve el build (mismo origen). El proxy es solo para `npm run dev`.
+const backend = process.env.VITE_BACKEND || 'http://127.0.0.1:8000'
+
 export default defineConfig({
   plugins: [react()],
+  define: { __APP_VERSION__: JSON.stringify(pkg.version) },
+  server: {
+    proxy: Object.fromEntries(['/api', '/auth', '/maestro', '/health', '/agent_linux.sh'].map(p => [p, backend])),
+  },
 })
