@@ -1,33 +1,90 @@
-import re
 # -*- coding: utf-8 -*-
-from fastapi import FastAPI, HTTPException, Header, Depends, Request, BackgroundTasks
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field, field_validator
-from typing import Optional, Literal, Union
+import gzip as _gzip
+import hmac
+import json as _json
+import os
+import re
+import ssl as _ssl
+import threading
+import time
 import unicodedata
-from database import SessionLocal, Asset, Ticket, Proyecto, ProyectoResponsable, ProyectoActivo, ProyectoTarea
-from datetime import datetime, date
-import uuid, os
-from dotenv import load_dotenv
-load_dotenv(override=True)
-from auth import auth_router, get_current_user, require_admin, require_escritura, User, UserOut, hash_password
-from excel_sync import update_excel
-from historial import Historial
-from excel_stock import actualizar_serial
-import gzip as _gzip, json as _json
-from sqlalchemy import text as _sqltext
-from mailer import notificar_tarea_completada, notificar_proyecto_finalizado
+import urllib.request as _ureq
+import uuid
+from contextlib import asynccontextmanager
+from datetime import date, datetime, timedelta
+from typing import Literal, Optional, Union
 
-app = FastAPI(title="AssetManager API", docs_url=None, redoc_url=None, openapi_url=None)  # sin documentacion publica de la API
+from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel, Field, field_validator
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from sqlalchemy import func, text as _sqltext
+
+import config
+from audit import log_action
+from auth import (User, UserOut, auth_router, get_current_user, require_admin, require_escritura,
+                  require_lectura, require_permiso)
+from database import (Adjunto, Asset, AssetGlpi, Historial, Proyecto, ProyectoActivo, ProyectoResponsable,
+                      ProyectoTarea, SessionLocal, Snapshot, Ticket, init_db)
+from mailer import notificar_proyecto_finalizado
+from ratelimit import limiter
+
+
+@asynccontextmanager
+async def lifespan(app):
+    init_db()
+    if config.SNAPSHOT_DIAS > 0:
+        threading.Thread(target=_loop_snapshots, daemon=True).start()
+    yield
+
+
+app = FastAPI(title="Inventario LLYA", version=config.APP_VERSION, lifespan=lifespan,
+              docs_url=None, redoc_url=None, openapi_url=None)  # sin documentacion publica de la API
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.include_router(auth_router)
-app.add_middleware(CORSMiddleware, allow_origins=["http://192.168.100.116:8000","https://192.168.100.116:8443","http://192.168.100.116:8001","https://192.168.100.116:8444","http://192.168.0.88:8000"],
-    allow_methods=["*"], allow_headers=["*"])
+if config.CORS_ORIGINS:
+    app.add_middleware(CORSMiddleware, allow_origins=config.CORS_ORIGINS, allow_methods=["*"], allow_headers=["*"])
 
 
+def _ip(request):
+    return request.client.host if (request is not None and request.client) else ""
+
+
+def _clave_ok(recibida, esperada):
+    """Comparacion en tiempo constante. Sin clave configurada, nada pasa."""
+    return bool(esperada) and hmac.compare_digest((recibida or "").encode(), esperada.encode())
+
+
+# ================================================================ endpoints publicos
+@app.get("/health")
+def health():
+    try:
+        db = SessionLocal()
+        db.execute(_sqltext("SELECT 1"))
+        db.close()
+    except Exception:
+        return JSONResponse(status_code=503, content={"status": "error", "db": "sin conexion"})
+    return {"status": "ok"}
+
+
+@app.get("/maestro/branding")
+def maestro_branding(request: Request, x_maestro_api_key: str = Header(default="")):
+    if not _clave_ok(x_maestro_api_key, config.MAESTRO_API_KEY):
+        return JSONResponse(status_code=401, content={"error": "invalid_api_key"})
+    base = str(request.base_url).rstrip("/")
+    return {"company_name": config.COMPANY_NAME,
+            "logo_url": config.COMPANY_LOGO_URL or base + "/logo.png",
+            "primary_color": config.COMPANY_PRIMARY_COLOR,
+            "favicon_url": base + "/favicon.ico"}
+
+
+# ================================================================ activos
 TIPOS_OK = ("Notebook", "Monitor", "Impresora", "Servidor", "Switch", "UPS", "CPU")
-ESTADOS_OK = ("Activo", "Mantenimiento", "Dado de baja",
-              "Libre", "Stock", "Robado")
+ESTADOS_OK = ("Activo", "Mantenimiento", "Dado de baja", "Libre", "Stock", "Robado")
+
 
 def _limpiar(v):
     if not isinstance(v, str):
@@ -36,6 +93,7 @@ def _limpiar(v):
     if any(unicodedata.category(ch)[0] == "C" for ch in v):
         raise ValueError("contiene caracteres de control")
     return v
+
 
 class AssetIn(BaseModel):
     nombre:          Optional[str] = ""
@@ -69,6 +127,7 @@ class AssetIn(BaseModel):
     def _v(cls, v):
         return _limpiar(v)
 
+
 class AssetCreate(AssetIn):
     tipo:   Literal[TIPOS_OK]
     estado: Literal[ESTADOS_OK] = "Activo"
@@ -76,13 +135,16 @@ class AssetCreate(AssetIn):
     marca:  str = Field(..., min_length=1)
     modelo: str = Field(..., min_length=1)
 
+
 class AssetUpdate(AssetIn):
     tipo:   Optional[Literal[TIPOS_OK]] = None
     estado: Optional[Literal[ESTADOS_OK]] = None
 
+
 class AssetSync(AssetIn):
     """Solo para /api/sync: acepta software como texto (formato viejo) o lista JSON (formato nuevo)."""
     software: Optional[Union[str, list]] = ""
+
 
 class TicketIn(BaseModel):
     activo:     str
@@ -95,83 +157,126 @@ class TicketIn(BaseModel):
 def registrar_historial(db, asset_id, usuario, accion, cambios):
     for campo, (valor_ant, valor_new) in cambios.items():
         if str(valor_ant) != str(valor_new):
-            h = Historial(
-                asset_id=asset_id,
-                usuario=usuario,
-                campo=campo,
-                valor_ant=str(valor_ant) if valor_ant else "",
-                valor_new=str(valor_new) if valor_new else "",
-                accion=accion
-            )
-            db.add(h)
+            db.add(Historial(asset_id=asset_id, usuario=usuario, campo=campo,
+                             valor_ant=str(valor_ant) if valor_ant else "",
+                             valor_new=str(valor_new) if valor_new else "", accion=accion))
 
-from audit import log_action
 
 @app.get("/api/assets/{asset_id}/historial")
-def get_historial(asset_id: str):
+def get_historial(asset_id: str, user: UserOut = Depends(require_lectura)):
     db = SessionLocal()
     items = db.query(Historial).filter(Historial.asset_id == asset_id).order_by(Historial.fecha.desc()).all()
     db.close()
-    return [{"id": h.id, "fecha": h.fecha, "usuario": h.usuario, "campo": h.campo, "valor_ant": h.valor_ant, "valor_new": h.valor_new, "accion": h.accion} for h in items]
+    return [{"id": h.id, "fecha": h.fecha, "usuario": h.usuario, "campo": h.campo,
+             "valor_ant": h.valor_ant, "valor_new": h.valor_new, "accion": h.accion} for h in items]
+
+
 @app.get("/api/assets")
-def list_assets():
+def list_assets(user: UserOut = Depends(require_lectura)):
     db = SessionLocal()
     r = db.query(Asset).all()
     db.close()
     return r
 
+
 @app.get("/api/assets/{aid}/ficha")
-def ver_ficha_asset(aid: str, request: Request, user: UserOut = Depends(get_current_user)):
+def ver_ficha_asset(aid: str, request: Request, user: UserOut = Depends(require_lectura)):
     db = SessionLocal()
-    obj = db.query(Asset).filter(Asset.id==aid).first()
+    obj = db.query(Asset).filter(Asset.id == aid).first()
     db.close()
-    if not obj: raise HTTPException(404)
-    log_action(user.username, "ver_ficha", "asset", aid, {"nombre": obj.nombre}, ip=(request.client.host if request.client else ""))
+    if not obj:
+        raise HTTPException(404)
+    log_action(user.username, "ver_ficha", "asset", aid, {"nombre": obj.nombre}, ip=_ip(request))
     return obj
+
 
 @app.post("/api/assets")
-def create_asset(a: AssetCreate, request: Request, bg: BackgroundTasks, user: UserOut = Depends(require_escritura)):
+def create_asset(a: AssetCreate, request: Request, user: UserOut = Depends(require_escritura)):
     db = SessionLocal()
-    obj = Asset(id=("A"+str(uuid.uuid4())[:6]).upper(), **a.model_dump(), updated=datetime.utcnow())
-    db.add(obj); db.commit()
-    id_creado = obj.id
+    obj = Asset(id=("A" + str(uuid.uuid4())[:6]).upper(), **a.model_dump(), updated=datetime.utcnow())
+    db.add(obj)
+    db.commit()
+    db.refresh(obj)
     db.close()
-    bg.add_task(actualizar_serial, a.serial, a.usuario or "", a.nombre or "", a.ubicacion or "")
-    log_action(user.username, "alta", "asset", id_creado, {"nombre": a.nombre, "tipo": a.tipo}, ip=(request.client.host if request.client else ""))
+    log_action(user.username, "alta", "asset", obj.id, {"nombre": a.nombre, "tipo": a.tipo}, ip=_ip(request))
     return obj
 
+
 @app.put("/api/assets/{aid}")
-def update_asset(aid: str, a: AssetUpdate, request: Request, bg: BackgroundTasks, user: UserOut = Depends(require_escritura)):
+def update_asset(aid: str, a: AssetUpdate, request: Request, user: UserOut = Depends(require_escritura)):
     db = SessionLocal()
-    obj = db.query(Asset).filter(Asset.id==aid).first()
-    if not obj: raise HTTPException(404)
+    obj = db.query(Asset).filter(Asset.id == aid).first()
+    if not obj:
+        db.close()
+        raise HTTPException(404)
     datos = a.model_dump(exclude_unset=True)
-    cambios = {k: (getattr(obj, k), v) for k,v in datos.items() if str(getattr(obj, k, "")) != str(v)}
-    for k,v in datos.items(): setattr(obj, k, v)
+    cambios = {k: (getattr(obj, k), v) for k, v in datos.items() if str(getattr(obj, k, "")) != str(v)}
+    for k, v in datos.items():
+        setattr(obj, k, v)
     obj.updated = datetime.utcnow()
-    registrar_historial(db, aid, "web", "edicion", cambios)
-    _ser, _usr, _nom, _sed = obj.serial, obj.usuario, obj.nombre, obj.ubicacion
-    db.commit(); db.close()
-    bg.add_task(actualizar_serial, _ser, _usr or "", _nom or "", _sed or "")
-    log_action(user.username, "modificacion", "asset", aid, cambios, ip=(request.client.host if request.client else ""))
+    registrar_historial(db, aid, user.username, "edicion", cambios)
+    db.commit()
+    db.refresh(obj)
+    db.close()
+    log_action(user.username, "modificacion", "asset", aid, cambios, ip=_ip(request))
     return obj
 
 
 @app.delete("/api/assets/{aid}")
-def delete_asset(aid: str, request: Request, user: UserOut = Depends(require_admin)):
+def delete_asset(aid: str, request: Request, user: UserOut = Depends(require_permiso("activos.eliminar"))):
     db = SessionLocal()
-    obj = db.query(Asset).filter(Asset.id==aid).first()
-    if not obj: raise HTTPException(404)
+    obj = db.query(Asset).filter(Asset.id == aid).first()
+    if not obj:
+        db.close()
+        raise HTTPException(404)
     nombre = obj.nombre
-    db.delete(obj); db.commit(); db.close()
-    log_action(user.username, "eliminacion", "asset", aid, {"nombre": nombre}, ip=(request.client.host if request.client else ""))
+    db.delete(obj)
+    db.commit()
+    db.close()
+    log_action(user.username, "eliminacion", "asset", aid, {"nombre": nombre}, ip=_ip(request))
     return {"status": "deleted"}
 
-@app.post("/api/sync")
-def sync_agent(a: AssetSync, x_sync_key: str = Header(default="")):
-    _k = os.getenv("SYNC_API_KEY", "")
-    if not _k or x_sync_key != _k:
-        raise HTTPException(status_code=401, detail="Clave de sincronizacion invalida")
+
+# ================================================================ sincronizacion de agentes
+CAMPOS_LOG = ["nombre", "tipo", "marca", "modelo", "serial", "estado", "usuario", "usuario_alt",
+              "ubicacion", "grupo", "red", "cpu", "ram", "disco", "ip", "so", "so_version",
+              "so_arquitectura", "garantia", "comentarios", "monitores", "impresoras", "cifrado", "tpm"]
+
+
+def _parse_sw(txt):
+    d = {}
+    for item in (txt or "").split("~~~"):
+        if not item.strip():
+            continue
+        partes = item.split("|||")
+        nom = partes[0].strip()
+        if nom:
+            d[nom] = partes[1].strip() if len(partes) > 1 else ""
+    return d
+
+
+def _log_sw(db, asset_id, ant, nuevo):
+    viejos, nuevos = _parse_sw(ant), _parse_sw(nuevo)
+    agente = "agente-automatico"
+    if not viejos and len(nuevos) > 20:
+        db.add(Historial(asset_id=asset_id, usuario=agente, campo="software_inventario", valor_ant="",
+                         valor_new=str(len(nuevos)) + " programas relevados", accion="sincronizacion"))
+        return
+    for n, v in nuevos.items():
+        if n not in viejos:
+            db.add(Historial(asset_id=asset_id, usuario=agente, campo="software_instalado", valor_ant="",
+                             valor_new=(n + " " + v).strip(), accion="sincronizacion"))
+        elif viejos[n] != v:
+            db.add(Historial(asset_id=asset_id, usuario=agente, campo="software_actualizado",
+                             valor_ant=(n + " " + viejos[n]).strip(), valor_new=(n + " " + v).strip(),
+                             accion="sincronizacion"))
+    for n, v in viejos.items():
+        if n not in nuevos:
+            db.add(Historial(asset_id=asset_id, usuario=agente, campo="software_desinstalado",
+                             valor_ant=(n + " " + v).strip(), valor_new="", accion="sincronizacion"))
+
+
+def _aplicar_sync(a: AssetSync):
     if isinstance(a.software, list):
         def _lim(s):
             s = str(s or "").replace("|||", " ").replace("~~~", " ")
@@ -179,73 +284,26 @@ def sync_agent(a: AssetSync, x_sync_key: str = Header(default="")):
         regs = []
         for it in a.software:
             if isinstance(it, dict):
-                nom = _lim(it.get("nombre") or it.get("name"))
-                ver = _lim(it.get("version"))
-                fec = _lim(it.get("fecha") or it.get("date"))
+                nom, ver, fec = _lim(it.get("nombre") or it.get("name")), _lim(it.get("version")), _lim(it.get("fecha") or it.get("date"))
             else:
                 nom, ver, fec = _lim(it), "", ""
             if nom:
                 regs.append("%s|||%s|||%s" % (nom, ver, fec))
         a.software = "~~~".join(regs)
     db = SessionLocal()
-    obj = db.query(Asset).filter(Asset.serial==a.serial).first()
+    obj = db.query(Asset).filter(Asset.serial == a.serial).first()
     if obj:
-        for _campo in ("garantia", "comentarios", "estado"):
-            setattr(a, _campo, getattr(obj, _campo) or "")
-
-    CAMPOS_LOG = ["nombre","tipo","marca","modelo","serial","estado","usuario","usuario_alt",
-                  "ubicacion","grupo","red","cpu","ram","disco","ip","so","so_version",
-                  "so_arquitectura","garantia","comentarios","monitores","impresoras","cifrado","tpm"]
-
-    def _parse_sw(txt):
-        d = {}
-        for item in (txt or "").split("~~~"):
-            if not item.strip():
-                continue
-            partes = item.split("|||")
-            nom = partes[0].strip()
-            ver = partes[1].strip() if len(partes) > 1 else ""
-            if nom:
-                d[nom] = ver
-        return d
-
-    def _log_sw(dbs, asset_id, ant, nuevo):
-        viejos, nuevos = _parse_sw(ant), _parse_sw(nuevo)
-        if not viejos and len(nuevos) > 20:
-            dbs.add(Historial(asset_id=asset_id, usuario="agente-automatico",
-                              campo="software_inventario", valor_ant="",
-                              valor_new=str(len(nuevos)) + " programas relevados",
-                              accion="sincronizacion"))
-            return
-        for n, v in nuevos.items():
-            if n not in viejos:
-                dbs.add(Historial(asset_id=asset_id, usuario="agente-automatico",
-                                  campo="software_instalado", valor_ant="",
-                                  valor_new=(n + " " + v).strip(), accion="sincronizacion"))
-            elif viejos[n] != v:
-                dbs.add(Historial(asset_id=asset_id, usuario="agente-automatico",
-                                  campo="software_actualizado",
-                                  valor_ant=(n + " " + viejos[n]).strip(),
-                                  valor_new=(n + " " + v).strip(), accion="sincronizacion"))
-        for n, v in viejos.items():
-            if n not in nuevos:
-                dbs.add(Historial(asset_id=asset_id, usuario="agente-automatico",
-                                  campo="software_desinstalado",
-                                  valor_ant=(n + " " + v).strip(), valor_new="",
-                                  accion="sincronizacion"))
-
-    if obj:
+        for campo in ("garantia", "comentarios", "estado"):
+            setattr(a, campo, getattr(obj, campo) or "")
         datos = a.model_dump()
         cambios = {}
         sw_ant = obj.software
         for k, v in datos.items():
-            if k in CAMPOS_LOG:
-                ant = getattr(obj, k, None)
-                if v is not None and str(v).strip() != "":
-                    cambios[k] = (ant or "", v)
+            if k in CAMPOS_LOG and v is not None and str(v).strip() != "":
+                cambios[k] = (getattr(obj, k, None) or "", v)
             # No pisar cifrado/tpm con vacio o "Sin acceso": la tarea local
             # corre sin elevacion y no puede leerlos, pero el arranque si.
-            if k in ("cifrado","tpm") and (v is None or str(v).strip() == "" or str(v).strip().lower().startswith("sin acceso")):
+            if k in ("cifrado", "tpm") and (v is None or str(v).strip() == "" or str(v).strip().lower().startswith("sin acceso")):
                 continue
             setattr(obj, k, v)
         obj.updated = datetime.utcnow()
@@ -253,17 +311,28 @@ def sync_agent(a: AssetSync, x_sync_key: str = Header(default="")):
         if "software" in datos:
             _log_sw(db, obj.id, sw_ant, datos.get("software"))
     else:
-        obj = Asset(id=("A"+str(uuid.uuid4())[:6]).upper(), **a.model_dump(), updated=datetime.utcnow())
+        obj = Asset(id=("A" + str(uuid.uuid4())[:6]).upper(), **a.model_dump(), updated=datetime.utcnow())
         db.add(obj)
         db.flush()
         registrar_historial(db, obj.id, "agente-automatico", "sincronizacion", {"alta": ("", a.nombre or a.serial)})
-    db.commit(); db.close()
+    db.commit()
+    db.close()
+
+
+@app.post("/api/sync")
+def sync_agent(a: AssetSync, x_sync_key: str = Header(default="")):
+    if not _clave_ok(x_sync_key, config.SYNC_API_KEY):
+        raise HTTPException(status_code=401, detail="Clave de sincronizacion invalida")
+    _aplicar_sync(a)
     return {"status": "ok"}
 
 
+# ================================================================ proyectos y tareas
 TIPOS_PROY = ("Infraestructura", "Desarrollo", "Seguridad", "Migracion", "Documentacion", "Soporte")
 ESTADOS_PROY = ("Planificado", "En curso", "Pausado", "Finalizado", "Cancelado")
 PRIORIDADES = ("Alta", "Media", "Baja")
+ESTADOS_TAREA = ("Pendiente", "En proceso", "Realizado")
+
 
 class ProyectoIn(BaseModel):
     nombre:          str = Field(..., min_length=3, max_length=120)
@@ -282,21 +351,28 @@ class ProyectoIn(BaseModel):
     responsables:    Optional[list] = []
     activos:         Optional[list] = []
 
+
+class TareaIn(BaseModel):
+    titulo:       str = Field(..., min_length=1, max_length=250)
+    estado:       Optional[Literal[ESTADOS_TAREA]] = "Pendiente"
+    responsable:  Optional[str] = ""
+    fecha_limite: Optional[str] = ""
+    notas:        Optional[str] = ""
+    completada:   Optional[bool] = False
+
+
 def _proy_dict(db, p):
     resp = [r.responsable for r in db.query(ProyectoResponsable).filter(ProyectoResponsable.proyecto_id == p.id)]
     acts = []
     for pa in db.query(ProyectoActivo).filter(ProyectoActivo.proyecto_id == p.id):
         a = db.query(Asset).filter(Asset.id == pa.asset_id).first()
-        acts.append({"id": pa.asset_id,
-                     "nombre": a.nombre if a else "",
-                     "tipo": a.tipo if a else "",
-                     "serial": a.serial if a else ""})
+        acts.append({"id": pa.asset_id, "nombre": a.nombre if a else "",
+                     "tipo": a.tipo if a else "", "serial": a.serial if a else ""})
     tareas = [{"id": t.id, "titulo": t.titulo, "completada": t.completada == "1",
                "estado": t.estado or ("Realizado" if t.completada == "1" else "Pendiente"),
                "responsable": t.responsable or "", "fecha_limite": t.fecha_limite or "",
                "notas": t.notas or "", "completada_el": t.completada_el or "", "orden": t.orden or 0}
-              for t in db.query(ProyectoTarea).filter(ProyectoTarea.proyecto_id == p.id)
-                         .order_by(ProyectoTarea.orden)]
+              for t in db.query(ProyectoTarea).filter(ProyectoTarea.proyecto_id == p.id).order_by(ProyectoTarea.orden)]
     hechas = len([t for t in tareas if t["completada"]])
     avance_calc = int(round(hechas * 100.0 / len(tareas))) if tareas else None
     return {"id": p.id, "nombre": p.nombre, "descripcion": p.descripcion, "tipo": p.tipo,
@@ -310,18 +386,15 @@ def _proy_dict(db, p):
             "tareas_hechas": hechas, "tareas_total": len(tareas),
             "avance_efectivo": avance_calc if avance_calc is not None else (p.avance or 0)}
 
-def _destinatarios(db, pid, tarea=None):
-    """Responsables del proyecto + creador del proyecto + creador y responsable de la tarea."""
+
+def _destinatarios(db, pid):
+    """Responsables del proyecto + creador del proyecto."""
     us = [r.responsable for r in db.query(ProyectoResponsable).filter(ProyectoResponsable.proyecto_id == pid)]
     p = db.query(Proyecto).filter(Proyecto.id == pid).first()
     if p and p.creado_por:
         us.append(p.creado_por)
-    if tarea is not None:
-        if tarea.responsable:
-            us.append(tarea.responsable)
-        if tarea.creado_por:
-            us.append(tarea.creado_por)
     return us
+
 
 def _guardar_rel(db, pid, responsables, activos):
     db.query(ProyectoResponsable).filter(ProyectoResponsable.proyecto_id == pid).delete()
@@ -333,57 +406,59 @@ def _guardar_rel(db, pid, responsables, activos):
         if str(a).strip():
             db.add(ProyectoActivo(id=str(uuid.uuid4()), proyecto_id=pid, asset_id=str(a).strip()))
 
+
 @app.get("/api/equipo")
-def get_equipo():
+def get_equipo(user: UserOut = Depends(require_lectura)):
     db = SessionLocal()
     us = db.query(User).filter(User.activo == "1").all()
     db.close()
-    return sorted([{"username": u.username, "nombre": u.nombre}
-                   for u in us if u.username != "admin"], key=lambda x: x["nombre"])
+    return sorted([{"username": u.username, "nombre": u.nombre} for u in us
+                   if u.username not in ("admin", config.SUPERADMIN_EMAIL)], key=lambda x: x["nombre"] or "")
+
 
 @app.get("/api/proyectos")
-def list_proyectos():
+def list_proyectos(user: UserOut = Depends(require_lectura)):
     db = SessionLocal()
     out = [_proy_dict(db, p) for p in db.query(Proyecto).all()]
     db.close()
     out.sort(key=lambda x: (x["estado"] != "En curso", x["nombre"]))
     return out
 
+
 @app.post("/api/proyectos")
 def create_proyecto(p: ProyectoIn, request: Request, user: UserOut = Depends(require_escritura)):
     db = SessionLocal()
     pid = ("P" + str(uuid.uuid4())[:6]).upper()
     ahora = datetime.utcnow().isoformat(timespec="seconds")
-    anio = datetime.utcnow().year
-    pref = "PRY-%d-" % anio
+    pref = "PRY-%d-" % datetime.utcnow().year
     ultimos = [x.numero for x in db.query(Proyecto).filter(Proyecto.numero.like(pref + "%")).all() if x.numero]
     seq = 1
     if ultimos:
         try:
             seq = max(int(u.split("-")[-1]) for u in ultimos) + 1
-        except Exception:
+        except ValueError:
             seq = len(ultimos) + 1
-    numero = "%s%03d" % (pref, seq)
     d = p.model_dump(exclude={"responsables", "activos"})
-    obj = Proyecto(id=pid, numero=numero, creado=ahora, updated=ahora, creado_por=user.username, **d)
+    obj = Proyecto(id=pid, numero="%s%03d" % (pref, seq), creado=ahora, updated=ahora, creado_por=user.username, **d)
     db.add(obj)
     _guardar_rel(db, pid, p.responsables, p.activos)
     db.commit()
     res = _proy_dict(db, obj)
     db.close()
-    log_action(user.username, "alta", "proyecto", pid, {"nombre": p.nombre},
-               ip=(request.client.host if request.client else ""))
+    log_action(user.username, "alta", "proyecto", pid, {"nombre": p.nombre}, ip=_ip(request))
     return res
+
 
 @app.put("/api/proyectos/{pid}")
 def update_proyecto(pid: str, p: ProyectoIn, request: Request, bg: BackgroundTasks, user: UserOut = Depends(require_escritura)):
     db = SessionLocal()
     obj = db.query(Proyecto).filter(Proyecto.id == pid).first()
     if not obj:
-        db.close(); raise HTTPException(404)
+        db.close()
+        raise HTTPException(404)
     estado_antes = obj.estado
-    for k, v2 in p.model_dump(exclude={"responsables", "activos"}).items():
-        setattr(obj, k, v2)
+    for k, v in p.model_dump(exclude={"responsables", "activos"}).items():
+        setattr(obj, k, v)
     if not obj.numero:
         obj.numero = "PRY-%d-000" % datetime.utcnow().year
     obj.updated = datetime.utcnow().isoformat(timespec="seconds")
@@ -395,64 +470,55 @@ def update_proyecto(pid: str, p: ProyectoIn, request: Request, bg: BackgroundTas
     db.close()
     if fin and dest:
         bg.add_task(notificar_proyecto_finalizado, res, user.nombre or user.username, dest)
-    log_action(user.username, "modificacion", "proyecto", pid, {"nombre": p.nombre},
-               ip=(request.client.host if request.client else ""))
+    log_action(user.username, "modificacion", "proyecto", pid, {"nombre": p.nombre}, ip=_ip(request))
     return res
+
 
 @app.delete("/api/proyectos/{pid}")
 def delete_proyecto(pid: str, request: Request, user: UserOut = Depends(require_escritura)):
     db = SessionLocal()
     obj = db.query(Proyecto).filter(Proyecto.id == pid).first()
     if not obj:
-        db.close(); raise HTTPException(404)
+        db.close()
+        raise HTTPException(404)
     nombre = obj.nombre
     db.query(ProyectoResponsable).filter(ProyectoResponsable.proyecto_id == pid).delete()
     db.query(ProyectoActivo).filter(ProyectoActivo.proyecto_id == pid).delete()
     db.query(ProyectoTarea).filter(ProyectoTarea.proyecto_id == pid).delete()
     db.delete(obj)
-    db.commit(); db.close()
-    log_action(user.username, "eliminacion", "proyecto", pid, {"nombre": nombre},
-               ip=(request.client.host if request.client else ""))
+    db.commit()
+    db.close()
+    log_action(user.username, "eliminacion", "proyecto", pid, {"nombre": nombre}, ip=_ip(request))
     return {"status": "deleted"}
 
-
-ESTADOS_TAREA = ("Pendiente", "En proceso", "Realizado")
-
-class TareaIn(BaseModel):
-    titulo:       str = Field(..., min_length=1, max_length=250)
-    estado:       Optional[Literal[ESTADOS_TAREA]] = "Pendiente"
-    responsable:  Optional[str] = ""
-    fecha_limite: Optional[str] = ""
-    notas:        Optional[str] = ""
-    completada:   Optional[bool] = False
 
 @app.post("/api/proyectos/{pid}/tareas")
 def crear_tarea(pid: str, t: TareaIn, request: Request, user: UserOut = Depends(require_escritura)):
     db = SessionLocal()
     if not db.query(Proyecto).filter(Proyecto.id == pid).first():
-        db.close(); raise HTTPException(404)
+        db.close()
+        raise HTTPException(404)
     mx = db.query(ProyectoTarea).filter(ProyectoTarea.proyecto_id == pid).count()
-    tid = ("T" + str(uuid.uuid4())[:8]).upper()
     est = t.estado or "Pendiente"
-    db.add(ProyectoTarea(id=tid, proyecto_id=pid, titulo=t.titulo.strip(),
+    db.add(ProyectoTarea(id=("T" + str(uuid.uuid4())[:8]).upper(), proyecto_id=pid, titulo=t.titulo.strip(),
                          estado=est, completada="1" if est == "Realizado" else "0",
                          responsable=t.responsable or "", fecha_limite=t.fecha_limite or "",
                          notas=t.notas or "", orden=mx + 1, creado_por=user.username,
                          creado=datetime.utcnow().isoformat(timespec="seconds")))
     db.commit()
-    p = db.query(Proyecto).filter(Proyecto.id == pid).first()
-    res = _proy_dict(db, p)
+    res = _proy_dict(db, db.query(Proyecto).filter(Proyecto.id == pid).first())
     db.close()
-    log_action(user.username, "alta_tarea", "proyecto", pid, {"tarea": t.titulo},
-               ip=(request.client.host if request.client else ""))
+    log_action(user.username, "alta_tarea", "proyecto", pid, {"tarea": t.titulo}, ip=_ip(request))
     return res
 
+
 @app.put("/api/tareas/{tid}")
-def editar_tarea(tid: str, t: TareaIn, request: Request, bg: BackgroundTasks, user: UserOut = Depends(require_escritura)):
+def editar_tarea(tid: str, t: TareaIn, user: UserOut = Depends(require_escritura)):
     db = SessionLocal()
     obj = db.query(ProyectoTarea).filter(ProyectoTarea.id == tid).first()
     if not obj:
-        db.close(); raise HTTPException(404)
+        db.close()
+        raise HTTPException(404)
     antes = obj.completada
     obj.titulo = t.titulo.strip()
     obj.responsable = t.responsable or ""
@@ -466,44 +532,42 @@ def editar_tarea(tid: str, t: TareaIn, request: Request, bg: BackgroundTasks, us
         obj.completada_el = ""
     pid = obj.proyecto_id
     db.commit()
-    p = db.query(Proyecto).filter(Proyecto.id == pid).first()
-    res = _proy_dict(db, p)
-    recien = (obj.completada == "1" and antes != "1")
-    dest = _destinatarios(db, pid, obj) if recien else []
-    titulo_t = obj.titulo
+    res = _proy_dict(db, db.query(Proyecto).filter(Proyecto.id == pid).first())
     db.close()
     return res
+
 
 @app.delete("/api/tareas/{tid}")
 def borrar_tarea(tid: str, request: Request, user: UserOut = Depends(require_escritura)):
     db = SessionLocal()
     obj = db.query(ProyectoTarea).filter(ProyectoTarea.id == tid).first()
     if not obj:
-        db.close(); raise HTTPException(404)
+        db.close()
+        raise HTTPException(404)
     pid, titulo = obj.proyecto_id, obj.titulo
-    db.delete(obj); db.commit()
+    db.delete(obj)
+    db.commit()
     p = db.query(Proyecto).filter(Proyecto.id == pid).first()
     res = _proy_dict(db, p) if p else {"status": "deleted"}
     db.close()
-    log_action(user.username, "baja_tarea", "proyecto", pid, {"tarea": titulo},
-               ip=(request.client.host if request.client else ""))
+    log_action(user.username, "baja_tarea", "proyecto", pid, {"tarea": titulo}, ip=_ip(request))
     return res
 
-import urllib.request as _ureq, ssl as _ssl, json as _json
 
+# ================================================================ garantias
 _CTX = _ssl.create_default_context()
 _HDR_LNV = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
             "Accept": "text/html,application/xhtml+xml"}
 
+
 def _lenovo_garantia(serial):
     """Devuelve (fecha_fin, estado, error). Scraping del portal publico de Lenovo."""
     s = str(serial or "").strip().upper()
-    if s in ("", "-", "N/A"):
-        return None, None, "Serial vacio"
+    if s in ("", "-", "N/A") or not re.fullmatch(r"[A-Z0-9-]{3,40}", s):
+        return None, None, "Serial vacio o invalido"
     url = "https://pcsupport.lenovo.com/ar/es/products/%s/warranty" % s
     try:
-        rq = _ureq.Request(url, headers=_HDR_LNV)
-        with _ureq.urlopen(rq, timeout=25, context=_CTX) as r:
+        with _ureq.urlopen(_ureq.Request(url, headers=_HDR_LNV), timeout=25, context=_CTX) as r:
             html = r.read().decode("utf-8", "ignore")
     except Exception as e:
         return None, None, "No se pudo consultar (%s)" % type(e).__name__
@@ -514,39 +578,40 @@ def _lenovo_garantia(serial):
             for w in _json.loads(m.group(1)):
                 e = w.get("End")
                 if e and (fin is None or e > fin):
-                    fin = e
-                    activa = (w.get("StatusV2") == "Active")
-        except Exception:
+                    fin, activa = e, (w.get("StatusV2") == "Active")
+        except ValueError:
             pass
     if not fin:
         return None, None, "Lenovo no devolvio datos para ese serial"
     return fin, ("Vigente" if activa else "Vencida"), None
 
+
 @app.post("/api/assets/{aid}/garantia")
-def consultar_garantia(aid: str, request: Request, user: UserOut = Depends(get_current_user)):
+def consultar_garantia(aid: str, request: Request, user: UserOut = Depends(require_permiso("garantias.consultar"))):
     db = SessionLocal()
     obj = db.query(Asset).filter(Asset.id == aid).first()
     if not obj:
-        db.close(); raise HTTPException(404)
-    marca = (obj.marca or "").upper()
-    if "LENOVO" not in marca:
+        db.close()
+        raise HTTPException(404)
+    if "LENOVO" not in (obj.marca or "").upper():
         db.close()
         raise HTTPException(400, detail="Solo disponible para equipos Lenovo (marca: %s)" % (obj.marca or "sin marca"))
     fin, estado, err = _lenovo_garantia(obj.serial)
     if err:
-        db.close(); raise HTTPException(422, detail=err)
+        db.close()
+        raise HTTPException(422, detail=err)
     anterior = obj.garantia or ""
     obj.garantia = fin
     obj.updated = datetime.utcnow()
-    db.commit(); db.close()
+    db.commit()
+    db.close()
     log_action(user.username, "consulta_garantia", "asset", aid,
-               {"anterior": anterior, "nueva": fin, "estado": estado},
-               ip=(request.client.host if request.client else ""))
+               {"anterior": anterior, "nueva": fin, "estado": estado}, ip=_ip(request))
     return {"garantia": fin, "estado": estado, "anterior": anterior}
 
+
 @app.get("/api/garantias/vencimientos")
-def vencimientos(dias: int = 90):
-    from datetime import date, timedelta
+def vencimientos(dias: int = 90, user: UserOut = Depends(require_lectura)):
     hoy = date.today()
     lim = hoy + timedelta(days=dias)
     db = SessionLocal()
@@ -555,26 +620,27 @@ def vencimientos(dias: int = 90):
         try:
             y, m, d = map(int, str(a.garantia).split("-")[:3])
             f = date(y, m, d)
-        except Exception:
+        except ValueError:
             continue
         if hoy <= f <= lim:
             out.append({"id": a.id, "nombre": a.nombre or "", "serial": a.serial or "",
                         "usuario": a.usuario or "", "sede": a.ubicacion or "",
-                        "modelo": a.modelo or "", "garantia": a.garantia,
-                        "dias": (f - hoy).days})
+                        "modelo": a.modelo or "", "garantia": a.garantia, "dias": (f - hoy).days})
     db.close()
     out.sort(key=lambda x: x["dias"])
     return out
 
 
-# ===================== GLPI Agent =====================
+# ================================================================ GLPI Agent
 _GLPI_PORTATIL = ("notebook", "laptop", "portable", "sub notebook", "convertible", "detachable", "tablet", "hand held")
+
 
 def _gc(s):
     s = "" if s is None else str(s)
     s = re.sub(r'["\\/]', " ", s)
     s = "".join(ch for ch in s if unicodedata.category(ch)[0] != "C")
     return re.sub(r"\s+", " ", s).strip()
+
 
 def _glpi_sede(nombre):
     n = (nombre or "").upper()
@@ -587,10 +653,12 @@ def _glpi_sede(nombre):
             return sede
     return "CABA"
 
+
 def _glpi_fecha(f):
     f = str(f or "")
     m = re.match(r"(\d{4})-(\d{2})-(\d{2})", f)
     return "%s%s%s" % m.groups() if m else re.sub(r"\D", "", f)[:8]
+
 
 def _glpi_cifrado(d):
     e = (d.get("encrypt_status") or "").lower()
@@ -602,6 +670,7 @@ def _glpi_cifrado(d):
     if e == "no":
         return "Cifrado (proteccion off)" if algo and algo != "none" else "Sin cifrar"
     return ""
+
 
 def _glpi_map(c, previo):
     bios = c.get("bios") or {}
@@ -666,6 +735,7 @@ def _glpi_map(c, previo):
         "software": sw, "cifrado": cif, "tpm": "",
     }
 
+
 def _glpi_resumen(c):
     av = c.get("antivirus") or []
     edr = "No instalado"
@@ -703,6 +773,7 @@ def _glpi_resumen(c):
         "actualizaciones": sum(1 for s in (c.get("softwares") or []) if s.get("system_category") in ("update", "security_update")),
     }
 
+
 def _glpi_sanear(c):
     d = _json.loads(_json.dumps(c))
     (d.get("hardware") or {}).pop("winprodkey", None)
@@ -714,29 +785,32 @@ def _glpi_sanear(c):
                       if s.get("system_category") in ("application", None, "update", "security_update")]
     return d
 
+
+_GLPI_COLS = ("serial", "nombre", "fecha", "antivirus", "edr", "bateria_salud", "acceso_remoto", "discos",
+              "volumenes_sin_cifrar", "office", "ultimo_arranque", "chasis", "virtual", "bios", "os_build", "actualizaciones")
+
+
 @app.get("/api/glpi/resumen")
-def glpi_resumen(user: UserOut = Depends(get_current_user)):
+def glpi_resumen(user: UserOut = Depends(require_lectura)):
     db = SessionLocal()
-    rows = db.execute(_sqltext("""SELECT serial, nombre, fecha, antivirus, edr, bateria_salud, acceso_remoto,
-        discos, volumenes_sin_cifrar, office, ultimo_arranque, chasis, virtual, bios, os_build, actualizaciones
-        FROM asset_glpi""")).mappings().all()
+    rows = db.query(AssetGlpi).all()
     db.close()
-    return [dict(r) for r in rows]
+    return [{c: getattr(r, c) for c in _GLPI_COLS} for r in rows]
+
 
 @app.post("/api/sync-glpi")
 async def sync_glpi(request: Request, x_sync_key: str = Header(default="")):
-    _k = os.getenv("SYNC_API_KEY", "")
-    if not _k or x_sync_key != _k:
+    if not _clave_ok(x_sync_key, config.SYNC_API_KEY):
         raise HTTPException(status_code=401, detail="Clave de sincronizacion invalida")
     raw = await request.body()
     if len(raw) > 8 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="Inventario demasiado grande")
-    if "gzip" in (request.headers.get("content-encoding") or "").lower():
-        raw = _gzip.decompress(raw)
     try:
+        if "gzip" in (request.headers.get("content-encoding") or "").lower():
+            raw = _gzip.decompress(raw)
         txt = raw.decode("utf-8-sig")
         data = _json.loads(txt[txt.find("{"):])
-    except Exception:
+    except (OSError, ValueError):
         raise HTTPException(status_code=422, detail="JSON invalido")
     c = data.get("content", data) if isinstance(data, dict) else {}
     bios = c.get("bios") or {}
@@ -748,125 +822,173 @@ async def sync_glpi(request: Request, x_sync_key: str = Header(default="")):
     previo = {"tipo": prev.tipo, "grupo": prev.grupo, "usuario": prev.usuario} if prev else {}
     db.close()
     m = _glpi_map(c, previo)
-    sync_agent(AssetSync(**m), x_sync_key=x_sync_key)
-    r = _glpi_resumen(c)
+    _aplicar_sync(AssetSync(**m))
     db = SessionLocal()
-    db.execute(_sqltext("""INSERT OR REPLACE INTO asset_glpi
-        (serial, nombre, fecha, antivirus, edr, bateria_salud, acceso_remoto, discos, volumenes_sin_cifrar,
-         office, ultimo_arranque, chasis, virtual, bios, os_build, actualizaciones, detalle)
-        VALUES (:serial, :nombre, :fecha, :antivirus, :edr, :bateria_salud, :acceso_remoto, :discos,
-         :volumenes_sin_cifrar, :office, :ultimo_arranque, :chasis, :virtual, :bios, :os_build,
-         :actualizaciones, :detalle)"""),
-        dict(r, serial=serial, nombre=m["nombre"], fecha=datetime.utcnow().isoformat(timespec="seconds"),
-             detalle=_json.dumps(_glpi_sanear(c), ensure_ascii=False)))
+    db.merge(AssetGlpi(serial=serial, nombre=m["nombre"], fecha=datetime.utcnow().isoformat(timespec="seconds"),
+                       detalle=_json.dumps(_glpi_sanear(c), ensure_ascii=False), **_glpi_resumen(c)))
     db.commit()
     db.close()
     return {"status": "ok", "serial": serial, "tipo": m["tipo"], "ubicacion": m["ubicacion"]}
 
+
+# ================================================================ tickets
 @app.get("/api/tickets")
-def list_tickets():
+def list_tickets(user: UserOut = Depends(require_lectura)):
     db = SessionLocal()
     r = db.query(Ticket).all()
     db.close()
     return r
 
+
 @app.post("/api/tickets")
-def create_ticket(t: TicketIn, usuario: str = "", user: UserOut = Depends(require_escritura)):
-    usuario = user.username
+def create_ticket(t: TicketIn, user: UserOut = Depends(require_escritura)):
     db = SessionLocal()
-    obj = Ticket(id="T-"+str(uuid.uuid4())[:6].upper(), fecha=str(date.today()), **t.dict())
-    db.add(obj); db.commit()
-    tid = obj.id
+    obj = Ticket(id="T-" + str(uuid.uuid4())[:6].upper(), fecha=str(date.today()), **t.model_dump())
+    db.add(obj)
+    db.commit()
+    db.refresh(obj)
     db.close()
-    log_action(usuario or "web", "alta", "ticket", tid, t.dict())
+    log_action(user.username, "alta", "ticket", obj.id, t.model_dump())
     return obj
+
 
 @app.put("/api/tickets/{tid}")
-def update_ticket(tid: str, t: TicketIn, usuario: str = "", user: UserOut = Depends(require_escritura)):
-    usuario = user.username
+def update_ticket(tid: str, t: TicketIn, user: UserOut = Depends(require_escritura)):
     db = SessionLocal()
-    obj = db.query(Ticket).filter(Ticket.id==tid).first()
-    if not obj: raise HTTPException(404)
-    antes = {k: getattr(obj, k, None) for k in t.dict().keys()}
-    for k,v in t.dict().items(): setattr(obj, k, v)
-    db.commit(); db.close()
-    cambios = {k: {"antes": antes.get(k), "despues": v} for k, v in t.dict().items() if str(antes.get(k)) != str(v)}
-    log_action(usuario or "web", "modificacion", "ticket", tid, cambios)
+    obj = db.query(Ticket).filter(Ticket.id == tid).first()
+    if not obj:
+        db.close()
+        raise HTTPException(404)
+    datos = t.model_dump()
+    antes = {k: getattr(obj, k, None) for k in datos}
+    for k, v in datos.items():
+        setattr(obj, k, v)
+    db.commit()
+    db.refresh(obj)
+    db.close()
+    cambios = {k: {"antes": antes.get(k), "despues": v} for k, v in datos.items() if str(antes.get(k)) != str(v)}
+    log_action(user.username, "modificacion", "ticket", tid, cambios)
     return obj
 
-# ---------- ADJUNTOS ----------
-from fastapi import UploadFile, File, Form, Header
-from fastapi.responses import FileResponse
-from adjuntos import Adjunto
-import shutil
 
-ADJ_DIR = "C:/AssetManager/adjuntos"
+# ================================================================ adjuntos (en STORAGE_DIR/adjuntos)
+ADJ_DIR = os.path.join(config.STORAGE_DIR, "adjuntos")
 MAX_MB = 10
-EXT_OK = {".pdf",".jpg",".jpeg",".png",".gif",".webp",".xlsx",".xls",".docx",".doc",".txt",".csv"}
+EXT_OK = {".pdf", ".jpg", ".jpeg", ".png", ".gif", ".webp", ".xlsx", ".xls", ".docx", ".doc", ".txt", ".csv"}
+
+
+def _ruta_adjunto(relativa):
+    """Resuelve una ruta guardada y verifica que quede dentro de ADJ_DIR."""
+    base = os.path.realpath(ADJ_DIR)
+    ruta = os.path.realpath(os.path.join(base, relativa))
+    return ruta if ruta.startswith(base + os.sep) else None
+
 
 @app.get("/api/assets/{asset_id}/adjuntos")
-def listar_adjuntos(asset_id: str, user: UserOut = Depends(get_current_user)):
+def listar_adjuntos(asset_id: str, user: UserOut = Depends(require_lectura)):
     db = SessionLocal()
-    items = db.query(Adjunto).filter(Adjunto.asset_id==asset_id, Adjunto.activo=="1").order_by(Adjunto.fecha.desc()).all()
+    items = (db.query(Adjunto).filter(Adjunto.asset_id == asset_id, Adjunto.activo == "1")
+             .order_by(Adjunto.fecha.desc()).all())
     db.close()
-    return [{"id":a.id,"nombre":a.nombre,"tipo":a.tipo,"tamano":a.tamano,"descripcion":a.descripcion,"subido_por":a.subido_por,"fecha":str(a.fecha)} for a in items]
+    return [{"id": a.id, "nombre": a.nombre, "tipo": a.tipo, "tamano": a.tamano, "descripcion": a.descripcion,
+             "subido_por": a.subido_por, "fecha": str(a.fecha)} for a in items]
+
 
 @app.post("/api/assets/{asset_id}/adjuntos")
-async def subir_adjunto(asset_id: str, file: UploadFile = File(...), descripcion: str = Form(""), usuario: str = Form(""), user: UserOut = Depends(require_escritura)):
-    usuario = user.username
-    ext = os.path.splitext(file.filename)[1].lower()
+async def subir_adjunto(asset_id: str, file: UploadFile = File(...), descripcion: str = Form(""),
+                        user: UserOut = Depends(require_escritura)):
+    ext = os.path.splitext(file.filename or "")[1].lower()
     if ext not in EXT_OK:
-        raise HTTPException(400, f"Extension no permitida: {ext}")
-    contenido = await file.read()
-    if len(contenido) > MAX_MB * 1024 * 1024:
-        raise HTTPException(400, f"El archivo supera el maximo de {MAX_MB} MB")
+        raise HTTPException(400, "Extension no permitida: %s" % ext)
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,40}", asset_id or ""):
         raise HTTPException(400, "Identificador de activo invalido")
-    carpeta = os.path.join(ADJ_DIR, asset_id)
-    os.makedirs(carpeta, exist_ok=True)
+    contenido = await file.read()
+    if len(contenido) > MAX_MB * 1024 * 1024:
+        raise HTTPException(400, "El archivo supera el maximo de %d MB" % MAX_MB)
     aid = str(uuid.uuid4())
-    destino = os.path.join(carpeta, aid + ext)
+    relativa = "%s/%s%s" % (asset_id, aid, ext)
+    destino = _ruta_adjunto(relativa)
+    os.makedirs(os.path.dirname(destino), exist_ok=True)
     with open(destino, "wb") as f:
         f.write(contenido)
     db = SessionLocal()
-    obj = Adjunto(id=aid, asset_id=asset_id, nombre=file.filename, archivo=destino,
-                  tipo=ext.replace(".",""), tamano=len(contenido), descripcion=descripcion,
-                  subido_por=usuario or "web")
-    db.add(obj)
-    registrar_historial(db, asset_id, usuario or "web", "adjunto", {"archivo_adjunto": ("", file.filename)})
-    db.commit(); db.close()
-    log_action(usuario or "web", "alta", "adjunto", aid, {"asset": asset_id, "archivo": file.filename})
-    return {"status":"ok","id":aid}
+    db.add(Adjunto(id=aid, asset_id=asset_id, nombre=file.filename, archivo=relativa, tipo=ext.replace(".", ""),
+                   tamano=len(contenido), descripcion=descripcion, subido_por=user.username))
+    registrar_historial(db, asset_id, user.username, "adjunto", {"archivo_adjunto": ("", file.filename)})
+    db.commit()
+    db.close()
+    log_action(user.username, "alta", "adjunto", aid, {"asset": asset_id, "archivo": file.filename})
+    return {"status": "ok", "id": aid}
+
 
 @app.get("/api/adjuntos/{adj_id}/descargar")
-def descargar_adjunto(adj_id: str, user: UserOut = Depends(get_current_user)):
+def descargar_adjunto(adj_id: str, user: UserOut = Depends(require_lectura)):
     db = SessionLocal()
-    a = db.query(Adjunto).filter(Adjunto.id==adj_id, Adjunto.activo=="1").first()
+    a = db.query(Adjunto).filter(Adjunto.id == adj_id, Adjunto.activo == "1").first()
     db.close()
-    if not a or not os.path.exists(a.archivo):
+    ruta = _ruta_adjunto(a.archivo) if a else None
+    if not ruta or not os.path.isfile(ruta):
         raise HTTPException(404, "Archivo no encontrado")
-    return FileResponse(a.archivo, filename=a.nombre)
+    return FileResponse(ruta, filename=a.nombre)
+
 
 @app.delete("/api/adjuntos/{adj_id}")
-def borrar_adjunto(adj_id: str, usuario: str = "", user: UserOut = Depends(require_escritura)):
-    usuario = user.username
+def borrar_adjunto(adj_id: str, user: UserOut = Depends(require_escritura)):
     db = SessionLocal()
-    a = db.query(Adjunto).filter(Adjunto.id==adj_id).first()
+    a = db.query(Adjunto).filter(Adjunto.id == adj_id).first()
     if not a:
         db.close()
         raise HTTPException(404)
     a.activo = "0"
     nombre = a.nombre
-    registrar_historial(db, a.asset_id, usuario or "web", "adjunto", {"archivo_eliminado": (nombre, "")})
-    db.commit(); db.close()
-    log_action(usuario or "web", "baja", "adjunto", adj_id, {"archivo": nombre})
-    return {"status":"ok"}
+    registrar_historial(db, a.asset_id, user.username, "adjunto", {"archivo_eliminado": (nombre, "")})
+    db.commit()
+    db.close()
+    log_action(user.username, "baja", "adjunto", adj_id, {"archivo": nombre})
+    return {"status": "ok"}
 
-# ---------- TENDENCIAS ----------
-from snapshots import Snapshot
+
+# ================================================================ tendencias
+def tomar_snapshot(db):
+    """Guarda las metricas del inventario de hoy. Devuelve la cantidad de filas."""
+    ahora = datetime.utcnow()
+    assets = db.query(Asset).all()
+    filas = [("total_activos", "total", len(assets))]
+    for metrica, campo, vacio in (("activos_por_sede", "ubicacion", "Sin sede"),
+                                  ("activos_por_tipo", "tipo", "Sin tipo"),
+                                  ("activos_por_estado", "estado", "Sin estado")):
+        conteo = {}
+        for a in assets:
+            k = (getattr(a, campo) or "").strip() or vacio
+            conteo[k] = conteo.get(k, 0) + 1
+        filas += [(metrica, k, n) for k, n in conteo.items()]
+    asignados = sum(1 for a in assets if (a.usuario or "").strip())
+    filas += [("activos_asignados", "asignados", asignados), ("activos_asignados", "sin_asignar", len(assets) - asignados)]
+    filas.append(("equipos_sin_reportar", "mas_30_dias",
+                  sum(1 for a in assets if a.updated and (ahora - a.updated).days > 30)))
+    for metrica, clave, valor in filas:
+        db.add(Snapshot(fecha=ahora, metrica=metrica, clave=str(clave), valor=int(valor)))
+    db.commit()
+    return len(filas)
+
+
+def _loop_snapshots():
+    """Toma un snapshot si el ultimo tiene mas de SNAPSHOT_DIAS dias. Revisa cada 6 horas."""
+    while True:
+        try:
+            db = SessionLocal()
+            ultimo = db.query(func.max(Snapshot.fecha)).scalar()
+            if ultimo is None or (datetime.utcnow() - ultimo).days >= config.SNAPSHOT_DIAS:
+                n = tomar_snapshot(db)
+                print("[snapshot] %d metricas guardadas" % n)
+            db.close()
+        except Exception as e:
+            print("[snapshot] error: %s" % type(e).__name__)
+        time.sleep(6 * 3600)
+
 
 @app.get("/api/tendencias")
-def get_tendencias(metrica: str = ""):
+def get_tendencias(metrica: str = "", user: UserOut = Depends(require_lectura)):
     db = SessionLocal()
     q = db.query(Snapshot)
     if metrica:
@@ -875,38 +997,51 @@ def get_tendencias(metrica: str = ""):
     db.close()
     return [{"fecha": str(s.fecha)[:10], "metrica": s.metrica, "clave": s.clave, "valor": s.valor} for s in items]
 
+
 @app.get("/api/tendencias/metricas")
-def get_metricas_disponibles():
+def get_metricas_disponibles(user: UserOut = Depends(require_lectura)):
     db = SessionLocal()
     items = db.query(Snapshot.metrica).distinct().all()
     db.close()
     return sorted([i[0] for i in items])
 
-FRONTEND = "C:/AssetManager/frontend/dist"
+
+@app.post("/api/tendencias/snapshot")
+def forzar_snapshot(request: Request, user: UserOut = Depends(require_admin)):
+    db = SessionLocal()
+    n = tomar_snapshot(db)
+    db.close()
+    log_action(user.username, "snapshot", "tendencias", "", {"metricas": n}, ip=_ip(request))
+    return {"status": "ok", "metricas": n}
+
+
+# ================================================================ frontend y archivos estaticos
+_RESERVADAS = ("api/", "auth/", "maestro/")
+
+
+def _estatico(base, relativa):
+    """Archivo dentro de base, o None (evita salirse de la carpeta con ..)."""
+    raiz = os.path.realpath(base)
+    ruta = os.path.realpath(os.path.join(raiz, relativa))
+    return ruta if ruta.startswith(raiz + os.sep) and os.path.isfile(ruta) else None
 
 
 @app.get("/agent_linux.sh")
 def get_agent_linux():
-    return FileResponse("C:/AssetManager/agente/agent_linux.sh", media_type="text/plain")
-@app.get("/")
-def root():
-    return FileResponse(f"{FRONTEND}/index.html")
+    ruta = _estatico(config.AGENTE_DIR, "agent_linux.sh")
+    if not ruta:
+        raise HTTPException(404)
+    return FileResponse(ruta, media_type="text/plain")
+
 
 @app.get("/{full_path:path}")
-def catch_all(full_path: str):
-    if full_path.startswith(("api/", "auth/")):
+def frontend(full_path: str):
+    if full_path.startswith(_RESERVADAS):
         raise HTTPException(status_code=404, detail="Not Found")
-    fp = f"{FRONTEND}/{full_path}"
-    if os.path.exists(fp) and os.path.isfile(fp):
-        return FileResponse(fp)
-    return FileResponse(f"{FRONTEND}/index.html")
-
-from ratelimit import limiter
-from slowapi.errors import RateLimitExceeded
-from slowapi import _rate_limit_exceeded_handler
-
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    ruta = _estatico(config.FRONTEND_DIST, full_path) if full_path else None
+    if ruta:
+        return FileResponse(ruta)
+    index = _estatico(config.FRONTEND_DIST, "index.html")
+    if not index:
+        raise HTTPException(status_code=404, detail="Frontend no compilado")
+    return FileResponse(index)

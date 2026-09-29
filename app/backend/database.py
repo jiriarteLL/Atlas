@@ -1,12 +1,20 @@
 # -*- coding: utf-8 -*-
+"""Motor de base y modelos de negocio. El motor sale de DATABASE_URL (PostgreSQL en los compose)."""
+import uuid
+from datetime import datetime
 from sqlalchemy import create_engine, Column, String, DateTime, Text, Integer
 from sqlalchemy.orm import declarative_base, sessionmaker
-from datetime import datetime
+import config
 
-DATABASE_URL = "sqlite:///C:/AssetManager/assetmanager.db"
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+_args = {"check_same_thread": False} if config.DATABASE_URL.startswith("sqlite") else {}
+engine = create_engine(config.DATABASE_URL, connect_args=_args, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine)
 Base = declarative_base()
+
+
+def _uuid():
+    return str(uuid.uuid4())
+
 
 class Asset(Base):
     __tablename__ = "assets"
@@ -15,7 +23,7 @@ class Asset(Base):
     tipo            = Column(String, default="")
     marca           = Column(String, default="")
     modelo          = Column(String, default="")
-    serial          = Column(String, default="")
+    serial          = Column(String, default="", index=True)
     estado          = Column(String, default="Activo")
     usuario         = Column(String, default="")
     usuario_alt     = Column(String, default="")
@@ -38,6 +46,64 @@ class Asset(Base):
     cifrado         = Column(String, default="")
     tpm             = Column(String, default="")
 
+
+class AssetGlpi(Base):
+    """Resumen del inventario GLPI por serial (antes era una tabla creada a mano en SQLite)."""
+    __tablename__ = "asset_glpi"
+    serial               = Column(String, primary_key=True)
+    nombre               = Column(String, default="")
+    fecha                = Column(String, default="")
+    antivirus            = Column(Text, default="")
+    edr                  = Column(String, default="")
+    bateria_salud        = Column(Integer, nullable=True)
+    acceso_remoto        = Column(String, default="")
+    discos               = Column(Text, default="")
+    volumenes_sin_cifrar = Column(String, default="")
+    office               = Column(Text, default="")
+    ultimo_arranque      = Column(String, default="")
+    chasis               = Column(String, default="")
+    virtual              = Column(String, default="")
+    bios                 = Column(String, default="")
+    os_build             = Column(String, default="")
+    actualizaciones      = Column(Integer, default=0)
+    detalle              = Column(Text, default="")
+
+
+class Historial(Base):
+    __tablename__ = "historial"
+    id        = Column(String, primary_key=True, default=_uuid)
+    asset_id  = Column(String, nullable=False, index=True)
+    fecha     = Column(DateTime, default=datetime.utcnow)
+    usuario   = Column(String, default="sistema")
+    campo     = Column(String, default="")
+    valor_ant = Column(Text, default="")
+    valor_new = Column(Text, default="")
+    accion    = Column(String, default="")  # "edicion" | "sincronizacion"
+
+
+class Adjunto(Base):
+    __tablename__ = "adjuntos"
+    id          = Column(String, primary_key=True, default=_uuid)
+    asset_id    = Column(String, nullable=False, index=True)
+    nombre      = Column(String, default="")
+    archivo     = Column(String, default="")  # ruta relativa a STORAGE_DIR
+    tipo        = Column(String, default="")
+    tamano      = Column(Integer, default=0)
+    descripcion = Column(String, default="")
+    subido_por  = Column(String, default="")
+    fecha       = Column(DateTime, default=datetime.utcnow)
+    activo      = Column(String, default="1")
+
+
+class Snapshot(Base):
+    __tablename__ = "snapshots"
+    id       = Column(String, primary_key=True, default=_uuid)
+    fecha    = Column(DateTime, default=datetime.utcnow)
+    metrica  = Column(String, default="")
+    clave    = Column(String, default="")
+    valor    = Column(Integer, default=0)
+
+
 class Ticket(Base):
     __tablename__ = "tickets"
     id         = Column(String, primary_key=True)
@@ -48,10 +114,12 @@ class Ticket(Base):
     fecha      = Column(String, default="")
     comentario = Column(Text, default="")
 
+
 class AuditLog(Base):
+    """Solo INSERT: la app nunca actualiza ni borra filas de esta tabla."""
     __tablename__ = "audit_log"
     id          = Column(Integer, primary_key=True, autoincrement=True)
-    timestamp   = Column(DateTime, default=datetime.utcnow)
+    timestamp   = Column(DateTime, default=datetime.utcnow, index=True)
     usuario     = Column(String, default="")
     accion      = Column(String, default="")
     entidad     = Column(String, default="")
@@ -59,6 +127,7 @@ class AuditLog(Base):
     detalle     = Column(Text, default="")
     ip_origen   = Column(String, default="")
     resultado   = Column(String, default="success")
+
 
 class Proyecto(Base):
     __tablename__ = "proyectos"
@@ -81,16 +150,18 @@ class Proyecto(Base):
     link_ticket     = Column(Text, default="")
     recursos        = Column(Text, default="")
 
+
 class ProyectoResponsable(Base):
     __tablename__ = "proyecto_responsables"
     id          = Column(String, primary_key=True)
-    proyecto_id = Column(String, default="")
+    proyecto_id = Column(String, default="", index=True)
     responsable = Column(String, default="")
+
 
 class ProyectoTarea(Base):
     __tablename__ = "proyecto_tareas"
     id            = Column(String, primary_key=True)
-    proyecto_id   = Column(String, default="")
+    proyecto_id   = Column(String, default="", index=True)
     titulo        = Column(Text, default="")
     completada    = Column(String, default="0")
     estado        = Column(String, default="Pendiente")
@@ -102,10 +173,15 @@ class ProyectoTarea(Base):
     completada_el = Column(String, default="")
     creado_por    = Column(String, default="")
 
+
 class ProyectoActivo(Base):
     __tablename__ = "proyecto_activos"
     id          = Column(String, primary_key=True)
-    proyecto_id = Column(String, default="")
+    proyecto_id = Column(String, default="", index=True)
     asset_id    = Column(String, default="")
 
-Base.metadata.create_all(engine)
+
+def init_db():
+    """Crea las tablas que falten. Importa auth para registrar users/roles/permissions."""
+    import auth  # noqa: F401  (registra los modelos de auth en Base)
+    Base.metadata.create_all(engine)

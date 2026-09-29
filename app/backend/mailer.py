@@ -1,20 +1,21 @@
 # -*- coding: utf-8 -*-
 """Envio de notificaciones por SMTP. Silencioso ante fallos: nunca rompe la operacion."""
-import smtplib, ssl, os, threading
+import smtplib, ssl, threading
 from email.message import EmailMessage
 from email.utils import formataddr
+import config
 
 _lock = threading.Lock()
 
 def _cfg():
     return {
-        "host": os.getenv("SMTP_HOST", "smtp.office365.com"),
-        "port": int(os.getenv("SMTP_PORT", "587")),
-        "user": os.getenv("SMTP_USER", ""),
-        "pwd":  os.getenv("SMTP_PASS", ""),
-        "name": os.getenv("SMTP_FROM_NAME", "Inventario LLYA"),
-        "dom":  os.getenv("SMTP_DOMINIO", "llyasoc.com"),
-        "url":  os.getenv("APP_URL", "http://192.168.100.116:8000"),
+        "host": config.SMTP_HOST,
+        "port": config.SMTP_PORT,
+        "user": config.SMTP_USER,
+        "pwd":  config.SMTP_PASS,
+        "name": config.SMTP_FROM_NAME,
+        "dom":  config.SMTP_DOMINIO,
+        "url":  config.APP_URL,
     }
 
 def _mails(usernames):
@@ -32,7 +33,7 @@ def _mails(usernames):
 def enviar(destinatarios, asunto, cuerpo_html, cuerpo_txt=""):
     c = _cfg()
     dest = _mails(destinatarios)
-    if not dest or not c["user"] or not c["pwd"]:
+    if not dest or not c["host"] or not c["user"] or not c["pwd"]:
         print("Mail: sin destinatarios o sin credenciales, no se envia")
         return False
     msg = EmailMessage()
@@ -51,7 +52,7 @@ def enviar(destinatarios, asunto, cuerpo_html, cuerpo_txt=""):
             print("Mail enviado a: %s" % ", ".join(dest))
             return True
         except Exception as e:
-            print("Mail ERROR: %s %s" % (type(e).__name__, str(e)[:150]))
+            print("Mail ERROR: %s" % type(e).__name__)  # sin el texto: puede traer datos del servidor SMTP
             return False
 
 def _html(titulo, lineas, pie=""):
