@@ -1,0 +1,40 @@
+# Secretos
+.env
+.env.*
+!.env.example
+
+# Bases de datos locales
+*.db
+*.sqlite
+*.sqlite3
+
+# Storage de la app (adjuntos, etc.)
+storage/
+
+# Backups y temporales
+*.bak
+*.bak-*
+*.txt.bak
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+.coverage
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# Logs
+*.log
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# Prototipo viejo (solo referencia local)
+_referencia/

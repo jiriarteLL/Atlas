@@ -1,0 +1,8 @@
+# El codigo corre en contenedores Linux: fin de linea LF en todo el repo.
+* text=auto eol=lf
+# Scripts que se ejecutan en Windows (agente) mantienen CRLF.
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+# Binarios
+*.png binary
+*.ico binary
