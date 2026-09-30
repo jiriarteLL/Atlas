@@ -29,7 +29,6 @@ os.environ.update({
     "MAESTRO_API_KEY": MAESTRO_KEY,
     "SYNC_API_KEY": SYNC_KEY,
     "SUPERADMIN_INITIAL_PASSWORD": SUPERADMIN_PASS,
-    "STORAGE_DIR": os.path.join(_TMP, "storage"),
     "FRONTEND_DIST": os.path.join(_TMP, "dist"),
     "AGENTE_DIR": os.path.join(_TMP, "agente"),
     "SNAPSHOT_DIAS": "0",

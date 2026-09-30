@@ -9,6 +9,7 @@ import threading
 import time
 import unicodedata
 import urllib.request as _ureq
+from urllib.parse import quote
 import uuid
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
@@ -16,7 +17,7 @@ from typing import Literal, Optional, Union
 
 from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, Field, field_validator
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -872,17 +873,14 @@ def update_ticket(tid: str, t: TicketIn, user: UserOut = Depends(require_escritu
     return obj
 
 
-# ================================================================ adjuntos (en STORAGE_DIR/adjuntos)
-ADJ_DIR = os.path.join(config.STORAGE_DIR, "adjuntos")
+# ================================================================ adjuntos (contenido en la base, ADR-001)
 MAX_MB = 10
-EXT_OK = {".pdf", ".jpg", ".jpeg", ".png", ".gif", ".webp", ".xlsx", ".xls", ".docx", ".doc", ".txt", ".csv"}
-
-
-def _ruta_adjunto(relativa):
-    """Resuelve una ruta guardada y verifica que quede dentro de ADJ_DIR."""
-    base = os.path.realpath(ADJ_DIR)
-    ruta = os.path.realpath(os.path.join(base, relativa))
-    return ruta if ruta.startswith(base + os.sep) else None
+TIPOS_ADJ = {".pdf": "application/pdf", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
+             ".gif": "image/gif", ".webp": "image/webp",
+             ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+             ".xls": "application/vnd.ms-excel",
+             ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+             ".doc": "application/msword", ".txt": "text/plain", ".csv": "text/csv"}
 
 
 @app.get("/api/assets/{asset_id}/adjuntos")
@@ -899,21 +897,16 @@ def listar_adjuntos(asset_id: str, user: UserOut = Depends(require_lectura)):
 async def subir_adjunto(asset_id: str, file: UploadFile = File(...), descripcion: str = Form(""),
                         user: UserOut = Depends(require_escritura)):
     ext = os.path.splitext(file.filename or "")[1].lower()
-    if ext not in EXT_OK:
+    if ext not in TIPOS_ADJ:
         raise HTTPException(400, "Extension no permitida: %s" % ext)
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,40}", asset_id or ""):
         raise HTTPException(400, "Identificador de activo invalido")
-    contenido = await file.read()
+    contenido = await file.read(MAX_MB * 1024 * 1024 + 1)
     if len(contenido) > MAX_MB * 1024 * 1024:
         raise HTTPException(400, "El archivo supera el maximo de %d MB" % MAX_MB)
     aid = str(uuid.uuid4())
-    relativa = "%s/%s%s" % (asset_id, aid, ext)
-    destino = _ruta_adjunto(relativa)
-    os.makedirs(os.path.dirname(destino), exist_ok=True)
-    with open(destino, "wb") as f:
-        f.write(contenido)
     db = SessionLocal()
-    db.add(Adjunto(id=aid, asset_id=asset_id, nombre=file.filename, archivo=relativa, tipo=ext.replace(".", ""),
+    db.add(Adjunto(id=aid, asset_id=asset_id, nombre=file.filename, contenido=contenido, tipo=ext.replace(".", ""),
                    tamano=len(contenido), descripcion=descripcion, subido_por=user.username))
     registrar_historial(db, asset_id, user.username, "adjunto", {"archivo_adjunto": ("", file.filename)})
     db.commit()
@@ -926,11 +919,14 @@ async def subir_adjunto(asset_id: str, file: UploadFile = File(...), descripcion
 def descargar_adjunto(adj_id: str, user: UserOut = Depends(require_lectura)):
     db = SessionLocal()
     a = db.query(Adjunto).filter(Adjunto.id == adj_id, Adjunto.activo == "1").first()
+    contenido = a.contenido if a else None
     db.close()
-    ruta = _ruta_adjunto(a.archivo) if a else None
-    if not ruta or not os.path.isfile(ruta):
+    if contenido is None:
         raise HTTPException(404, "Archivo no encontrado")
-    return FileResponse(ruta, filename=a.nombre)
+    tipo = TIPOS_ADJ.get("." + (a.tipo or ""), "application/octet-stream")
+    return Response(content=contenido, media_type=tipo, headers={
+        "Content-Disposition": "attachment; filename*=UTF-8''" + quote(a.nombre or "adjunto"),
+        "X-Content-Type-Options": "nosniff"})
 
 
 @app.delete("/api/adjuntos/{adj_id}")

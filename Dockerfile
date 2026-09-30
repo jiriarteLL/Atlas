@@ -1,5 +1,5 @@
 # Inventario LLYA v2 — imagen unica: el backend FastAPI sirve el frontend compilado.
-# Requisitos del README §12: multi-stage, no-root, /app/storage, EXPOSE fijo, HEALTHCHECK, CMD.
+# Requisitos: SPEC §2.2 / CONVENCIONES §8 / README §12 (multi-stage, no-root, EXPOSE, HEALTHCHECK, CMD).
 
 # ── Stage 1: build del frontend ──
 FROM node:20-alpine AS frontend
@@ -18,7 +18,6 @@ RUN pip install --no-cache-dir --prefix=/install -r /tmp/requirements.txt
 FROM python:3.11-slim
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    STORAGE_DIR=/app/storage \
     FRONTEND_DIST=/app/frontend_dist \
     AGENTE_DIR=/app/agente
 WORKDIR /app
@@ -34,9 +33,8 @@ COPY --from=frontend /build/dist ./frontend_dist
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod 0755 /usr/local/bin/docker-entrypoint.sh
 
-# 3. Volumen persistente: es lo unico donde escribe la app
-RUN mkdir -p /app/storage && chown appuser:appgroup /app/storage
-VOLUME /app/storage
+# 3. Sin volumenes: el filesystem es efimero y el estado va a la base (CONVENCIONES §4.2, ADR-001).
+#    El contenedor corre con read_only y solo /tmp escribible (tmpfs en los compose).
 
 # 4. Puerto interno fijo (= requires.ports.app de maestro.yaml)
 EXPOSE 8000

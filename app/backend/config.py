@@ -24,7 +24,15 @@ def _bool(nombre, default=False):
 APP_NAME = os.getenv("APP_NAME", "inventario")
 APP_VERSION = "2.0.0"
 
-DATABASE_URL = _req("DATABASE_URL")
+def _normalizar_db_url(url):
+    """El Maestro inyecta postgres://... (CONVENCIONES §2.3); SQLAlchemy necesita el driver explicito."""
+    for prefijo in ("postgres://", "postgresql://"):
+        if url.startswith(prefijo):
+            return "postgresql+psycopg://" + url[len(prefijo):]
+    return url
+
+
+DATABASE_URL = _normalizar_db_url(_req("DATABASE_URL"))
 JWT_SECRET = _req("JWT_SECRET")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", "480"))
@@ -40,8 +48,7 @@ COMPANY_PRIMARY_COLOR = os.getenv("COMPANY_PRIMARY_COLOR", "#0B7285")
 # Seeding
 SUPERADMIN_EMAIL = "admin@llyasoc.com"
 
-# Rutas dentro del contenedor
-STORAGE_DIR = os.getenv("STORAGE_DIR", "/app/storage")
+# Rutas dentro del contenedor (solo lectura: el estado persistente vive en la base, CONVENCIONES §4.2)
 FRONTEND_DIST = os.getenv("FRONTEND_DIST", "/app/frontend_dist")
 AGENTE_DIR = os.getenv("AGENTE_DIR", "/app/agente")
 

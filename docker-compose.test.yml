@@ -12,12 +12,10 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
-      - DATABASE_URL=postgresql+psycopg://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}
+      - DATABASE_URL=postgres://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}
       - APP_ENV=test
     ports:
       - "${APP_PORT:?definir APP_PORT del rango Test 3110-3199}:8000"
-    volumes:
-      - app-storage:/app/storage
     networks:
       - app-net
     depends_on:
@@ -66,8 +64,6 @@ services:
 volumes:
   db-data:
     name: inventario-test_pgdata
-  app-storage:
-    name: inventario-test_storage
 
 networks:
   app-net:

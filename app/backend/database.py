@@ -2,8 +2,8 @@
 """Motor de base y modelos de negocio. El motor sale de DATABASE_URL (PostgreSQL en los compose)."""
 import uuid
 from datetime import datetime
-from sqlalchemy import create_engine, Column, String, DateTime, Text, Integer
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy import create_engine, Column, String, DateTime, Text, Integer, LargeBinary
+from sqlalchemy.orm import declarative_base, deferred, sessionmaker
 import config
 
 _args = {"check_same_thread": False} if config.DATABASE_URL.startswith("sqlite") else {}
@@ -82,11 +82,12 @@ class Historial(Base):
 
 
 class Adjunto(Base):
+    """El contenido va en la base: el filesystem del contenedor es efimero (CONVENCIONES §4.2, ADR-001)."""
     __tablename__ = "adjuntos"
     id          = Column(String, primary_key=True, default=_uuid)
     asset_id    = Column(String, nullable=False, index=True)
     nombre      = Column(String, default="")
-    archivo     = Column(String, default="")  # ruta relativa a STORAGE_DIR
+    contenido   = deferred(Column(LargeBinary, nullable=False))  # no se carga al listar
     tipo        = Column(String, default="")
     tamano      = Column(Integer, default=0)
     descripcion = Column(String, default="")

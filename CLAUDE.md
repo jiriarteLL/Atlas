@@ -9,7 +9,7 @@ Proyecto paralelo: el Inventario de produccion sigue en C:\AssetManager y no se 
 - Backend: FastAPI en app/backend/. Configuracion SOLO por variables de entorno (config.py). Base PostgreSQL via DATABASE_URL.
 - Frontend: React + Vite en app/frontend/. Llama a la API con rutas relativas (mismo origen), nunca IPs ni puertos.
 - Una sola imagen: el Dockerfile compila el frontend y lo sirve el backend desde /app/frontend_dist.
-- Storage: todo lo que la app escribe va a STORAGE_DIR (/app/storage, volumen).
+- Sin storage en disco: el filesystem del contenedor es efimero (CONVENCIONES §4.2). Adjuntos y todo estado van a la base (ADR-001).
 - Autonoma: NO depende del UserManager. Licencias, Nomina y ABM quedaron fuera de esta version.
 
 ## Reglas
