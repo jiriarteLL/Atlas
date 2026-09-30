@@ -97,7 +97,7 @@ phases_status:
       - "Imagen construida y validada (tamano, Trivy) y compose funcional: pendiente de la VM de ensayo"
       - "Smoke tests en contenedor (ensayo.sh) y despliegue a Test en Dokploy: pendiente de puerto asignado (rango 3110-3199 lleno)"
       - "Rama master protegida (PR + review): decision del PM del repo"
-      - "Primera corrida de ci.yml en GitHub fallo: falta el log para corregirla"
+      - "CI en GitHub sin ejecutar: la organizacion tiene bloqueado Actions por facturacion (Billing & plans); workflow ci deshabilitado por el PO hasta resolverlo"
       - "App registrada en el Maestro: la hace el evaluador humano (AGENTS.md §3)"
   05-seeding:
     status: "incomplete_pre_existing"
@@ -162,6 +162,7 @@ decisions_log:
 escalations_log:
   - { fecha: "2026-09-29", tema: "Rango de puertos de Test (3110-3199) completo: los 9 puertos responden", estado: "pedido por mail, sin respuesta" }
   - { fecha: "2026-09-30", tema: "EvaluacionAppHuesped/SPEC.md, /evaluar-app-huesped y la plantilla de PR no estan en este repo", estado: "pedido por mail" }
+  - { fecha: "2026-09-30", tema: "GitHub Actions no arranca: pagos fallidos o limite de gasto en la organizacion LLyAsoc-Digital (7 corridas de ci.yml sin ejecutar ningun paso). MANUAL §7: Actions no es fuente de verdad; las validaciones corren en local", estado: "a resolver por el admin de la organizacion; workflow deshabilitado por el PO" }
   - { fecha: "2026-09-30", tema: "31 hallazgos de gitleaks heredados del historial del template (Tailwise, legacy, .env.example viejo)", estado: "a decidir por el evaluador; la app no los puede reescribir" }
 
 agents_determined: []
