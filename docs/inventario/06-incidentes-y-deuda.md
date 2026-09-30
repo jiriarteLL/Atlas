@@ -25,6 +25,8 @@ corregir con un PR (el ciclo completo de MANUAL §7) → postmortem en `docs/inv
 
 ## Deuda técnica
 
+> Aceptada por el PO el 2026-09-30, con el plan de cada ítem (issues #10 a #16).
+
 | ID | Deuda | Impacto | Plan |
 |---|---|---|---|
 | DT-01 | `main.py` concentra todos los endpoints (~1.000 líneas) | Mantenibilidad | Separar en routers por dominio (activos, sync/GLPI, proyectos, adjuntos, tendencias) |

@@ -92,16 +92,19 @@ phases_status:
     exit_criteria_met: false
     sync_date: "2026-09-30"
     sync_notes: "Dockerfile, 3 compose, .dockerignore, CI (ci.yml, deploy.yml) y ensayo local (ensayo.sh) listos; nada ejecutado con Docker todavia."
+    po_review: { fecha: "2026-09-30", decision: "b: incompleta con excepciones; depende de la VM (build/smoke), del puerto de Test y del primer CI en verde" }
     missing_criteria:
       - "Imagen construida y validada (tamano, Trivy) y compose funcional: pendiente de la VM de ensayo"
       - "Smoke tests en contenedor (ensayo.sh) y despliegue a Test en Dokploy: pendiente de puerto asignado (rango 3110-3199 lleno)"
       - "Rama master protegida (PR + review): decision del PM del repo"
+      - "Primera corrida de ci.yml en GitHub fallo: falta el log para corregirla"
       - "App registrada en el Maestro: la hace el evaluador humano (AGENTS.md §3)"
   05-seeding:
     status: "incomplete_pre_existing"
     exit_criteria_met: false
     sync_date: "2026-09-30"
     sync_notes: "Seeder idempotente en el entrypoint, con los 6 tests obligatorios mas cambio de password forzado; documentado en docs/inventario/05-seeding.md."
+    po_review: { fecha: "2026-09-30", decision: "b: incompleta con excepciones; se cierra con ensayo.sh en contenedor y la validacion transversal" }
     missing_criteria:
       - "Logs del seeder sin password verificados en un contenedor real"
       - "Validacion transversal"
@@ -110,13 +113,14 @@ phases_status:
     exit_criteria_met: false
     sync_date: "2026-09-30"
     sync_notes: "/metrics, logs JSON, audit inmutable; runbook, protocolo de incidentes, alertas propuestas y deuda tecnica en docs/inventario/06-*."
+    po_review: { fecha: "2026-09-30", decision: "b: incompleta con excepciones; deuda tecnica aceptada; protocolo de incidentes a definir (issue #17)" }
     missing_criteria:
       - "Alertas configuradas en el stack de observabilidad del Maestro"
       - "Duenos y escalamiento del protocolo de incidentes definidos por el PO"
-      - "Deuda tecnica aceptada por el PO"
   07-retrospective:
     status: "not_started"
     exit_criteria_met: false
+    sync_notes: "No aplica todavia: el proyecto sigue en desarrollo y entrega (RULES §9, fase_no_aplica)."
 
 repo:
   url: "https://github.com/LLyAsoc-Digital/32_registro_activos_licencia_impresoras"
@@ -151,6 +155,8 @@ decisions_log:
   - { fecha: "2026-09-30", por: "PO", decision: "Tier standard (metadata.criticality)" }
   - { fecha: "2026-09-30", por: "PO", decision: "Priorizacion MoSCoW de 01-requisitos validada sin cambios" }
   - { fecha: "2026-09-30", por: "PO", decision: "Seeding: solo el superadmin (additional_users: [])" }
+  - { fecha: "2026-09-30", por: "PO", decision: "Deuda tecnica DT-01..DT-10 aceptada con su plan" }
+  - { fecha: "2026-09-30", por: "PO", decision: "Repaso de sincronizacion (RULES §9) completo: 01 verificada; 00, 02-06 en opcion b" }
   - { fecha: "2026-09-30", por: "desarrollador", decision: "data_policy pii true / regulated false", estado: "a revisar por el evaluador" }
 
 escalations_log:
