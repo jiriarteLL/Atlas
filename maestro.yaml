@@ -4,17 +4,19 @@ metadata:
   name: inventario
   version: 2.0.0
   description: "Inventario LLYA: activos de TI, garantias, proyectos de IT y relevamiento automatico de equipos"
+  # Propuesta del desarrollador, a confirmar por el evaluador (PROJECT.md la espeja).
+  criticality: standard
 requires:
   database: postgres
   ports:
     app: 8000
 health:
   endpoint: /health
-  timeout_seconds: 5
+  timeout_seconds: 3
 auth:
   mode: own
   login_path: /login           # POST /login (JSON o form); /auth/login es el mismo endpoint
-  logout_path: /auth/logout
+  logout_path: /logout         # POST /logout; /auth/logout es el mismo endpoint
 branding:
   url: /maestro/branding
 seeding:
@@ -26,17 +28,31 @@ resources:
 ui:
   tailwise: false
   reason: "App existente migrada con su propio sistema de diseno (styles.css con temas por variables CSS); reescribir la UI en Tailwise queda fuera del alcance de esta version."
+data_policy:
+  classification:
+    # Nombre, usuario de dominio y email corporativo de las personas a las que se asigna cada equipo,
+    # y de los usuarios de la app. No hay datos sensibles (salud, financieros, documentos).
+    pii: true
+    categories:
+      - identificacion_laboral
+      - credenciales_de_la_app
+    regulated: false
 env:
   - APP_URL
   - CORS_ORIGINS
-  - JWT_EXPIRE_MINUTES
+  - COOKIES_SEGURAS
+  - TOKEN_TTL
+  - REFRESH_TOKEN_TTL
   - BCRYPT_COST
-  - LOGIN_RATE_LIMIT
+  - LOGIN_RATE_LIMIT_PER_IP
+  - LOGIN_RATE_LIMIT_PER_EMAIL
+  - LOG_FORMAT
   - COMPANY_NAME
   - COMPANY_LOGO_URL
   - COMPANY_PRIMARY_COLOR
   - SYNC_API_KEY
   - SNAPSHOT_DIAS
+  - FORWARDED_ALLOW_IPS
   - SMTP_HOST
   - SMTP_PORT
   - SMTP_USER

@@ -2,7 +2,8 @@
 # Requisitos: SPEC §2.2 / CONVENCIONES §8 / README §12 (multi-stage, no-root, EXPOSE, HEALTHCHECK, CMD).
 
 # ── Stage 1: build del frontend ──
-FROM node:20-alpine AS frontend
+# Imagenes base fijadas por digest (09-SEGURIDAD capa 7); actualizar con el tag + digest nuevos.
+FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293 AS frontend
 WORKDIR /build
 COPY app/frontend/package.json app/frontend/package-lock.json ./
 RUN npm ci --no-audit --no-fund
@@ -10,12 +11,12 @@ COPY app/frontend/ ./
 RUN npx vite build --outDir /build/dist
 
 # ── Stage 2: dependencias de Python ──
-FROM python:3.11-slim AS pydeps
+FROM python:3.11-slim@sha256:e41613d42d4891e4930f79523f93f81bbc7632584ec65e36ab055f41a800b41e AS pydeps
 COPY app/backend/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir --prefix=/install -r /tmp/requirements.txt
 
 # ── Stage 3: runtime ──
-FROM python:3.11-slim
+FROM python:3.11-slim@sha256:e41613d42d4891e4930f79523f93f81bbc7632584ec65e36ab055f41a800b41e
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     FRONTEND_DIST=/app/frontend_dist \
@@ -23,7 +24,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 # 1. Usuario no-root
-RUN groupadd --system appgroup && useradd --system --gid appgroup --no-create-home appuser
+RUN groupadd --system --gid 1001 appgroup && useradd --system --uid 1001 --gid appgroup --no-create-home appuser
 
 # 2. Solo lo necesario
 COPY --from=pydeps /install /usr/local

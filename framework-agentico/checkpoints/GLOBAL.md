@@ -1,7 +1,7 @@
 # Indice Global de Proyectos
 
 > **Administrado por:** Project Manager (PM)
-> **Ultima actualizacion:** 2026-05-06
+> **Ultima actualizacion:** 2026-09-30
 > **Nota:** Este archivo es un INDICE. El estado detallado de cada proyecto esta en su PROJECT.md.
 
 ---
@@ -12,10 +12,18 @@ default_preset: "web-maestro"           # default sugerido para proyectos nuevos
 
 # --- Proyecto activo ---
 # Solo un proyecto puede estar in_progress a la vez (restriccion single-PM)
-active_project: null                    # project-id del proyecto activo, o null
+active_project: "32_registro_activos_licencia_impresoras"   # project-id del proyecto activo, o null
 
 # --- Lista de proyectos ---
-projects: []
+projects:
+  - project_id: "32_registro_activos_licencia_impresoras"
+    repo_url: "https://github.com/LLyAsoc-Digital/32_registro_activos_licencia_impresoras"
+    status: "in_progress"
+    current_phase: "04-delivery"
+    path: "framework-agentico/projects/32_registro_activos_licencia_impresoras/PROJECT.md"
+    total_cost_usd: null             # no medido (iteracion 1 fuera de /pm:orquestar)
+    created_at: "2026-09-30"
+    updated_at: "2026-09-30"
   # Ejemplo:
   # - project_id: "mi-app-web"
   #   repo_url: "https://github.com/org/mi-app-web"
@@ -37,7 +45,7 @@ projects: []
 
 # --- Costos globales (suma de todos los proyectos) ---
 global_cost:
-  total_projects: 0
+  total_projects: 1
   total_cost_usd: 0.00
   by_project: {}
     # Ejemplo:

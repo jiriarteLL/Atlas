@@ -83,6 +83,22 @@ TOK=$(curl -s -m 5 -X POST "$B/login" -H 'Content-Type: application/json' \
 MALA="Zz9-$(hex 8)"   # bien formada pero no es la de nadie
 esperar "login invalido"                    401 c -X POST "$B/login" -H 'Content-Type: application/json' -d "{\"email\":\"admin@llyasoc.com\",\"password\":\"$MALA\"}"
 esperar "api con token"                     200 c -H "Authorization: Bearer $TOK" "$B/api/assets"
+# cookie de sesion: nombre unico, HttpOnly, SameSite=Strict y SIN Secure en HTTP (MANUAL §6.4)
+JAR=$(mktemp)
+SC=$(curl -s -m 5 -D - -o /dev/null -c "$JAR" -X POST "$B/login" -H 'Content-Type: application/json' \
+      -d "{\"email\":\"admin@llyasoc.com\",\"password\":\"$SUPER\"}" | tr -d '\r' | grep -i '^set-cookie:' | tr 'A-Z' 'a-z')
+echo "$SC" | grep -q 'inventario_session=' && echo "$SC" | grep -q 'httponly' && echo "$SC" | grep -q 'samesite=strict' \
+  && ok "cookie inventario_session HttpOnly + SameSite=Strict" || mal "cookie de sesion sin los flags esperados"
+echo "$SC" | grep -q 'secure' && mal "cookie con Secure sobre HTTP (el login entraria en bucle)" || ok "cookie sin Secure en HTTP"
+esperar "refresh con la cookie"             200 c -b "$JAR" -c "$JAR" -X POST -H 'X-Requested-With: fetch' "$B/auth/refresh"
+esperar "refresh sin X-Requested-With"      401 c -b "$JAR" -X POST "$B/auth/refresh"
+rm -f "$JAR"
+esperar "metrics sin key"                   401 c "$B/metrics"
+esperar "metrics con key"                   200 c -H "X-Maestro-Api-Key: $MK" "$B/metrics"
+curl -s -m 5 -D - -o /dev/null "$B/health" | tr -d '\r' | grep -qi '^content-security-policy:' \
+  && ok "cabeceras de seguridad presentes" || mal "falta Content-Security-Policy"
+docker exec app-inventario-test sh -c 'touch /app/x 2>/dev/null' && mal "filesystem del contenedor escribible" || ok "filesystem read-only"
+[ "$(docker exec app-inventario-test id -u)" != "0" ] && ok "corre como no-root (uid $(docker exec app-inventario-test id -u))" || mal "corre como root"
 esperar "logout"                            200 c -X POST -H "Authorization: Bearer $TOK" "$B/auth/logout"
 esperar "api tras logout"                   401 c -H "Authorization: Bearer $TOK" "$B/api/assets"
 # 100 polls de health (Gate 2 usa >= 99% en <= 5s; aca es orientativo)

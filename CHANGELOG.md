@@ -1,6 +1,6 @@
 # Changelog — Inventario LLYA
 
-## [2.0.0] — 2026-09-29
+## [2.0.0] — sin publicar (2026-09-30)
 
 Primera version como app huesped del contrato `maestro.platform/v2`, en paralelo al Inventario de
 produccion (v3.4, servicio NSSM en Windows con SQLite).
@@ -12,15 +12,27 @@ produccion (v3.4, servicio NSSM en Windows con SQLite).
 - `GET /health` y `GET /maestro/branding` (autenticado con `X-Maestro-Api-Key`).
 - Tablas `roles`, `permissions`, `role_permissions` y `user_roles`; permisos por codigo.
 - Seeder idempotente del superadmin `admin@llyasoc.com` (falla si la password falta o es debil).
-- `POST /auth/logout` que revoca el token; cambio de password y desactivacion invalidan sesiones.
-- Politica de passwords (>= 12 caracteres, complejidad, blacklist). Login por usuario o email.
+- Sesion: access token JWT de 15 min (solo en memoria del frontend) + refresh token rotativo en cookie
+  `inventario_session` HttpOnly/SameSite=Strict; `POST /auth/refresh`; deteccion de reuso de refresh.
+- `POST /logout` y `POST /auth/logout` revocan access y refresh; cambio de password y desactivacion invalidan
+  todas las sesiones.
+- Bloqueo de cuenta de 15 min tras 5 fallos; limite de 10 intentos por hora por email.
+- Politica de passwords (>= 12 caracteres, complejidad, blacklist de passwords comunes). Login por usuario o email;
+  email unico y obligatorio. Cambio de password obligatorio para el superadmin sembrado y tras un reset.
+- Audit log inmutable (trigger que rechaza UPDATE/DELETE) con user_id, user-agent y request_id.
+- Logs JSON a stdout con request_id, user_id y app_slug (CONVENCIONES §10); cabecera `X-Request-Id`.
+- `GET /metrics` (Prometheus) protegido con `X-Maestro-Api-Key`; cabeceras de seguridad (CSP, nosniff, HSTS).
 - Snapshot de tendencias automatico dentro de la app y `POST /api/tendencias/snapshot`.
-- 62 tests de backend (contrato, auth, seeder, negocio y chequeos estaticos).
+- CI: `ci.yml` (tests, lint, build, schema v2, compose, gitleaks) y `deploy.yml` (build, Trivy, ghcr, cosign).
+- Documentacion de fases en `docs/inventario/` y ADR-001..004; `SECURITY.md`; proyecto registrado en el framework.
+- 83 tests de backend (contrato, auth, sesion, seeder, negocio, logs y chequeos estaticos).
 
 ### Cambiado
 - Toda la configuracion por variables de entorno; sin IPs, puertos, rutas de Windows ni secretos en el codigo.
 - Todos los endpoints de `/api` exigen login (antes varios GET eran publicos).
 - Rate limit del login: 5 intentos por minuto por IP (antes 10).
+- `DATABASE_URL` acepta el formato canonico del Maestro (`postgres://`).
+- Imagenes base fijadas por digest; usuario no-root con UID 1001.
 - Claves de sincronizacion comparadas en tiempo constante (`hmac.compare_digest`).
 - Adjuntos guardados en la base (sin volumen de storage; ADR-001).
 - Frontend con rutas relativas (mismo origen) y controles segun permisos.
