@@ -2,6 +2,7 @@
 import gzip as _gzip
 import hmac
 import json as _json
+import logging
 import os
 import re
 import ssl as _ssl
@@ -24,13 +25,18 @@ from slowapi.errors import RateLimitExceeded
 from sqlalchemy import func, text as _sqltext
 
 import config
+import contexto
 from audit import log_action
 from auth import (User, UserOut, auth_router, login_router, require_admin, require_escritura,
                   require_lectura, require_permiso)
 from database import (Adjunto, Asset, AssetGlpi, Historial, Proyecto, ProyectoActivo, ProyectoResponsable,
                       ProyectoTarea, SessionLocal, Snapshot, Ticket, init_db)
 from mailer import notificar_proyecto_finalizado
+from metricas import metricas_texto, registrar_request
 from ratelimit import limiter
+
+contexto.configurar_logs()
+log = logging.getLogger("inventario")
 
 
 @asynccontextmanager
@@ -38,6 +44,7 @@ async def lifespan(app):
     init_db()
     if config.SNAPSHOT_DIAS > 0:
         threading.Thread(target=_loop_snapshots, daemon=True).start()
+    log.info("app.start", extra={"event": "app.start"})
     yield
 
 
@@ -48,7 +55,35 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.include_router(auth_router)
 app.include_router(login_router)
 if config.CORS_ORIGINS:
-    app.add_middleware(CORSMiddleware, allow_origins=config.CORS_ORIGINS, allow_methods=["*"], allow_headers=["*"])
+    app.add_middleware(CORSMiddleware, allow_origins=config.CORS_ORIGINS, allow_methods=["*"], allow_headers=["*"],
+                       allow_credentials=True)
+
+# Cabeceras de seguridad (BEST_PRACTICES §5.4). Traefik puede agregar las suyas; estas valen igual sin proxy.
+_CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; "
+        "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'")
+
+
+@app.middleware("http")
+async def cabeceras_seguridad(request: Request, call_next):
+    inicio = time.perf_counter()
+    resp = await call_next(request)
+    resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+    resp.headers.setdefault("X-Frame-Options", "DENY")
+    resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    resp.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    resp.headers.setdefault("Content-Security-Policy", _CSP)
+    if request.url.scheme == "https":
+        resp.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    if request.url.path.startswith(("/api/", "/auth/", "/login", "/logout")):
+        resp.headers.setdefault("Cache-Control", "no-store")
+    ruta = request.scope.get("route")
+    registrar_request(request.method, getattr(ruta, "path", "otra"), resp.status_code, time.perf_counter() - inicio)
+    return resp
+
+
+# El contexto (request_id, ip, user-agent) envuelve todo, incluidos los otros middlewares.
+app.add_middleware(contexto.ContextoMiddleware)
 
 
 def _ip(request):
@@ -60,6 +95,11 @@ def _clave_ok(recibida, esperada):
     return bool(esperada) and hmac.compare_digest((recibida or "").encode(), esperada.encode())
 
 
+def _url_publica(request):
+    """URL publica del ambiente: APP_URL si esta definida (detras de Traefik), si no la del request."""
+    return config.APP_URL or str(request.base_url).rstrip("/")
+
+
 # ================================================================ endpoints publicos
 @app.get("/health")
 def health():
@@ -68,6 +108,7 @@ def health():
         db.execute(_sqltext("SELECT 1"))
         db.close()
     except Exception:
+        log.error("health.db_error", extra={"event": "health"})
         return JSONResponse(status_code=503, content={"status": "error", "db": "sin conexion"})
     return {"status": "ok"}
 
@@ -76,13 +117,20 @@ def health():
 def maestro_branding(request: Request, x_maestro_api_key: str = Header(default="")):
     if not _clave_ok(x_maestro_api_key, config.MAESTRO_API_KEY):
         return JSONResponse(status_code=401, content={"error": "invalid_api_key"})
-    base = str(request.base_url).rstrip("/")
+    base = _url_publica(request)
     return {"company_name": config.COMPANY_NAME,
             "logo_url": config.COMPANY_LOGO_URL or base + "/logo.png",
             "primary_color": config.COMPANY_PRIMARY_COLOR,
             "favicon_url": base + "/favicon.ico"}
 
 
+@app.get("/metrics")
+def metrics(x_maestro_api_key: str = Header(default="")):
+    """Metricas Prometheus (BEST_PRACTICES §6.2): solo para el scrapper del Maestro, con X-Maestro-Api-Key."""
+    if not _clave_ok(x_maestro_api_key, config.MAESTRO_API_KEY):
+        return JSONResponse(status_code=401, content={"error": "invalid_api_key"})
+    cuerpo, tipo = metricas_texto()
+    return Response(content=cuerpo, media_type=tipo)
 # ================================================================ activos
 TIPOS_OK = ("Notebook", "Monitor", "Impresora", "Servidor", "Switch", "UPS", "CPU")
 ESTADOS_OK = ("Activo", "Mantenimiento", "Dado de baja", "Libre", "Stock", "Robado")
@@ -977,10 +1025,10 @@ def _loop_snapshots():
             ultimo = db.query(func.max(Snapshot.fecha)).scalar()
             if ultimo is None or (datetime.utcnow() - ultimo).days >= config.SNAPSHOT_DIAS:
                 n = tomar_snapshot(db)
-                print("[snapshot] %d metricas guardadas" % n)
+                log.info("snapshot.ok", extra={"event": "snapshot"})
             db.close()
         except Exception as e:
-            print("[snapshot] error: %s" % type(e).__name__)
+            log.error("snapshot.error %s", type(e).__name__, extra={"event": "snapshot"})
         time.sleep(6 * 3600)
 
 
@@ -1013,7 +1061,7 @@ def forzar_snapshot(request: Request, user: UserOut = Depends(require_admin)):
 
 
 # ================================================================ frontend y archivos estaticos
-_RESERVADAS = ("api/", "auth/", "maestro/")
+_RESERVADAS = ("api/", "auth/", "maestro/", "metrics")
 
 
 def _estatico(base, relativa):

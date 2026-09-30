@@ -1,25 +1,44 @@
 # -*- coding: utf-8 -*-
-"""Login propio de la app (README §8): users + roles + permissions, JWT con revocacion en logout."""
+"""Login propio de la app (SPEC §2.4, Premisa 7, 03-AUTENTICACION).
+
+- users + roles + permissions (+ pivots user_roles / role_permissions).
+- Access token JWT corto (TOKEN_TTL, 15 min) que el frontend guarda solo en memoria.
+- Refresh token opaco y rotativo (REFRESH_TOKEN_TTL) en cookie HttpOnly + SameSite=Strict, Path=/auth,
+  guardado hasheado en la base. Reusar un refresh ya rotado revoca todas las sesiones del usuario.
+- Logout revoca el access (jti) y el refresh. Cambiar password o desactivar invalida todo lo anterior.
+- Login: 5/min por IP, 10/h por email, bloqueo de 15 min tras 5 fallos seguidos. Mensaje de error unico.
+"""
+import hashlib
+import os
 import re
+import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
+from limits import parse as parse_limite
+from limits.storage import MemoryStorage
+from limits.strategies import MovingWindowRateLimiter
 from passlib.context import CryptContext
 from pydantic import BaseModel
-from sqlalchemy import Column, DateTime, ForeignKey, String, func
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, func
 
 import config
+import contexto
 from audit import log_action
 from database import Base, SessionLocal
+from metricas import LOGIN_FALLOS, LOGIN_INTENTOS
 from ratelimit import limiter
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__rounds=config.BCRYPT_COST)
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 auth_router = APIRouter(prefix="/auth", tags=["auth"])
+login_router = APIRouter(tags=["auth"])   # /login y /logout de maestro.yaml (auth.login_path / logout_path)
+
+_ERROR_LOGIN = "Usuario o contrasena incorrectos."
 
 
 # ---------------------------------------------------------------- modelos
@@ -27,7 +46,7 @@ class User(Base):
     __tablename__ = "users"
     id             = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     username       = Column(String, unique=True, nullable=False)
-    email          = Column(String, default="")
+    email          = Column(String, unique=True, nullable=True)   # SPEC §3: usuarios identificables por email unico
     password_hash  = Column(String, nullable=False)
     nombre         = Column(String, default="")
     activo         = Column(String, default="1")
@@ -35,6 +54,10 @@ class User(Base):
     last_login_at  = Column(DateTime, nullable=True)
     # Tokens emitidos antes de esta fecha dejan de valer (cambio de password, desactivacion).
     sesiones_desde = Column(DateTime, nullable=True)
+    intentos_fallidos = Column(Integer, default=0)
+    bloqueado_hasta   = Column(DateTime, nullable=True)
+    # El superadmin sembrado tiene que cambiar la password inicial (09-SEGURIDAD capa 4). Lo exige la UI.
+    debe_cambiar_password = Column(Boolean, default=False)
 
 
 class Role(Base):
@@ -67,6 +90,16 @@ class RevokedToken(Base):
     __tablename__ = "revoked_tokens"
     jti     = Column(String, primary_key=True)
     expira  = Column(DateTime, nullable=False)
+
+
+class RefreshToken(Base):
+    __tablename__ = "refresh_tokens"
+    id         = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id    = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    token_hash = Column(String, unique=True, nullable=False)   # sha256 del token; el token nunca se guarda
+    creado     = Column(DateTime, default=datetime.utcnow)
+    expira     = Column(DateTime, nullable=False)
+    revocado   = Column(Boolean, default=False)
 
 
 # ---------------------------------------------------------------- catalogo de roles y permisos
@@ -134,18 +167,34 @@ def asignar_rol(db, user, nombre_rol):
 
 
 # ---------------------------------------------------------------- passwords
-_BLACKLIST = {"admin", "password", "123456789012", "contrasena", "contraseña", "qwertyuiop", "llyasoc",
-              "administrador", "password1234", "admin1234567", "passw0rd", "cambiar"}
+_BLACKLIST_BASE = {"admin", "password", "123456789012", "contrasena", "contraseña", "qwertyuiop", "llyasoc",
+                   "administrador", "password1234", "admin1234567", "passw0rd", "cambiar", "inventario"}
+
+
+def _cargar_blacklist():
+    """Blacklist base + lista de passwords comunes (passwords_comunes.txt, una por linea) si esta en la imagen."""
+    s = set(_BLACKLIST_BASE)
+    ruta = os.path.join(os.path.dirname(os.path.abspath(__file__)), "passwords_comunes.txt")
+    if os.path.isfile(ruta):
+        with open(ruta, encoding="utf-8", errors="ignore") as f:
+            s.update(l.strip().lower() for l in f if l.strip())
+    return s
+
+
+_BLACKLIST = _cargar_blacklist()
 
 
 def validar_password(p):
     """Devuelve None si la password es aceptable, o el motivo del rechazo."""
     p = p or ""
+    pl = p.lower()
     if len(p) < 12:
         return "La contrasena debe tener al menos 12 caracteres."
-    if p.lower() in _BLACKLIST or any(p.lower().startswith(b) and len(set(p.lower()[len(b):])) <= 1 for b in _BLACKLIST):
+    if len(p) > 128:
+        return "La contrasena no puede superar 128 caracteres."
+    if pl in _BLACKLIST or any(pl.startswith(b) and len(set(pl[len(b):])) <= 1 for b in _BLACKLIST_BASE):
         return "La contrasena es demasiado comun."
-    if "cambiar" in p.lower():
+    if "cambiar" in pl:
         return "La contrasena parece el valor de ejemplo de .env.example."
     clases = sum(bool(re.search(x, p)) for x in (r"[a-z]", r"[A-Z]", r"\d", r"[^A-Za-z0-9]"))
     if clases < 3:
@@ -166,13 +215,28 @@ def verify_password(plain: str, hashed: str) -> bool:
         return False
 
 
+# Hash valido para comparar cuando el usuario no existe: el login tarda lo mismo y no revela que emails existen.
+_HASH_SEÑUELO = hash_password(secrets.token_urlsafe(24))
+
+_EMAIL_OK = re.compile(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$")
+
+
+def _email(v):
+    v = (v or "").strip().lower()
+    if not _EMAIL_OK.match(v):
+        raise HTTPException(status_code=400, detail="Email invalido.")
+    return v
+
+
 # ---------------------------------------------------------------- schemas
 class UserOut(BaseModel):
+    id: str = ""
     username: str
     nombre: str
     rol: str
     email: str = ""
     permisos: List[str] = []
+    debe_cambiar_password: bool = False
 
 
 class TokenResponse(BaseModel):
@@ -186,7 +250,7 @@ class UserCreate(BaseModel):
     username: str
     password: str
     nombre: str
-    email: str = ""
+    email: str
     rol: str = "viewer"
 
 
@@ -203,16 +267,20 @@ class ChangePassword(BaseModel):
     password_nuevo: str
 
 
-# ---------------------------------------------------------------- tokens y dependencias
-def _ip(request):
-    return request.client.host if (request is not None and request.client) else ""
+# ---------------------------------------------------------------- tokens
+def _ahora():
+    return datetime.now(timezone.utc)
 
 
-def create_token(username: str) -> str:
-    ahora = datetime.now(timezone.utc)
+def _utc_naive(dt):
+    return dt.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def create_token(user) -> str:
+    ahora = _ahora()
     # "ms": emision en milisegundos, para comparar contra sesiones_desde sin perder precision.
-    payload = {"sub": username, "jti": str(uuid.uuid4()), "iat": int(ahora.timestamp()),
-               "ms": int(ahora.timestamp() * 1000), "exp": ahora + timedelta(minutes=config.JWT_EXPIRE_MINUTES)}
+    payload = {"sub": user.username, "uid": user.id, "jti": str(uuid.uuid4()), "iat": int(ahora.timestamp()),
+               "ms": int(ahora.timestamp() * 1000), "exp": ahora + timedelta(minutes=config.TOKEN_TTL_MIN)}
     return jwt.encode(payload, config.JWT_SECRET, algorithm=config.JWT_ALGORITHM)
 
 
@@ -223,9 +291,42 @@ def _decodificar(token):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token invalido o expirado.")
 
 
+def _sha(token):
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def _emitir_refresh(db, user, response):
+    token = secrets.token_urlsafe(48)
+    db.add(RefreshToken(user_id=user.id, token_hash=_sha(token),
+                        expira=_utc_naive(_ahora() + timedelta(minutes=config.REFRESH_TOKEN_TTL_MIN))))
+    response.set_cookie(config.COOKIE_SESION, token, max_age=config.REFRESH_TOKEN_TTL_MIN * 60, path="/auth",
+                        httponly=True, secure=config.COOKIES_SEGURAS, samesite="strict")
+
+
+def _borrar_cookie(response):
+    response.delete_cookie(config.COOKIE_SESION, path="/auth", httponly=True, secure=config.COOKIES_SEGURAS,
+                           samesite="strict")
+
+
+def revocar_sesiones(db, user):
+    """Invalida todos los access y refresh vigentes del usuario."""
+    user.sesiones_desde = datetime.utcnow()
+    db.query(RefreshToken).filter(RefreshToken.user_id == user.id, RefreshToken.revocado.is_(False)) \
+        .update({RefreshToken.revocado: True}, synchronize_session=False)
+
+
+def _sesion_vigente(user, emitido_ms):
+    if user.activo != "1":
+        return False
+    if user.sesiones_desde and emitido_ms <= int(user.sesiones_desde.replace(tzinfo=timezone.utc).timestamp() * 1000):
+        return False
+    return True
+
+
 def _user_out(db, u):
-    return UserOut(username=u.username, nombre=u.nombre or "", email=u.email or "",
-                   rol=rol_de(db, u.id), permisos=permisos_de(db, u.id))
+    return UserOut(id=u.id, username=u.username, nombre=u.nombre or "", email=u.email or "",
+                   rol=rol_de(db, u.id), permisos=permisos_de(db, u.id),
+                   debe_cambiar_password=bool(u.debe_cambiar_password))
 
 
 def get_current_user(token: str = Depends(oauth2_scheme)) -> UserOut:
@@ -235,11 +336,10 @@ def get_current_user(token: str = Depends(oauth2_scheme)) -> UserOut:
     try:
         if not payload.get("jti") or db.get(RevokedToken, payload["jti"]):
             raise no_valido
-        u = db.query(User).filter(User.username == payload.get("sub"), User.activo == "1").first()
-        if not u:
+        u = db.query(User).filter(User.username == payload.get("sub")).first()
+        if not u or not _sesion_vigente(u, payload.get("ms", 0)):
             raise no_valido
-        if u.sesiones_desde and payload.get("ms", 0) <= int(u.sesiones_desde.replace(tzinfo=timezone.utc).timestamp() * 1000):
-            raise no_valido
+        contexto.fijar_usuario(u.id, u.username)
         return _user_out(db, u)
     finally:
         db.close()
@@ -258,7 +358,17 @@ require_escritura = require_permiso("inventario.editar")
 require_admin = require_permiso("usuarios.administrar")
 
 
-# ---------------------------------------------------------------- endpoints
+# ---------------------------------------------------------------- login
+_limite_email = parse_limite("%d/hour" % config.LOGIN_RATE_LIMIT_PER_EMAIL)
+_limitador_email = MovingWindowRateLimiter(MemoryStorage())
+
+
+def reiniciar_limites():
+    """Para los tests: vacia los contadores de login."""
+    _limitador_email.storage.reset()
+    limiter.reset()
+
+
 async def _credenciales(request):
     """Acepta form (username/password, lo que manda el frontend) o JSON (email|username|usuario + password)."""
     if "application/json" in (request.headers.get("content-type") or ""):
@@ -273,49 +383,122 @@ async def _credenciales(request):
     return str(f.get("username") or f.get("email") or "").strip(), str(f.get("password") or "")
 
 
-async def login(request: Request):
-    ip = _ip(request)
+def _fallo(ident, motivo="credenciales"):
+    LOGIN_FALLOS.labels(motivo).inc()
+    log_action(usuario=ident, accion="LOGIN_FAILED", resultado="failure")
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=_ERROR_LOGIN)
+
+
+async def login(request: Request, response: Response):
+    LOGIN_INTENTOS.inc()
     ident, password = await _credenciales(request)
+    if not _limitador_email.hit(_limite_email, "login-email", ident.lower()):
+        LOGIN_FALLOS.labels("rate_limit_email").inc()
+        log_action(usuario=ident, accion="LOGIN_RATE_LIMITED", resultado="failure")
+        raise HTTPException(status_code=429, detail="Demasiados intentos. Proba mas tarde.")
     if not ident or not password:
-        log_action(usuario=ident, accion="LOGIN_FAILED", ip=ip, resultado="failure")
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuario o contrasena incorrectos.")
+        _fallo(ident)
     db = SessionLocal()
     try:
-        u = (db.query(User).filter(User.activo == "1")
-             .filter((User.username == ident) | (func.lower(User.email) == ident.lower())).first())
-        if not u or not verify_password(password, u.password_hash):
-            log_action(usuario=ident, accion="LOGIN_FAILED", ip=ip, resultado="failure")
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuario o contrasena incorrectos.")
-        u.last_login_at = datetime.utcnow()
+        u = (db.query(User).filter((User.username == ident) | (User.email == ident.lower())).first())
+        ok = verify_password(password, u.password_hash if u else _HASH_SEÑUELO)
+        if not u or u.activo != "1":
+            _fallo(ident)
+        if u.bloqueado_hasta and u.bloqueado_hasta > datetime.utcnow():
+            LOGIN_FALLOS.labels("cuenta_bloqueada").inc()
+            log_action(usuario=u.username, user_id=u.id, accion="LOGIN_LOCKED", resultado="failure")
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=_ERROR_LOGIN)
+        if not ok:
+            u.intentos_fallidos = (u.intentos_fallidos or 0) + 1
+            if u.intentos_fallidos >= config.LOGIN_MAX_FALLOS:
+                u.bloqueado_hasta = datetime.utcnow() + timedelta(minutes=config.LOGIN_BLOQUEO_MIN)
+                u.intentos_fallidos = 0
+                db.commit()
+                log_action(usuario=u.username, user_id=u.id, accion="ACCOUNT_LOCKED", resultado="failure",
+                           detalle={"minutos": config.LOGIN_BLOQUEO_MIN})
+            db.commit()
+            _fallo(ident)
+        u.intentos_fallidos, u.bloqueado_hasta, u.last_login_at = 0, None, datetime.utcnow()
+        _emitir_refresh(db, u, response)
         db.commit()
         out = _user_out(db, u)
+        access = create_token(u)
     finally:
         db.close()
-    log_action(usuario=out.username, accion="LOGIN_SUCCESS", ip=ip, resultado="success")
-    return TokenResponse(access_token=create_token(out.username), expires_in=config.JWT_EXPIRE_MINUTES * 60, user=out)
+    log_action(usuario=out.username, user_id=out.id, accion="LOGIN_SUCCESS")
+    return TokenResponse(access_token=access, expires_in=config.TOKEN_TTL_MIN * 60, user=out)
 
 
-# Un solo limitador para las dos rutas: /auth/login (frontend) y /login (auth.login_path de maestro.yaml).
-login = limiter.shared_limit(config.LOGIN_RATE_LIMIT, scope="login")(login)
+login = limiter.shared_limit("%d/minute" % config.LOGIN_RATE_LIMIT_PER_IP, scope="login")(login)
 auth_router.add_api_route("/login", login, methods=["POST"], response_model=TokenResponse)
-login_router = APIRouter(tags=["auth"])
 login_router.add_api_route("/login", login, methods=["POST"], response_model=TokenResponse)
 
 
-@auth_router.post("/logout")
-def logout(request: Request, token: str = Depends(oauth2_scheme), user: UserOut = Depends(get_current_user)):
+@auth_router.post("/refresh", response_model=TokenResponse)
+def refresh(request: Request, response: Response):
+    """Canjea el refresh de la cookie por un access nuevo y rota el refresh.
+    Exige X-Requested-With (un sitio ajeno no puede mandarlo sin preflight CORS) ademas de SameSite=Strict."""
+    no_valido = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sesion vencida.")
+    if not request.headers.get("x-requested-with"):
+        raise no_valido
+    token = request.cookies.get(config.COOKIE_SESION, "")
+    if not token:
+        raise no_valido
+    db = SessionLocal()
+    try:
+        rt = db.query(RefreshToken).filter(RefreshToken.token_hash == _sha(token)).first()
+        if not rt:
+            _borrar_cookie(response)
+            raise no_valido
+        u = db.get(User, rt.user_id)
+        if rt.revocado:
+            # Reuso de un refresh ya rotado: posible robo. Se cortan todas las sesiones del usuario.
+            if u:
+                revocar_sesiones(db, u)
+                db.commit()
+                log_action(usuario=u.username, user_id=u.id, accion="REFRESH_REUSE", resultado="failure")
+            raise no_valido
+        creado_ms = int(rt.creado.replace(tzinfo=timezone.utc).timestamp() * 1000)
+        if rt.expira < datetime.utcnow() or not u or not _sesion_vigente(u, creado_ms):
+            rt.revocado = True
+            db.commit()
+            raise no_valido
+        rt.revocado = True
+        _emitir_refresh(db, u, response)
+        db.commit()
+        contexto.fijar_usuario(u.id, u.username)
+        out = _user_out(db, u)
+        access = create_token(u)
+    finally:
+        db.close()
+    return TokenResponse(access_token=access, expires_in=config.TOKEN_TTL_MIN * 60, user=out)
+
+
+def logout(request: Request, response: Response, token: str = Depends(oauth2_scheme),
+           user: UserOut = Depends(get_current_user)):
     payload = _decodificar(token)
     db = SessionLocal()
     try:
         db.query(RevokedToken).filter(RevokedToken.expira < datetime.utcnow()).delete()
         db.add(RevokedToken(jti=payload["jti"], expira=datetime.utcfromtimestamp(payload["exp"])))
+        cookie = request.cookies.get(config.COOKIE_SESION, "")
+        if cookie:
+            db.query(RefreshToken).filter(RefreshToken.token_hash == _sha(cookie)) \
+                .update({RefreshToken.revocado: True}, synchronize_session=False)
+        db.query(RefreshToken).filter(RefreshToken.expira < datetime.utcnow()).delete()
         db.commit()
     finally:
         db.close()
-    log_action(usuario=user.username, accion="LOGOUT", ip=_ip(request))
+    _borrar_cookie(response)
+    log_action(usuario=user.username, accion="LOGOUT")
     return {"status": "ok"}
 
 
+auth_router.add_api_route("/logout", logout, methods=["POST"])
+login_router.add_api_route("/logout", logout, methods=["POST"])
+
+
+# ---------------------------------------------------------------- perfil
 @auth_router.get("/me", response_model=UserOut)
 def me(user: UserOut = Depends(get_current_user)):
     return user
@@ -339,6 +522,14 @@ def perfil(user: UserOut = Depends(get_current_user)):
         db.close()
 
 
+def _email_libre(db, email, excepto_id=None):
+    q = db.query(User).filter(User.email == email)
+    if excepto_id:
+        q = q.filter(User.id != excepto_id)
+    if q.first():
+        raise HTTPException(status_code=400, detail="Ese email ya esta en uso.")
+
+
 @auth_router.put("/perfil")
 def editar_perfil(data: UserUpdate, user: UserOut = Depends(get_current_user)):
     """Cada usuario puede editar su propio nombre y email. Rol y estado no."""
@@ -349,27 +540,32 @@ def editar_perfil(data: UserUpdate, user: UserOut = Depends(get_current_user)):
             raise HTTPException(status_code=404, detail="Usuario no encontrado.")
         if data.nombre is not None and data.nombre.strip():
             u.nombre = data.nombre.strip()
-        if data.email is not None:
-            u.email = data.email.strip()
+        if data.email is not None and u.username != config.SUPERADMIN_EMAIL:
+            nuevo = _email(data.email)
+            _email_libre(db, nuevo, u.id)
+            u.email = nuevo
         db.commit()
         return {"username": u.username, "nombre": u.nombre, "email": u.email or "", "rol": user.rol}
     finally:
         db.close()
 
 
+# ---------------------------------------------------------------- administracion de usuarios
 @auth_router.post("/usuarios")
-def crear_usuario(data: UserCreate, request: Request, user: UserOut = Depends(require_admin)):
+def crear_usuario(data: UserCreate, user: UserOut = Depends(require_admin)):
     if data.rol not in ROLES_ASIGNABLES:
         raise HTTPException(status_code=400, detail="Rol invalido.")
     motivo = validar_password(data.password)
     if motivo:
         raise HTTPException(status_code=400, detail=motivo)
+    email = _email(data.email)
     db = SessionLocal()
     try:
         if db.query(User).filter(User.username == data.username.strip()).first():
             raise HTTPException(status_code=400, detail="El usuario ya existe.")
+        _email_libre(db, email)
         nuevo = User(username=data.username.strip(), password_hash=hash_password(data.password),
-                     nombre=data.nombre, email=data.email.strip())
+                     nombre=data.nombre, email=email)
         db.add(nuevo)
         db.flush()
         asignar_rol(db, nuevo, data.rol)
@@ -377,7 +573,7 @@ def crear_usuario(data: UserCreate, request: Request, user: UserOut = Depends(re
     finally:
         db.close()
     log_action(usuario=user.username, accion="CREATE_USER", entidad="usuario", entidad_id=data.username,
-               detalle={"rol": data.rol}, ip=_ip(request))
+               detalle={"rol": data.rol})
     return {"status": "ok", "username": data.username}
 
 
@@ -396,7 +592,7 @@ def _es_superadmin(u):
 
 
 @auth_router.put("/usuarios/{username}")
-def editar_usuario(username: str, data: UserUpdate, request: Request, user: UserOut = Depends(require_admin)):
+def editar_usuario(username: str, data: UserUpdate, user: UserOut = Depends(require_admin)):
     db = SessionLocal()
     try:
         u = db.query(User).filter(User.username == username).first()
@@ -416,8 +612,10 @@ def editar_usuario(username: str, data: UserUpdate, request: Request, user: User
                 detalle["rol"] = {"antes": antes, "despues": data.rol}
         if data.nombre is not None and data.nombre.strip():
             u.nombre = data.nombre.strip()
-        if data.email is not None:
-            u.email = data.email.strip()
+        if data.email is not None and not _es_superadmin(u):
+            nuevo = _email(data.email)
+            _email_libre(db, nuevo, u.id)
+            u.email = nuevo
         if data.activo is not None:
             nuevo = "1" if data.activo in ("1", 1, True, "true") else "0"
             if nuevo != "1" and (u.username == user.username or _es_superadmin(u)):
@@ -426,13 +624,14 @@ def editar_usuario(username: str, data: UserUpdate, request: Request, user: User
                 u.activo = nuevo
                 detalle["activo"] = nuevo
                 if nuevo == "0":
-                    u.sesiones_desde = datetime.utcnow()
+                    revocar_sesiones(db, u)
         if data.password:
             motivo = validar_password(data.password)
             if motivo:
                 raise HTTPException(status_code=400, detail=motivo)
             u.password_hash = hash_password(data.password)
-            u.sesiones_desde = datetime.utcnow()
+            u.debe_cambiar_password = True   # password puesta por un admin: el usuario la cambia al entrar
+            revocar_sesiones(db, u)
             detalle["password"] = "reseteada"
         db.commit()
         res = {"username": u.username, "nombre": u.nombre, "rol": rol_de(db, u.id), "activo": u.activo}
@@ -440,14 +639,14 @@ def editar_usuario(username: str, data: UserUpdate, request: Request, user: User
         db.close()
     if "rol" in detalle:
         log_action(usuario=user.username, accion="ROLE_CHANGE", entidad="usuario", entidad_id=username,
-                   detalle=detalle["rol"], ip=_ip(request))
+                   detalle=detalle["rol"])
     log_action(usuario=user.username, accion="modificacion_usuario", entidad="usuario", entidad_id=username,
-               detalle={k: v for k, v in detalle.items() if k != "rol"} or None, ip=_ip(request))
+               detalle={k: v for k, v in detalle.items() if k != "rol"} or None)
     return res
 
 
 @auth_router.delete("/usuarios/{username}")
-def eliminar_usuario(username: str, request: Request, user: UserOut = Depends(require_admin)):
+def eliminar_usuario(username: str, user: UserOut = Depends(require_admin)):
     db = SessionLocal()
     try:
         u = db.query(User).filter(User.username == username).first()
@@ -456,28 +655,32 @@ def eliminar_usuario(username: str, request: Request, user: UserOut = Depends(re
         if u.username == user.username or _es_superadmin(u):
             raise HTTPException(status_code=400, detail="Ese usuario no se puede eliminar.")
         u.activo = "0"
-        u.sesiones_desde = datetime.utcnow()
+        revocar_sesiones(db, u)
         db.commit()
     finally:
         db.close()
-    log_action(usuario=user.username, accion="DELETE_USER", entidad="usuario", entidad_id=username, ip=_ip(request))
+    log_action(usuario=user.username, accion="DELETE_USER", entidad="usuario", entidad_id=username)
     return {"status": "ok"}
 
 
 @auth_router.post("/cambiar-password")
-def cambiar_password(data: ChangePassword, request: Request, user: UserOut = Depends(get_current_user)):
+def cambiar_password(data: ChangePassword, response: Response, user: UserOut = Depends(get_current_user)):
     db = SessionLocal()
     try:
         u = db.query(User).filter(User.username == user.username).first()
         if not u or not verify_password(data.password_actual, u.password_hash):
             raise HTTPException(status_code=400, detail="La contrasena actual es incorrecta.")
+        if data.password_nuevo == data.password_actual:
+            raise HTTPException(status_code=400, detail="La contrasena nueva tiene que ser distinta de la actual.")
         motivo = validar_password(data.password_nuevo)
         if motivo:
             raise HTTPException(status_code=400, detail=motivo)
         u.password_hash = hash_password(data.password_nuevo)
-        u.sesiones_desde = datetime.utcnow()
+        u.debe_cambiar_password = False
+        revocar_sesiones(db, u)
         db.commit()
     finally:
         db.close()
-    log_action(usuario=user.username, accion="CHANGE_PASSWORD", entidad="usuario", entidad_id=user.username, ip=_ip(request))
+    _borrar_cookie(response)
+    log_action(usuario=user.username, accion="CHANGE_PASSWORD", entidad="usuario", entidad_id=user.username)
     return {"status": "ok"}

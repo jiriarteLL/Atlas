@@ -35,7 +35,7 @@ def seed_superadmin():
         u = db.query(User).filter(User.username == email).first()
         if not u:
             u = User(username=email, email=email, nombre="Super Admin", activo="1",
-                     password_hash=hash_password(password))
+                     password_hash=hash_password(password), debe_cambiar_password=True)
             db.add(u)
             db.flush()
             asignar_rol(db, u, "superadmin")

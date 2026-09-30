@@ -122,11 +122,14 @@ class AuditLog(Base):
     id          = Column(Integer, primary_key=True, autoincrement=True)
     timestamp   = Column(DateTime, default=datetime.utcnow, index=True)
     usuario     = Column(String, default="")
+    user_id     = Column(String, default="", index=True)
     accion      = Column(String, default="")
     entidad     = Column(String, default="")
     entidad_id  = Column(String, default="")
     detalle     = Column(Text, default="")
     ip_origen   = Column(String, default="")
+    user_agent  = Column(String, default="")
+    request_id  = Column(String, default="")
     resultado   = Column(String, default="success")
 
 
@@ -182,7 +185,28 @@ class ProyectoActivo(Base):
     asset_id    = Column(String, default="")
 
 
+_TRIGGERS = {
+    # audit_log inmutable (BEST_PRACTICES §2.8): cualquier UPDATE o DELETE falla en la base.
+    "postgresql": [
+        """CREATE OR REPLACE FUNCTION audit_log_inmutable() RETURNS trigger AS $$
+           BEGIN RAISE EXCEPTION 'audit_log es solo INSERT'; END; $$ LANGUAGE plpgsql""",
+        """CREATE OR REPLACE TRIGGER audit_log_sin_update BEFORE UPDATE OR DELETE ON audit_log
+           FOR EACH ROW EXECUTE FUNCTION audit_log_inmutable()""",
+    ],
+    "sqlite": [
+        """CREATE TRIGGER IF NOT EXISTS audit_log_sin_update BEFORE UPDATE ON audit_log
+           BEGIN SELECT RAISE(ABORT, 'audit_log es solo INSERT'); END""",
+        """CREATE TRIGGER IF NOT EXISTS audit_log_sin_delete BEFORE DELETE ON audit_log
+           BEGIN SELECT RAISE(ABORT, 'audit_log es solo INSERT'); END""",
+    ],
+}
+
+
 def init_db():
-    """Crea las tablas que falten. Importa auth para registrar users/roles/permissions."""
+    """Crea las tablas que falten (idempotente). Importa auth para registrar users/roles/permissions."""
     import auth  # noqa: F401  (registra los modelos de auth en Base)
+    from sqlalchemy import text
     Base.metadata.create_all(engine)
+    with engine.begin() as con:
+        for sql in _TRIGGERS.get(engine.dialect.name, []):
+            con.execute(text(sql))

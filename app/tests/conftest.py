@@ -32,6 +32,8 @@ os.environ.update({
     "FRONTEND_DIST": os.path.join(_TMP, "dist"),
     "AGENTE_DIR": os.path.join(_TMP, "agente"),
     "SNAPSHOT_DIAS": "0",
+    "COOKIES_SEGURAS": "0",   # el TestClient va por http: con Secure no mandaria la cookie
+    "LOG_FORMAT": "json",
 })
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
 
@@ -40,7 +42,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 import database  # noqa: E402
 import main  # noqa: E402
 import seed  # noqa: E402
-from ratelimit import limiter  # noqa: E402
+from auth import reiniciar_limites  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -48,7 +50,7 @@ def base_limpia():
     """Cada test arranca con la base vacia + superadmin sembrado y el rate limit en cero."""
     database.Base.metadata.drop_all(database.engine)
     seed.seed_superadmin()
-    limiter.reset()
+    reiniciar_limites()
     yield
 
 
@@ -58,12 +60,30 @@ def client():
         yield c
 
 
-def login(client, usuario="admin@llyasoc.com", password=SUPERADMIN_PASS):
+SUPERADMIN = "admin@llyasoc.com"
+# Usuario de QA propio (BEST_PRACTICES §7.3: los tests no operan con el superadmin real salvo el seeder).
+QA_ADMIN, QA_ADMIN_EMAIL, QA_ADMIN_PASS = "qa-admin", "qa-admin@example.test", clave_valida()
+
+
+def login(client, usuario=QA_ADMIN, password=QA_ADMIN_PASS):
     return client.post("/auth/login", data={"username": usuario, "password": password})
+
+
+def crear_usuario_db(username, email, password, rol):
+    """Alta directa en la base (sin pasar por la API)."""
+    from auth import User, asignar_rol, hash_password
+    db = database.SessionLocal()
+    u = User(username=username, email=email, nombre=username, password_hash=hash_password(password))
+    db.add(u)
+    db.flush()
+    asignar_rol(db, u, rol)
+    db.commit()
+    db.close()
 
 
 @pytest.fixture
 def token(client):
+    crear_usuario_db(QA_ADMIN, QA_ADMIN_EMAIL, QA_ADMIN_PASS, "admin")
     r = login(client)
     assert r.status_code == 200, r.text
     return r.json()["access_token"]

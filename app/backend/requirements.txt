@@ -9,3 +9,5 @@ passlib==1.7.4
 bcrypt==4.0.1
 slowapi==0.1.10
 python-multipart==0.0.32
+prometheus-client==0.26.0
+limits==5.8.0

@@ -3,7 +3,7 @@ import { useGraficos } from "./graficos";
 import { useAuth, tienePermiso } from "./AuthContext";
 import { LayoutGrid, Laptop, BarChart3, Bot, Settings, Power, Menu, Upload, Download, RefreshCw, Plus, FolderKanban, UserCircle } from "lucide-react";
 import { useTablaTarjetas } from "./tablaTarjetas";
-import { API, AUTH, authHeaders, http, setUsuarioActual } from "./api";
+import { API, AUTH, apiFetch, http, setUsuarioActual } from "./api";
 import { SEDES, COLORES, TIPOS, estadoClass, Badge, QR, Field, emptyAsset, fmtDate } from "./ui";
 import { SeccionTendencias } from "./secciones/SeccionTendencias";
 import { AdjuntosActivo } from "./secciones/AdjuntosActivo";
@@ -95,7 +95,7 @@ export default function App() {
   const [glpiMap, setGlpiMap] = useState({});
   async function cargarGlpi(){
     try {
-      const res = await fetch(API+"/glpi/resumen", { headers: authHeaders() });
+      const res = await apiFetch(API+"/glpi/resumen", {});
       if (!res.ok) return;
       const r = await res.json();
       const m = {};
@@ -104,7 +104,7 @@ export default function App() {
     } catch { /* GLPI no disponible: la ficha se muestra sin esos datos */ }
   }
   useEffect(()=>{ if(user) cargarGlpi(); }, [user]);
-  function verFicha(a){ setSelected(a); fetch(API+"/assets/"+a.id+"/ficha", { headers: authHeaders() }).catch(()=>{}); }
+  function verFicha(a){ setSelected(a); apiFetch(API+"/assets/"+a.id+"/ficha", {}).catch(()=>{}); }
   const [showConfig, setShowConfig] = useState(false);
   const [usuarios, setUsuarios] = useState([]);
   const [nuevoUser, setNuevoUser] = useState({username:"",password:"",nombre:"",email:"",rol:"viewer"});
@@ -114,7 +114,7 @@ export default function App() {
 
   async function loadUsuarios() {
     try {
-      const r = await fetch(AUTH + "/usuarios", { headers: authHeaders() });
+      const r = await apiFetch(AUTH + "/usuarios", {});
       if (r.ok) setUsuarios(await r.json());
       else if (r.status === 401) setUserMsg("Error: sesion expirada, volve a iniciar sesion."); else setUserMsg("Error al listar usuarios (" + r.status + ")");
     } catch { setUserMsg("Error de conexion al listar usuarios"); }
@@ -122,8 +122,8 @@ export default function App() {
 
   async function crearUsuario() {
     try {
-      const r = await fetch(AUTH + "/usuarios", {
-        method: "POST", headers: authHeaders({ "Content-Type": "application/json" }),
+      const r = await apiFetch(AUTH + "/usuarios", {
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(nuevoUser)
       });
       if (r.ok) { setUserMsg("Usuario creado!"); setNuevoUser({username:"",password:"",nombre:"",email:"",rol:"viewer"}); loadUsuarios(); }
@@ -133,8 +133,8 @@ export default function App() {
 
   async function guardarUsuario(u, cambios) {
     try {
-      const r = await fetch(AUTH + "/usuarios/" + encodeURIComponent(u.username), {
-        method: "PUT", headers: authHeaders({ "Content-Type": "application/json" }),
+      const r = await apiFetch(AUTH + "/usuarios/" + encodeURIComponent(u.username), {
+        method: "PUT", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(cambios)
       });
       const d = await r.json().catch(()=>({}));
@@ -145,7 +145,7 @@ export default function App() {
 
   async function eliminarUsuario(username) {
     if (!confirm("Eliminar usuario " + username + "?")) return;
-    await fetch(AUTH + "/usuarios/" + encodeURIComponent(username), { method: "DELETE", headers: authHeaders() });
+    await apiFetch(AUTH + "/usuarios/" + encodeURIComponent(username), { method: "DELETE" });
     loadUsuarios();
   }
   async function loadData() {

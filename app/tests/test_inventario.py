@@ -14,7 +14,7 @@ def test_alta_edicion_e_historial(client, token):
     r = client.put("/api/assets/" + aid, headers=bearer(token), json={"usuario": "mgomez"})
     assert r.status_code == 200 and r.json()["usuario"] == "mgomez"
     h = client.get("/api/assets/%s/historial" % aid, headers=bearer(token)).json()
-    assert any(x["campo"] == "usuario" and x["valor_new"] == "mgomez" and x["usuario"] == "admin@llyasoc.com" for x in h)
+    assert any(x["campo"] == "usuario" and x["valor_new"] == "mgomez" and x["usuario"] == "qa-admin" for x in h)
 
 
 def test_sync_rechaza_clave_invalida_o_faltante(client):

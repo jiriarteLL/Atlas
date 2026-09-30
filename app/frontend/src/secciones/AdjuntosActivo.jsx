@@ -1,6 +1,6 @@
 // AdjuntosActivo.jsx — Archivos adjuntos de la ficha del activo.
 import { useState, useEffect, useRef } from "react";
-import { API, authHeaders, chequear401 } from "../api";
+import { API, apiFetch, chequear401 } from "../api";
 
 export function AdjuntosActivo({ assetId, usuario }) {
   const [items, setItems] = useState([]);
@@ -10,7 +10,7 @@ export function AdjuntosActivo({ assetId, usuario }) {
   const BASE = API.replace("/api","");
 
   function cargar(){
-    fetch(`${BASE}/api/assets/${assetId}/adjuntos`, { headers: authHeaders() }).then(r=>r.json()).then(d=>setItems(Array.isArray(d)?d:[])).catch(()=>{});
+    apiFetch(`${BASE}/api/assets/${assetId}/adjuntos`, {}).then(r=>r.json()).then(d=>setItems(Array.isArray(d)?d:[])).catch(()=>{});
   }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- recarga solo al cambiar de activo
   useEffect(()=>{ if(assetId) cargar(); }, [assetId]);
@@ -23,7 +23,7 @@ export function AdjuntosActivo({ assetId, usuario }) {
     const enPestana = SE_ABRE.includes((a.tipo||"").toLowerCase());
     const w = enPestana ? window.open("", "_blank") : null;
     try{
-      const r = await fetch(`${BASE}/api/adjuntos/${a.id}/descargar`, { headers: authHeaders() }).then(chequear401);
+      const r = await apiFetch(`${BASE}/api/adjuntos/${a.id}/descargar`, {}).then(chequear401);
       if(!r.ok) throw new Error(r.status===404 ? "El archivo ya no existe" : "Error al descargar");
       const url = URL.createObjectURL(await r.blob());
       if(w){ w.location.href = url; }
@@ -42,7 +42,7 @@ export function AdjuntosActivo({ assetId, usuario }) {
       fd.append("file", f);
       fd.append("descripcion", desc);
       fd.append("usuario", usuario || "web");
-      const r = await fetch(`${BASE}/api/assets/${assetId}/adjuntos`, { method:"POST", body: fd, headers: authHeaders() }).then(chequear401);
+      const r = await apiFetch(`${BASE}/api/assets/${assetId}/adjuntos`, { method:"POST", body: fd }).then(chequear401);
       if(!r.ok){ const d = await r.json().catch(()=>({})); throw new Error(d.detail || "Error al subir"); }
       setDesc(""); if(inputRef.current) inputRef.current.value="";
       cargar();
@@ -52,7 +52,7 @@ export function AdjuntosActivo({ assetId, usuario }) {
 
   async function borrar(a){
     if(!confirm(`Eliminar "${a.nombre}"?`)) return;
-    try{ await fetch(`${BASE}/api/adjuntos/${a.id}?usuario=${encodeURIComponent(usuario||"web")}`, {method:"DELETE", headers: authHeaders()}).then(chequear401); cargar(); }
+    try{ await apiFetch(`${BASE}/api/adjuntos/${a.id}?usuario=${encodeURIComponent(usuario||"web")}`, { method: "DELETE" }).then(chequear401); cargar(); }
     catch { alert("Error al eliminar"); }
   }
 

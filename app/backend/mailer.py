@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 """Envio de notificaciones por SMTP. Silencioso ante fallos: nunca rompe la operacion."""
-import smtplib, ssl, threading
+import logging, smtplib, ssl, threading
 from email.message import EmailMessage
 from email.utils import formataddr
 import config
 
 _lock = threading.Lock()
+log = logging.getLogger("inventario.mail")
 
 def _cfg():
     return {
@@ -34,7 +35,7 @@ def enviar(destinatarios, asunto, cuerpo_html, cuerpo_txt=""):
     c = _cfg()
     dest = _mails(destinatarios)
     if not dest or not c["host"] or not c["user"] or not c["pwd"]:
-        print("Mail: sin destinatarios o sin credenciales, no se envia")
+        log.info("mail.omitido")
         return False
     msg = EmailMessage()
     msg["Subject"] = asunto
@@ -49,10 +50,10 @@ def enviar(destinatarios, asunto, cuerpo_html, cuerpo_txt=""):
             s.login(c["user"], c["pwd"])
             s.send_message(msg)
             s.quit()
-            print("Mail enviado a: %s" % ", ".join(dest))
+            log.info("mail.enviado destinatarios=%d", len(dest))
             return True
         except Exception as e:
-            print("Mail ERROR: %s" % type(e).__name__)  # sin el texto: puede traer datos del servidor SMTP
+            log.error("mail.error %s", type(e).__name__)  # sin el texto: puede traer datos del servidor SMTP
             return False
 
 def _html(titulo, lineas, pie=""):

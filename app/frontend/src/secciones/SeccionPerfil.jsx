@@ -1,6 +1,6 @@
 // SeccionPerfil.jsx — Pestaña Mi perfil.
 import { useState, useEffect } from "react";
-import { API } from "../api";
+import { AUTH, apiFetch } from "../api";
 
 export function SeccionPerfil() {
   const [p, setP] = useState(null);
@@ -10,22 +10,18 @@ export function SeccionPerfil() {
   const [msg, setMsg] = useState("");
   const [pass, setPass] = useState({actual:"", nuevo:"", confirmar:""});
   const [passMsg2, setPassMsg2] = useState("");
-  const BASE = API.replace("/api","");
 
   function cargar(){
-    const t = localStorage.getItem("abm_token");
-    fetch(BASE+"/auth/perfil", { headers:{ Authorization:"Bearer "+t } })
+    apiFetch(AUTH+"/perfil")
       .then(r=>r.json()).then(d=>{ setP(d); setForm({nombre:d.nombre||"", email:d.email||""}); })
       .catch(()=>{});
   }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- carga una sola vez al abrir Mi perfil
   useEffect(()=>{ cargar(); },[]);
 
   async function guardar(){
-    const t = localStorage.getItem("abm_token");
     try{
-      const r = await fetch(BASE+"/auth/perfil", { method:"PUT",
-        headers:{ "Content-Type":"application/json", Authorization:"Bearer "+t },
+      const r = await apiFetch(AUTH+"/perfil", { method:"PUT",
+        headers:{ "Content-Type":"application/json" },
         body: JSON.stringify(form) });
       if(r.ok){ setMsg("Perfil actualizado."); setEditando(false); cargar(); }
       else { const d = await r.json().catch(()=>({})); setMsg("Error: "+(d.detail||r.status)); }
@@ -36,16 +32,14 @@ export function SeccionPerfil() {
     if(!pass.actual||!pass.nuevo){ setPassMsg2("Completa los campos."); return; }
     if(pass.nuevo!==pass.confirmar){ setPassMsg2("Las contrasenas no coinciden."); return; }
     if(pass.nuevo.length<12){ setPassMsg2("Minimo 12 caracteres, combinando mayusculas, minusculas, numeros o simbolos."); return; }
-    const t = localStorage.getItem("abm_token");
     try{
-      const r = await fetch(BASE+"/auth/cambiar-password", { method:"POST",
-        headers:{ "Content-Type":"application/json", Authorization:"Bearer "+t },
+      const r = await apiFetch(AUTH+"/cambiar-password", { method:"POST", credentials:"same-origin",
+        headers:{ "Content-Type":"application/json" },
         body: JSON.stringify({ password_actual:pass.actual, password_nuevo:pass.nuevo }) });
       const d = await r.json().catch(()=>({}));
       if(r.ok){
         // El backend invalida las sesiones anteriores al cambio: hay que volver a entrar.
         alert("Contrasena cambiada. Volve a iniciar sesion con la nueva.");
-        localStorage.removeItem("abm_token"); localStorage.removeItem("abm_user");
         window.location.reload();
       }
       else setPassMsg2("Error: "+(d.detail||r.status));

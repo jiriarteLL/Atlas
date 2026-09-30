@@ -1,7 +1,7 @@
 // SeccionTendencias.jsx — Pestaña Tendencias (snapshots historicos).
 import { useGraficos } from "../graficos";
 import { useState, useEffect } from "react";
-import { API, authHeaders } from "../api";
+import { API, apiFetch } from "../api";
 import { COL_TEND } from "../ui";
 
 export function SeccionTendencias() {
@@ -12,12 +12,12 @@ export function SeccionTendencias() {
   const [, setCargando] = useState(true);
 
   useEffect(()=>{
-    fetch(`${API}/tendencias/metricas`, { headers: authHeaders() }).then(r=>r.json()).then(m=>setMetricas(Array.isArray(m)?m:[])).catch(()=>{});
+    apiFetch(`${API}/tendencias/metricas`, {}).then(r=>r.json()).then(m=>setMetricas(Array.isArray(m)?m:[])).catch(()=>{});
   },[]);
 
   useEffect(()=>{
     setCargando(true);
-    fetch(`${API}/tendencias?metrica=${encodeURIComponent(metrica)}`, { headers: authHeaders() }).then(r=>r.json()).then(d=>{
+    apiFetch(`${API}/tendencias?metrica=${encodeURIComponent(metrica)}`, {}).then(r=>r.json()).then(d=>{
       const arr = Array.isArray(d)?d:[];
       const porFecha = {};
       const claves = new Set();

@@ -1,28 +1,48 @@
 // AuthContext.jsx
-// Contexto de autenticacion: login/logout contra el backend (mismo origen), token y usuario actual con sus permisos.
+// Sesion del usuario: login/logout contra el backend (mismo origen), access token en memoria y
+// renovacion automatica con el refresh token (cookie HttpOnly). Al recargar la pagina la sesion se
+// recupera con /auth/refresh: no hay nada guardado en localStorage.
 
-import { createContext, useContext, useState, useCallback } from "react";
-import { AUTH } from "./api";
+import { createContext, useContext, useState, useCallback, useEffect } from "react";
+import { AUTH, authHeaders, onSesionPerdida, refrescar, setAccessToken } from "./api";
 
 const AuthContext = createContext(null);
-
-// NOTA DE SEGURIDAD: el token vive en localStorage y es accesible por JS, por lo que un XSS
-// podria robarlo. Se mitiga evitando dangerouslySetInnerHTML. El logout lo revoca en el servidor.
-const TOKEN_KEY = "abm_token";
-const USER_KEY = "abm_user";
 
 export function tienePermiso(user, codigo) {
   return !!user && Array.isArray(user.permisos) && user.permisos.includes(codigo);
 }
 
 export function AuthProvider({ children }) {
-  const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY));
-  const [user, setUser] = useState(() => {
-    const raw = localStorage.getItem(USER_KEY);
-    return raw ? JSON.parse(raw) : null;
-  });
+  const [user, setUser] = useState(null);
+  const [listo, setListo] = useState(false);   // false mientras se intenta recuperar la sesion
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  // Proxima renovacion: {seg: vida del token, n: contador para que cada ciclo dispare el efecto}.
+  const [renovacion, setRenovacion] = useState(null);
+
+  const cerrarLocal = useCallback(() => {
+    setAccessToken("");
+    setUser(null);
+    setRenovacion(null);
+  }, []);
+
+  const programar = useCallback((seg) => setRenovacion((r) => ({ seg, n: (r?.n || 0) + 1 })), []);
+
+  // Renueva el access token antes de que venza (al 80 % de su vida).
+  useEffect(() => {
+    if (!renovacion) return undefined;
+    const id = setTimeout(async () => {
+      const d = await refrescar();
+      if (d) { setUser(d.user); programar(d.expires_in); } else cerrarLocal();
+    }, Math.max(30, renovacion.seg * 0.8) * 1000);
+    return () => clearTimeout(id);
+  }, [renovacion, programar, cerrarLocal]);
+
+  // Al abrir la app: recuperar la sesion con la cookie de refresh (si la hay).
+  useEffect(() => {
+    onSesionPerdida(cerrarLocal);
+    refrescar().then((d) => { if (d) { setUser(d.user); programar(d.expires_in); } }).finally(() => setListo(true));
+  }, [cerrarLocal, programar]);
 
   const login = useCallback(async (username, password) => {
     setLoading(true);
@@ -31,24 +51,20 @@ export function AuthProvider({ children }) {
       const body = new URLSearchParams();
       body.set("username", username);
       body.set("password", password);
-
       const res = await fetch(`${AUTH}/login`, {
-        method: "POST",
+        method: "POST", credentials: "same-origin",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body,
       });
-
-      if (res.status === 429) throw new Error("Demasiados intentos. Espera un minuto y volve a probar.");
+      if (res.status === 429) throw new Error("Demasiados intentos. Espera un rato y volve a probar.");
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.detail || "Usuario o contraseña incorrectos.");
       }
-
       const data = await res.json();
-      localStorage.setItem(TOKEN_KEY, data.access_token);
-      localStorage.setItem(USER_KEY, JSON.stringify(data.user));
-      setToken(data.access_token);
+      setAccessToken(data.access_token);
       setUser(data.user);
+      programar(data.expires_in);
       return true;
     } catch (err) {
       setError(err.message);
@@ -56,24 +72,16 @@ export function AuthProvider({ children }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [programar]);
 
   const logout = useCallback(async () => {
-    const t = localStorage.getItem(TOKEN_KEY);
-    if (t) {
-      // Revoca el token en el servidor; si falla (red caida) igual se cierra la sesion local.
-      try { await fetch(`${AUTH}/logout`, { method: "POST", headers: { Authorization: `Bearer ${t}` } }); } catch { /* sin red */ }
-    }
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(USER_KEY);
-    setToken(null);
-    setUser(null);
-  }, []);
+    // Revoca access y refresh en el servidor; si falla (red caida) igual se cierra la sesion local.
+    try { await fetch(`${AUTH}/logout`, { method: "POST", credentials: "same-origin", headers: authHeaders() }); } catch { /* sin red */ }
+    cerrarLocal();
+  }, [cerrarLocal]);
 
   return (
-    <AuthContext.Provider
-      value={{ user, token, login, logout, loading, error, isAuthenticated: !!token }}
-    >
+    <AuthContext.Provider value={{ user, login, logout, loading, error, listo, isAuthenticated: !!user }}>
       {children}
     </AuthContext.Provider>
   );

@@ -5,7 +5,7 @@ import pytest
 import database
 import seed
 from auth import User, UserRole, permisos_de, rol_de, verify_password, PERMISOS
-from conftest import SUPERADMIN_PASS, clave_valida, login
+from conftest import SUPERADMIN, SUPERADMIN_PASS, clave_valida, login
 
 
 def _superadmins():
@@ -59,4 +59,11 @@ def test_existente_sin_rol_recibe_superadmin_sin_tocar_password():
 
 
 def test_login_con_la_password_de_la_env(client):
-    assert login(client).status_code == 200
+    assert login(client, SUPERADMIN, SUPERADMIN_PASS).status_code == 200
+
+
+def test_superadmin_sembrado_debe_cambiar_password():
+    db = database.SessionLocal()
+    u = db.query(User).filter(User.username == "admin@llyasoc.com").first()
+    db.close()
+    assert u.debe_cambiar_password is True
