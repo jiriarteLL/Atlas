@@ -1,7 +1,7 @@
 # Inventario LLYA v2 — Modelo de datos (fase 02-planning)
 
 Single-tenant físico: **ninguna tabla tiene `company_id`** (SPEC §2.5). La empresa está implícita en el deployment.
-Las tablas se crean con `init_db()`, que es idempotente y corre en cada arranque.
+El esquema se versiona con Alembic (`app/backend/migrations/`). `init_db()` lo lleva a la última migración en cada arranque.
 
 ## Autenticación y autorización
 

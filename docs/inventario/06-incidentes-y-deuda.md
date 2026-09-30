@@ -33,7 +33,7 @@ corregir con un PR (el ciclo completo de MANUAL §7) → postmortem en `docs/inv
 | DT-02 | El rate limit y el límite por email son en memoria, por proceso | Con más de un worker o réplica, los límites se multiplican | Pasar a Redis si se escala horizontalmente |
 | DT-03 | Una sola `SYNC_API_KEY` para todos los agentes | Si se filtra, cualquiera puede escribir activos | Clave por equipo o por sede, revocable |
 | DT-04 | Los adjuntos no pasan por antivirus | Riesgo de malware en los descargables | Escaneo con ClamAV o similar al subir |
-| DT-05 | Migraciones con `create_all` (no versionadas) | Los cambios de columnas en tablas existentes no se aplican solos | Adoptar Alembic antes del primer cambio de esquema en Preprod |
+| ~~DT-05~~ | ~~Migraciones con `create_all` (no versionadas)~~ | — | **Resuelta (2026-09-30):** Alembic con la migración `0001` (esquema y trigger del audit). Ver el runbook, "Cambios de esquema" |
 | DT-06 | Tests sobre SQLite, no sobre PostgreSQL | Diferencias de dialecto sin detectar | Correr la suite contra Postgres en la VM de ensayo y en CI (servicio `postgres`) |
 | DT-07 | Sin tests del frontend | Regresiones de UI | Tests de humo con Playwright del login, el refresh y el cambio obligatorio |
 | DT-08 | Google Fonts externo | Dependencia de terceros y privacidad | Servir las fuentes desde la app |

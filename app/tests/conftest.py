@@ -49,6 +49,8 @@ from auth import reiniciar_limites  # noqa: E402
 def base_limpia():
     """Cada test arranca con la base vacia + superadmin sembrado y el rate limit en cero."""
     database.Base.metadata.drop_all(database.engine)
+    with database.engine.begin() as con:   # sin esto Alembic creeria que la base ya esta migrada
+        con.exec_driver_sql("DROP TABLE IF EXISTS alembic_version")
     seed.seed_superadmin()
     reiniciar_limites()
     yield

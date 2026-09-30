@@ -33,6 +33,26 @@
 - **Forzar un snapshot de Tendencias:** `POST /api/tendencias/snapshot` como admin.
 - **Backup:** volumen `inventario*_pgdata` con `pg_dump`. Incluye los adjuntos (ADR-001).
 
+## Cambios de esquema (Alembic)
+
+Las migraciones están en `app/backend/migrations/versions/` y se aplican solas en cada arranque (`seed.py` →
+`init_db()` → `alembic upgrade head`). Para cambiar un modelo:
+
+1. Modificar el modelo en `database.py` o `auth.py`.
+2. Generar la migración contra una base temporal **ya migrada** (si está vacía, Alembic genera todo el esquema de nuevo):
+   ```
+   cd app/backend
+   export DATABASE_URL=sqlite:///tmp.db JWT_SECRET=x
+   alembic upgrade head
+   alembic revision --autogenerate --rev-id 0002 -m "descripcion"
+   rm tmp.db
+   ```
+3. **Revisarla a mano** (renombres, datos, triggers: Alembic no los detecta).
+4. `pytest app/tests`: `test_el_esquema_migrado_coincide_con_los_modelos` falla si el modelo y las migraciones no
+   coinciden.
+
+Para volver atrás: `alembic downgrade -1`, hecho a mano y con backup previo de la base.
+
 ## Logs
 
 JSON por stdout. Cada request deja un evento `http.request` con `request_id`, `user_id`, `method`, `path`,

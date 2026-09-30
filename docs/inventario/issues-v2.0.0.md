@@ -10,7 +10,7 @@ Cada issue sale de un pendiente real de `PROJECT.md` o de la deuda técnica (`06
 | 3 | Puerto asignado en el rango de Test | `infra`, `bloqueante` | Los 9 puertos 3110–3190 están ocupados. Pedir el puerto a quien administra el VPS y verificarlo libre (MANUAL §2.3). |
 | 4 | Despliegue a Test en Dokploy | `delivery` | Proyecto con título, descripción y tag `Test`; servicio `App Test`; `composePath: ./docker-compose.test.yml`; `createEnvFile: true`; verificación de MANUAL §6 completa, con login en un navegador real. Depende de #2 y #3. |
 | 5 | Tests contra PostgreSQL | `testing`, `deuda` | Correr `app/tests` contra PostgreSQL 16 (en la VM y como servicio en `ci.yml`). DT-06. |
-| 6 | Migraciones versionadas con Alembic | `backend`, `deuda` | Reemplazar `create_all` antes del primer cambio de esquema en Preprod. DT-05. |
+| 6 | ~~Migraciones versionadas con Alembic~~ | `backend`, `deuda` | **Hecho (2026-09-30):** migración `0001` y tests. Crear el issue ya cerrado o no crearlo. DT-05. |
 | 7 | Validación transversal (fases 03 a 06) | `proceso` | security-auditor, qa-tester, performance-analyst, compliance-analyst y code-reviewer (`framework-agentico/validation/`) en PASS. |
 | 8 | Gate 1 — auto-evaluación hasta PASS | `proceso` | Abrir el PR `master` del fork → `tools/inventario` y correr `/evaluar-app-huesped` hasta PASS (MANUAL §7). Depende de conseguir `EvaluacionAppHuesped/SPEC.md` y el comando. |
 | 9 | Hallazgos de Gitleaks heredados del template | `seguridad`, `decisión-evaluador` | 31 hallazgos en commits del template (Tailwise, `legacy/`, `.env.example` viejo). La app no puede reescribir ese historial. Lo decide el evaluador humano. |

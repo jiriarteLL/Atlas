@@ -25,7 +25,7 @@ produccion (v3.4, servicio NSSM en Windows con SQLite).
 - Snapshot de tendencias automatico dentro de la app y `POST /api/tendencias/snapshot`.
 - CI: `ci.yml` (tests, lint, build, schema v2, compose, gitleaks) y `deploy.yml` (build, Trivy, ghcr, cosign).
 - Documentacion de fases en `docs/inventario/` y ADR-001..004; `SECURITY.md`; proyecto registrado en el framework.
-- 108 tests de backend (contrato, auth, sesion, seeder, negocio, logs y chequeos estaticos).
+- 112 tests de backend (contrato, auth, sesion, seeder, negocio, logs y chequeos estaticos).
 
 ### Cambiado
 - Toda la configuracion por variables de entorno; sin IPs, puertos, rutas de Windows ni secretos en el codigo.
@@ -37,6 +37,7 @@ produccion (v3.4, servicio NSSM en Windows con SQLite).
   password en modal con campo oculto, consulta N+1 de proyectos resuelta, indice en tendencias, timeout de Lenovo
   de 10 s, `ensayo.sh` sin el volumen de storage que ya no existe, y 24 tests nuevos (garantias, adjuntos,
   proyectos, mails, permisos, bcrypt, TTL).
+- Migraciones versionadas con Alembic (`0001`: esquema inicial y trigger del audit); linter ruff en el backend.
 - JWT con PyJWT en lugar de python-jose (que arrastraba `ecdsa`, CVE-2024-23342 sin fix); `npm audit fix`.
 - Claves de sincronizacion comparadas en tiempo constante (`hmac.compare_digest`).
 - Adjuntos guardados en la base (sin volumen de storage; ADR-001).

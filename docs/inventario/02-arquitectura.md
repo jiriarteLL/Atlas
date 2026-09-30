@@ -28,7 +28,8 @@ flowchart LR
 | Módulo | Responsabilidad |
 |---|---|
 | `config.py` | Toda la configuración por variables de entorno. Normaliza `DATABASE_URL`. |
-| `database.py` | Motor SQLAlchemy, modelos de negocio, `init_db()` idempotente y trigger de audit inmutable. |
+| `database.py` | Motor SQLAlchemy, modelos de negocio e `init_db()` (aplica las migraciones de Alembic). |
+| `migrations/` | Migraciones de Alembic (`0001`: esquema inicial y trigger de audit inmutable). |
 | `auth.py` | Usuarios, roles y permisos; login, refresh, logout, bloqueo, política de passwords, administración de usuarios. |
 | `seed.py` | Migración y seeder idempotente del superadmin (fase 05). |
 | `main.py` | App FastAPI: endpoints de negocio, contrato con el Maestro, middlewares, frontend estático. |

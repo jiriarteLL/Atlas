@@ -185,28 +185,22 @@ class ProyectoActivo(Base):
     asset_id    = Column(String, default="")
 
 
-_TRIGGERS = {
-    # audit_log inmutable (BEST_PRACTICES §2.8): cualquier UPDATE o DELETE falla en la base.
-    "postgresql": [
-        """CREATE OR REPLACE FUNCTION audit_log_inmutable() RETURNS trigger AS $$
-           BEGIN RAISE EXCEPTION 'audit_log es solo INSERT'; END; $$ LANGUAGE plpgsql""",
-        """CREATE OR REPLACE TRIGGER audit_log_sin_update BEFORE UPDATE OR DELETE ON audit_log
-           FOR EACH ROW EXECUTE FUNCTION audit_log_inmutable()""",
-    ],
-    "sqlite": [
-        """CREATE TRIGGER IF NOT EXISTS audit_log_sin_update BEFORE UPDATE ON audit_log
-           BEGIN SELECT RAISE(ABORT, 'audit_log es solo INSERT'); END""",
-        """CREATE TRIGGER IF NOT EXISTS audit_log_sin_delete BEFORE DELETE ON audit_log
-           BEGIN SELECT RAISE(ABORT, 'audit_log es solo INSERT'); END""",
-    ],
-}
-
-
 def init_db():
-    """Crea las tablas que falten (idempotente). Importa auth para registrar users/roles/permissions."""
+    """Lleva la base a la ultima migracion de Alembic (idempotente; corre en cada arranque).
+
+    Una base creada con create_all antes de adoptar Alembic (tiene tablas pero no alembic_version) se marca
+    como 0001 sin recrear nada, y desde ahi se aplican las migraciones siguientes.
+    """
+    import os
     import auth  # noqa: F401  (registra los modelos de auth en Base)
-    from sqlalchemy import text
-    Base.metadata.create_all(engine)
+    from alembic import command
+    from alembic.config import Config
+    from sqlalchemy import inspect
+
+    cfg = Config(os.path.join(os.path.dirname(os.path.abspath(__file__)), "alembic.ini"))
     with engine.begin() as con:
-        for sql in _TRIGGERS.get(engine.dialect.name, []):
-            con.execute(text(sql))
+        cfg.attributes["connection"] = con
+        tablas = inspect(con).get_table_names()
+        if "users" in tablas and "alembic_version" not in tablas:
+            command.stamp(cfg, "0001")
+        command.upgrade(cfg, "head")

@@ -79,7 +79,7 @@ phases_status:
     status: "incomplete_pre_existing"
     exit_criteria_met: false
     sync_date: "2026-09-30"
-    sync_notes: "Codigo completo; 108 tests de backend, eslint 0 y build OK en local; maestro.yaml valido contra el schema v2. pip-audit 0 vulnerabilidades y npm audit sin altas ni criticas (docs/inventario/auditoria-dependencias.md)."
+    sync_notes: "Codigo completo; 112 tests de backend (incluye migraciones Alembic), eslint 0 y build OK en local; maestro.yaml valido contra el schema v2. pip-audit 0 vulnerabilidades y npm audit sin altas ni criticas (docs/inventario/auditoria-dependencias.md)."
     po_review: { fecha: "2026-09-30", decision: "b: incompleta con excepciones; validacion transversal despues; Trivy y tests en PostgreSQL con la VM" }
     validacion_transversal: { fecha: "2026-09-30", intento: 1, resultado: "PASS tras correcciones (5/5)", detalle: "docs/inventario/03-validacion-transversal.md" }
     missing_criteria:
