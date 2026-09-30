@@ -38,3 +38,7 @@ desktop.ini
 
 # Prototipo viejo (solo referencia local)
 _referencia/
+
+# Resultado del ensayo en la VM
+ensayo-resultado.txt
+.env.previo
