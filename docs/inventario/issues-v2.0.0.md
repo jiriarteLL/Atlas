@@ -3,6 +3,10 @@
 Milestone: **v2.0.0 — primera versión como app huésped** (fase 02-planning: "GitHub Milestone + Issues creados").
 Cada issue sale de un pendiente real de `PROJECT.md` o de la deuda técnica (`06-incidentes-y-deuda.md`).
 
+**Creados en GitHub (2026-09-30), milestone 1.** El #1 del repo es el PR `develop` → `master`, así que cada ítem
+de esta tabla es el issue siguiente en GitHub: ítem N → issue #N+1 (ej.: ítem 18 `regulated` → #19). Los ítems 6 y 15
+(#7 y #16) se crearon cerrados.
+
 | # | Título | Etiquetas | Descripción / criterio de cierre |
 |---|---|---|---|
 | 1 | VM de ensayo con Docker | `infra`, `bloqueante` | VM Ubuntu 24.04 (2 vCPU, 4 GB, 40 GB) con Docker instalado (`herramientas/vm-ensayo/instalar-docker.sh`). Se cierra cuando `docker compose version` responde en la VM. |
