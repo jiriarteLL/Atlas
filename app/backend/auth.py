@@ -276,11 +276,14 @@ def _utc_naive(dt):
     return dt.astimezone(timezone.utc).replace(tzinfo=None)
 
 
-def create_token(user) -> str:
+def create_token(user, sid=None) -> str:
     ahora = _ahora()
     # "ms": emision en milisegundos, para comparar contra sesiones_desde sin perder precision.
+    # "sid": id del refresh token de esta sesion; el logout lo revoca aunque no llegue la cookie (Path=/auth).
     payload = {"sub": user.username, "uid": user.id, "jti": str(uuid.uuid4()), "iat": int(ahora.timestamp()),
                "ms": int(ahora.timestamp() * 1000), "exp": ahora + timedelta(minutes=config.TOKEN_TTL_MIN)}
+    if sid:
+        payload["sid"] = sid
     return jwt.encode(payload, config.JWT_SECRET, algorithm=config.JWT_ALGORITHM)
 
 
@@ -296,11 +299,14 @@ def _sha(token):
 
 
 def _emitir_refresh(db, user, response):
+    """Crea el refresh, lo manda en la cookie y devuelve su id (va como "sid" en el access token)."""
     token = secrets.token_urlsafe(48)
-    db.add(RefreshToken(user_id=user.id, token_hash=_sha(token),
+    sid = str(uuid.uuid4())
+    db.add(RefreshToken(id=sid, user_id=user.id, token_hash=_sha(token),
                         expira=_utc_naive(_ahora() + timedelta(minutes=config.REFRESH_TOKEN_TTL_MIN))))
     response.set_cookie(config.COOKIE_SESION, token, max_age=config.REFRESH_TOKEN_TTL_MIN * 60, path="/auth",
                         httponly=True, secure=config.COOKIES_SEGURAS, samesite="strict")
+    return sid
 
 
 def _borrar_cookie(response):
@@ -419,10 +425,10 @@ async def login(request: Request, response: Response):
             db.commit()
             _fallo(ident)
         u.intentos_fallidos, u.bloqueado_hasta, u.last_login_at = 0, None, datetime.utcnow()
-        _emitir_refresh(db, u, response)
+        sid = _emitir_refresh(db, u, response)
         db.commit()
         out = _user_out(db, u)
-        access = create_token(u)
+        access = create_token(u, sid)
     finally:
         db.close()
     log_action(usuario=out.username, user_id=out.id, accion="LOGIN_SUCCESS")
@@ -464,11 +470,11 @@ def refresh(request: Request, response: Response):
             db.commit()
             raise no_valido
         rt.revocado = True
-        _emitir_refresh(db, u, response)
+        sid = _emitir_refresh(db, u, response)
         db.commit()
         contexto.fijar_usuario(u.id, u.username)
         out = _user_out(db, u)
-        access = create_token(u)
+        access = create_token(u, sid)
     finally:
         db.close()
     return TokenResponse(access_token=access, expires_in=config.TOKEN_TTL_MIN * 60, user=out)
@@ -481,10 +487,14 @@ def logout(request: Request, response: Response, token: str = Depends(oauth2_sch
     try:
         db.query(RevokedToken).filter(RevokedToken.expira < datetime.utcnow()).delete()
         db.add(RevokedToken(jti=payload["jti"], expira=datetime.utcfromtimestamp(payload["exp"])))
+        # El refresh de esta sesion se revoca por el "sid" del access (POST /logout no recibe la cookie,
+        # que es Path=/auth) y, si llega, tambien por la cookie.
+        sesion = RefreshToken.id == payload.get("sid", "")
         cookie = request.cookies.get(config.COOKIE_SESION, "")
         if cookie:
-            db.query(RefreshToken).filter(RefreshToken.token_hash == _sha(cookie)) \
-                .update({RefreshToken.revocado: True}, synchronize_session=False)
+            sesion = sesion | (RefreshToken.token_hash == _sha(cookie))
+        db.query(RefreshToken).filter(RefreshToken.user_id == user.id, sesion) \
+            .update({RefreshToken.revocado: True}, synchronize_session=False)
         db.query(RefreshToken).filter(RefreshToken.expira < datetime.utcnow()).delete()
         db.commit()
     finally:

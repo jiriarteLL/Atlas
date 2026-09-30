@@ -139,6 +139,17 @@ def test_logout_invalida_access_y_refresh(client, token, ruta):
     assert client.post("/auth/refresh", headers=XRW).status_code == 401
 
 
+def test_logout_de_maestro_sin_cookie_revoca_el_refresh(client, token):
+    """POST /logout (logout_path de maestro.yaml) no recibe la cookie, que es Path=/auth.
+    El refresh de la sesion se revoca igual por el "sid" del access token."""
+    cookie = client.cookies.get(config.COOKIE_SESION)
+    assert cookie
+    client.cookies.clear()                       # lo que hace un navegador en /logout
+    assert client.post("/logout", headers=bearer(token)).status_code == 200
+    r = client.post("/auth/refresh", headers={**XRW, "Cookie": "%s=%s" % (config.COOKIE_SESION, cookie)})
+    assert r.status_code == 401
+
+
 # ---------------------------------------------------------------- permisos y usuarios
 def _crear(client, token, username, rol, password=CLAVE_USUARIO):
     r = client.post("/auth/usuarios", headers=bearer(token),
