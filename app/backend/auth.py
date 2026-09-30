@@ -576,7 +576,8 @@ def crear_usuario(data: UserCreate, user: UserOut = Depends(require_admin)):
             raise HTTPException(status_code=400, detail="El usuario ya existe.")
         _email_libre(db, email)
         nuevo = User(username=data.username.strip(), password_hash=hash_password(data.password),
-                     nombre=data.nombre, email=email)
+                     nombre=data.nombre, email=email,
+                     debe_cambiar_password=True)   # password puesta por un admin: el usuario la cambia al entrar
         db.add(nuevo)
         db.flush()
         asignar_rol(db, nuevo, data.rol)

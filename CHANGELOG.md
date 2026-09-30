@@ -18,14 +18,15 @@ produccion (v3.4, servicio NSSM en Windows con SQLite).
   todas las sesiones.
 - Bloqueo de cuenta de 15 min tras 5 fallos; limite de 10 intentos por hora por email.
 - Politica de passwords (>= 12 caracteres, complejidad, blacklist de passwords comunes). Login por usuario o email;
-  email unico y obligatorio. Cambio de password obligatorio para el superadmin sembrado y tras un reset.
+  email unico y obligatorio. Cambio de password obligatorio para el superadmin sembrado,
+  para los usuarios nuevos creados por un admin y tras un reset.
 - Audit log inmutable (trigger que rechaza UPDATE/DELETE) con user_id, user-agent y request_id.
 - Logs JSON a stdout con request_id, user_id y app_slug (CONVENCIONES §10); cabecera `X-Request-Id`.
 - `GET /metrics` (Prometheus) protegido con `X-Maestro-Api-Key`; cabeceras de seguridad (CSP, nosniff, HSTS).
 - Snapshot de tendencias automatico dentro de la app y `POST /api/tendencias/snapshot`.
 - CI: `ci.yml` (tests, lint, build, schema v2, compose, gitleaks) y `deploy.yml` (build, Trivy, ghcr, cosign).
 - Documentacion de fases en `docs/inventario/` y ADR-001..004; `SECURITY.md`; proyecto registrado en el framework.
-- 112 tests de backend (contrato, auth, sesion, seeder, negocio, logs y chequeos estaticos).
+- 114 tests de backend (contrato, auth, sesion, seeder, negocio, logs y chequeos estaticos).
 - Interfaz con el diseño v2 del prototipo (`_referencia/inventario-llya.html`): intro con contador, esfera 3D de
   fondo (three.js, carga diferida), login y cambio de contraseña en tarjeta, menu lateral, dashboard con tarjetas,
   ficha del activo en panel lateral y panel de Ambientacion (color de acento, fondo animado, brillo, sonido).

@@ -223,6 +223,15 @@ def test_cambiar_password_limpia_debe_cambiar(client):
     assert login(client, SUPERADMIN, CLAVE_NUEVA).json()["user"]["debe_cambiar_password"] is False
 
 
+def test_usuario_nuevo_debe_cambiar_la_password_inicial(client, token):
+    _crear(client, token, "recien", "viewer")
+    assert login(client, "recien", CLAVE_USUARIO).json()["user"]["debe_cambiar_password"] is True
+    tok = login(client, "recien", CLAVE_USUARIO).json()["access_token"]
+    client.post("/auth/cambiar-password", headers=bearer(tok),
+                json={"password_actual": CLAVE_USUARIO, "password_nuevo": CLAVE_NUEVA})
+    assert login(client, "recien", CLAVE_NUEVA).json()["user"]["debe_cambiar_password"] is False
+
+
 def test_reset_de_admin_obliga_a_cambiar(client, token):
     _crear(client, token, "reseteado", "viewer")
     assert client.put("/auth/usuarios/reseteado", headers=bearer(token), json={"password": CLAVE_NUEVA}).status_code == 200

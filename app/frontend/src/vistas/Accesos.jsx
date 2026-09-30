@@ -134,6 +134,7 @@ export default function Accesos({ user, avisar }) {
               {campo("confirmar", "REPETIR", "password", { autoComplete: "new-password" })}
               <div className="doble" style={{ fontSize: 12.5, color: "var(--ll-dim)" }}>El usuario va a tener que cambiarla en su próximo ingreso. Sus sesiones abiertas se cierran.</div>
             </>}
+            {modal.tipo === "alta" && <div className="doble" style={{ fontSize: 12.5, color: "var(--ll-dim)" }}>El usuario va a tener que cambiar la contraseña inicial en su primer ingreso.</div>}
             {modal.error && <div className="ll-error doble" role="alert"><span>⚠</span>{modal.error}</div>}
           </div>
         </Modal>

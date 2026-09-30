@@ -9,8 +9,8 @@
    sigue vigente, entra sin pedir la contraseña; si no, muestra el login.
 4. **Login:** usuario o email más contraseña. Si hay error, el mensaje es siempre el mismo. Si hay demasiados
    intentos, se informa que hay que esperar.
-5. **Cambio obligatorio:** si `debe_cambiar_password` (superadmin recién sembrado o contraseña reseteada por un
-   admin), aparece una pantalla que no deja seguir hasta cambiarla. Después del cambio hay que volver a entrar.
+5. **Cambio obligatorio:** si `debe_cambiar_password` (superadmin recién sembrado, usuario nuevo creado por un
+   admin o contraseña reseteada por un admin), aparece una pantalla que no deja seguir hasta cambiarla. Después del cambio hay que volver a entrar.
 6. **Renovación:** el access token se renueva solo, al 80 % de su vida (unos 12 minutos). Si la renovación falla,
    la app vuelve al login.
 7. **Logout:** "Cerrar sesión" revoca el access y el refresh en el servidor.
