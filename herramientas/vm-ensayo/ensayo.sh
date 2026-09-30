@@ -111,7 +111,8 @@ T2=$(curl -s -m 5 -X POST "$B/login" -H 'Content-Type: application/json' \
       -d "{\"email\":\"admin@llyasoc.com\",\"password\":\"$SUPER\"}" | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
 [ -n "$T2" ] && ok "tras reinicio el seeder no cambio la password" || mal "tras reinicio no entra el superadmin"
 # volumenes con el nombre explicito del compose (no uno generado por -p)
-docker volume inspect inventario-test_pgdata inventario-test_storage >/dev/null 2>&1 && ok "volumenes con name: explicito" || mal "volumenes con otro nombre"
+# Unico volumen: la base (los adjuntos van a la base desde ADR-001; no hay volumen de storage).
+docker volume inspect inventario-test_pgdata >/dev/null 2>&1 && ok "volumen con name: explicito (inventario-test_pgdata)" || mal "volumen de la base con otro nombre"
 # ningun secreto en los logs
 LOGS=$(docker compose -f docker-compose.test.yml logs --no-color 2>&1)
 FUGA=0; for s in "$SUPER" "$MK" "$TOK" "$(grep '^JWT_SECRET=' $ENVF | cut -d= -f2-)" "$(grep '^DB_PASSWORD=' $ENVF | cut -d= -f2-)"; do

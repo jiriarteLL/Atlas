@@ -99,8 +99,8 @@ class Adjunto(Base):
 class Snapshot(Base):
     __tablename__ = "snapshots"
     id       = Column(String, primary_key=True, default=_uuid)
-    fecha    = Column(DateTime, default=datetime.utcnow)
-    metrica  = Column(String, default="")
+    fecha    = Column(DateTime, default=datetime.utcnow, index=True)
+    metrica  = Column(String, default="", index=True)
     clave    = Column(String, default="")
     valor    = Column(Integer, default=0)
 

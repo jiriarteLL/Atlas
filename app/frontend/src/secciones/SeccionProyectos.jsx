@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import { Plus } from "lucide-react";
 import { API, http } from "../api";
-import { SEDES, Badge } from "../ui";
+import { SEDES, Badge, urlSegura } from "../ui";
 
 export const TIPOS_PROY = ["Infraestructura","Desarrollo","Seguridad","Migracion","Documentacion","Soporte"];
 export const ESTADOS_PROY = ["Planificado","En curso","Pausado","Finalizado","Cancelado"];
@@ -378,8 +378,8 @@ export function SeccionProyectos({ assets }) {
               <td className="td-muted" style={{fontSize:12}}>{[...(p.activos||[]).map(a=>a.nombre||a.id), ...(p.recursos?[p.recursos]:[])].join(", ")}</td>
               <td className="td-muted" style={{whiteSpace:"nowrap"}}>{p.fecha_fin_est}</td>
               <td style={{whiteSpace:"nowrap"}}>
-                {p.link_ticket && <a href={p.link_ticket} target="_blank" rel="noreferrer" className="btn" style={{padding:"4px 8px",fontSize:12,textDecoration:"none",marginRight:6}}>Ticket</a>}
-                {p.link_sharepoint && <a href={p.link_sharepoint} target="_blank" rel="noreferrer" className="btn" style={{padding:"4px 8px",fontSize:12,textDecoration:"none"}}>SP</a>}
+                {urlSegura(p.link_ticket) && <a href={urlSegura(p.link_ticket)} target="_blank" rel="noreferrer" className="btn" style={{padding:"4px 8px",fontSize:12,textDecoration:"none",marginRight:6}}>Ticket</a>}
+                {urlSegura(p.link_sharepoint) && <a href={urlSegura(p.link_sharepoint)} target="_blank" rel="noreferrer" className="btn" style={{padding:"4px 8px",fontSize:12,textDecoration:"none"}}>SP</a>}
                 <button className="btn" style={{padding:"4px 8px",fontSize:12,marginLeft:6}} onClick={()=>setExpandido(expandido===p.id?null:p.id)}>Tareas{p.tiene_tareas?" ("+p.tareas_hechas+"/"+p.tareas_total+")":""}</button>
                 <button className="btn" style={{padding:"4px 8px",fontSize:12,marginLeft:6}} onClick={()=>abrirEditar(p)}>Editar</button>
                 <button className="btn" style={{padding:"4px 8px",fontSize:12,marginLeft:6,color:"#d03b3b",borderColor:"#d03b3b"}} onClick={()=>eliminar(p)}>Quitar</button>

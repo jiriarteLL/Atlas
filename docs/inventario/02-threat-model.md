@@ -29,3 +29,5 @@ estado de seguridad: una lista muy útil para un atacante); los adjuntos (factur
 | T14 | Vulnerabilidades de dependencias (E) | Imagen y paquetes | Versiones fijadas, digests de imágenes, Trivy en CI | **Pendiente: primer escaneo con Docker** |
 | T15 | Denegación de servicio (D) | Payloads grandes, login | Límites de tamaño (8 MB sync, 10 MB adjuntos); rate limit; límites de CPU y memoria en compose | Parcial: el rate limit es en memoria, por proceso (DT-02) |
 | T16 | Clickjacking (T) | iframe ajeno | `X-Frame-Options: DENY`, `frame-ancestors 'none'` | Hecho |
+| T17 | XSS por URI guardada (T) | `javascript:` o `data:` en los links de un proyecto | El backend acepta solo `http(s)://` y el frontend solo usa como `href` URLs `http(s)` (`urlSegura`) | Hecho (validación transversal) |
+| T18 | HTML inyectado en mails (T) | Nombre de proyecto o tarea con HTML | Los valores de usuario se escapan con `html.escape` antes de armar el mail | Hecho (validación transversal) |

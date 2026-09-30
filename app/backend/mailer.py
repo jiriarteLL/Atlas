@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """Envio de notificaciones por SMTP. Silencioso ante fallos: nunca rompe la operacion."""
-import logging, smtplib, ssl, threading
+import html, logging, smtplib, ssl, threading
 from email.message import EmailMessage
 from email.utils import formataddr
 import config
@@ -76,12 +76,17 @@ def _html(titulo, lineas, pie=""):
   </div>
 </div></body></html>""" % (titulo, filas, c["url"], pie)
 
+def _e(v):
+    """Escapa texto de usuario antes de meterlo en el HTML del mail."""
+    return html.escape(str(v if v is not None else ""))
+
+
 def notificar_tarea_completada(proyecto, tarea, quien, destinatarios):
     asunto = "[%s] Tarea completada: %s" % (proyecto.get("numero") or "Proyecto", tarea.get("titulo", "")[:60])
     lineas = [
-        "<b>%s</b> completo una tarea." % quien,
-        "<b>Proyecto:</b> %s %s" % (proyecto.get("numero", ""), proyecto.get("nombre", "")),
-        "<b>Tarea:</b> %s" % tarea.get("titulo", ""),
+        "<b>%s</b> completo una tarea." % _e(quien),
+        "<b>Proyecto:</b> %s %s" % (_e(proyecto.get("numero", "")), _e(proyecto.get("nombre", ""))),
+        "<b>Tarea:</b> %s" % _e(tarea.get("titulo", "")),
         "<b>Avance del proyecto:</b> %s%% (%s de %s tareas)" % (
             proyecto.get("avance_efectivo", 0), proyecto.get("tareas_hechas", 0), proyecto.get("tareas_total", 0)),
     ]
@@ -90,10 +95,10 @@ def notificar_tarea_completada(proyecto, tarea, quien, destinatarios):
 def notificar_proyecto_finalizado(proyecto, quien, destinatarios):
     asunto = "[%s] Proyecto finalizado: %s" % (proyecto.get("numero") or "Proyecto", proyecto.get("nombre", "")[:60])
     lineas = [
-        "<b>%s</b> marco el proyecto como finalizado." % quien,
-        "<b>Proyecto:</b> %s %s" % (proyecto.get("numero", ""), proyecto.get("nombre", "")),
+        "<b>%s</b> marco el proyecto como finalizado." % _e(quien),
+        "<b>Proyecto:</b> %s %s" % (_e(proyecto.get("numero", "")), _e(proyecto.get("nombre", ""))),
         "<b>Tareas:</b> %s de %s completadas" % (proyecto.get("tareas_hechas", 0), proyecto.get("tareas_total", 0)),
     ]
     if proyecto.get("descripcion"):
-        lineas.append("<b>Descripcion:</b> %s" % proyecto["descripcion"][:200])
+        lineas.append("<b>Descripcion:</b> %s" % _e(proyecto["descripcion"][:200]))
     return enviar(destinatarios, asunto, _html("Proyecto finalizado", lineas))

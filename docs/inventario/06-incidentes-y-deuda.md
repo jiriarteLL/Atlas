@@ -39,3 +39,4 @@ corregir con un PR (el ciclo completo de MANUAL §7) → postmortem en `docs/inv
 | DT-08 | Google Fonts externo | Dependencia de terceros y privacidad | Servir las fuentes desde la app |
 | DT-09 | Licencias y Nómina fuera de alcance (ADR-003) | Funcionalidad que hoy da el UserManager | A definir por el PO |
 | DT-10 | Migración de datos desde producción | La v2 arranca vacía | Script SQLite → PostgreSQL cuando haya HTTPS |
+| DT-11 | `App.jsx` concentra el shell y varias pantallas (~940 líneas) (code review, 2026-09-30) | Mantenibilidad del frontend | Extraer dashboard, listado de activos y ficha a `secciones/`, como ya se hizo con proyectos y perfil |

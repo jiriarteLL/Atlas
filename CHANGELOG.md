@@ -25,7 +25,7 @@ produccion (v3.4, servicio NSSM en Windows con SQLite).
 - Snapshot de tendencias automatico dentro de la app y `POST /api/tendencias/snapshot`.
 - CI: `ci.yml` (tests, lint, build, schema v2, compose, gitleaks) y `deploy.yml` (build, Trivy, ghcr, cosign).
 - Documentacion de fases en `docs/inventario/` y ADR-001..004; `SECURITY.md`; proyecto registrado en el framework.
-- 83 tests de backend (contrato, auth, sesion, seeder, negocio, logs y chequeos estaticos).
+- 108 tests de backend (contrato, auth, sesion, seeder, negocio, logs y chequeos estaticos).
 
 ### Cambiado
 - Toda la configuracion por variables de entorno; sin IPs, puertos, rutas de Windows ni secretos en el codigo.
@@ -33,6 +33,10 @@ produccion (v3.4, servicio NSSM en Windows con SQLite).
 - Rate limit del login: 5 intentos por minuto por IP (antes 10).
 - `DATABASE_URL` acepta el formato canonico del Maestro (`postgres://`).
 - Imagenes base fijadas por digest; usuario no-root con UID 1001.
+- Validacion transversal (5 validadores): links de proyecto solo `http(s)://`, mails con HTML escapado, reset de
+  password en modal con campo oculto, consulta N+1 de proyectos resuelta, indice en tendencias, timeout de Lenovo
+  de 10 s, `ensayo.sh` sin el volumen de storage que ya no existe, y 24 tests nuevos (garantias, adjuntos,
+  proyectos, mails, permisos, bcrypt, TTL).
 - JWT con PyJWT en lugar de python-jose (que arrastraba `ecdsa`, CVE-2024-23342 sin fix); `npm audit fix`.
 - Claves de sincronizacion comparadas en tiempo constante (`hmac.compare_digest`).
 - Adjuntos guardados en la base (sin volumen de storage; ADR-001).

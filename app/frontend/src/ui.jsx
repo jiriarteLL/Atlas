@@ -1,5 +1,7 @@
 // ui.jsx — Constantes y componentes chicos compartidos por las secciones.
 
+// Solo http(s): un link guardado nunca se usa como href si es javascript:, data:, etc.
+export const urlSegura = (u) => (typeof u === "string" && /^https?:\/\//i.test(u.trim())) ? u.trim() : null;
 export const SEDES = ["CABA","Rosario","Cordoba","Corrientes","Mendoza","Neuquen","Tigre","Resguarda"];
 export const COLORES = ["#3987e5","#008300","#d55181","#c98500","#199e70","#d95926","#9085e9","#e66767"];
 export const TIPOS = ["Notebook","Monitor","Impresora","Servidor","Switch","UPS","CPU"];

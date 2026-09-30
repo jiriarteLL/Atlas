@@ -109,6 +109,8 @@ export default function App() {
   const [usuarios, setUsuarios] = useState([]);
   const [nuevoUser, setNuevoUser] = useState({username:"",password:"",nombre:"",email:"",rol:"viewer"});
   const [userMsg, setUserMsg] = useState("");
+  // Reset de password de otro usuario: modal con input type=password (prompt() mostraba lo que se escribia).
+  const [resetPass, setResetPass] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarHidden, setSidebarHidden] = useState(false);
 
@@ -380,7 +382,7 @@ export default function App() {
                         {(u.rol==="superadmin"?["superadmin"]:["admin","editor","viewer"]).map(r=><option key={r} value={r} style={{background:"#fff",color:"#333"}}>{r}</option>)}
                       </select></td>
                     <td style={{padding:"8px 12px",color:"#333"}}>
-                      <button onClick={()=>{ const p=prompt("Nueva contrasena para "+u.username+" (minimo 12 caracteres, con mayusculas, minusculas, numeros o simbolos):"); if(p&&p.length>=12) guardarUsuario(u,{password:p}); else if(p) alert("Minimo 12 caracteres."); }}
+                      <button onClick={()=>setResetPass({username:u.username, pass:"", confirmar:"", error:""})}
                         style={{background:"#6b8090",color:"#fff",border:"none",borderRadius:4,padding:"4px 10px",cursor:"pointer",fontSize:12,marginRight:6}}>Reset pass</button>
                       {u.rol !== "superadmin" && u.username !== user?.username && (<button onClick={()=>eliminarUsuario(u.username)} style={{background:"#e74c3c",color:"#fff",border:"none",borderRadius:4,padding:"4px 10px",cursor:"pointer",fontSize:12}}>Eliminar</button>)}</td>
                   </tr>
@@ -904,6 +906,32 @@ export default function App() {
           <div style={{marginTop:"auto",fontSize:11,color:"var(--text-muted)"}}>Los cambios se aplican al instante.</div>
         </div>
       </>)}
+
+      {/* MODAL RESET DE PASSWORD */}
+      {resetPass&&<div className="modal-overlay" onClick={()=>setResetPass(null)}>
+        <form className="modal" style={{maxWidth:420}} onClick={e=>e.stopPropagation()}
+          onSubmit={async e=>{ e.preventDefault();
+            if(resetPass.pass.length<12) return setResetPass({...resetPass,error:"Mínimo 12 caracteres, combinando mayúsculas, minúsculas, números o símbolos."});
+            if(resetPass.pass!==resetPass.confirmar) return setResetPass({...resetPass,error:"Las contraseñas no coinciden."});
+            await guardarUsuario({username:resetPass.username},{password:resetPass.pass}); setResetPass(null); }}>
+          <div className="modal-head">
+            <div className="modal-icon">🔑</div>
+            <div className="modal-title">Nueva contraseña para {resetPass.username}</div>
+          </div>
+          <p style={{fontSize:12.5,color:"var(--text-secondary)",margin:"0 0 12px"}}>El usuario va a tener que cambiarla en su próximo ingreso. Sus sesiones abiertas se cierran.</p>
+          {[["pass","Contraseña nueva"],["confirmar","Repetir"]].map(([k,l])=>(
+            <div key={k} className="form-group" style={{marginBottom:10}}>
+              <label className="form-label">{l}</label>
+              <input type="password" autoComplete="new-password" value={resetPass[k]} onChange={e=>setResetPass({...resetPass,[k]:e.target.value,error:""})} required style={{width:"100%"}}/>
+            </div>
+          ))}
+          {resetPass.error&&<div style={{fontSize:12.5,color:"var(--critical-text)",marginBottom:8}}>{resetPass.error}</div>}
+          <div className="modal-actions">
+            <button type="button" className="btn" onClick={()=>setResetPass(null)}>Cancelar</button>
+            <button type="submit" className="btn btn-primary">Guardar</button>
+          </div>
+        </form>
+      </div>}
 
       {/* MODAL NUEVO ACTIVO */}
       {showModal&&<div className="modal-overlay" onClick={()=>setShowModal(false)}>

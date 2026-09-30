@@ -42,6 +42,16 @@ def test_login_path_de_maestro_acepta_json(client, token):
     assert client.post("/login", json={}).status_code == 401
 
 
+def test_access_token_de_15_minutos_como_maximo():
+    assert config.TOKEN_TTL_MIN <= 15   # RNF-04 / SPEC §2.4.2
+
+
+def test_bcrypt_cost_12_o_mas():
+    from auth import hash_password
+    h = hash_password(clave_valida())
+    assert h.startswith("$2b$") and int(h.split("$")[2]) >= 12   # RNF-03 / SPEC §2.4.1
+
+
 def test_login_invalido_401_mismo_mensaje(client, token):
     a = login(client, password=clave_mala())
     b = login(client, usuario="nadie@example.test")

@@ -401,6 +401,15 @@ class ProyectoIn(BaseModel):
     responsables:    Optional[list] = []
     activos:         Optional[list] = []
 
+    @field_validator("link_sharepoint", "link_ticket", mode="after")
+    @classmethod
+    def _solo_http(cls, v):
+        """Los links se muestran como href: solo http(s), nada de javascript: o data:."""
+        v = (v or "").strip()
+        if v and not re.match(r"^https?://[^\s<>\"']+$", v, re.I):
+            raise ValueError("el link tiene que empezar con http:// o https://")
+        return v
+
 
 class TareaIn(BaseModel):
     titulo:       str = Field(..., min_length=1, max_length=250)
@@ -413,10 +422,13 @@ class TareaIn(BaseModel):
 
 def _proy_dict(db, p):
     resp = [r.responsable for r in db.query(ProyectoResponsable).filter(ProyectoResponsable.proyecto_id == p.id)]
+    vinculos = [pa.asset_id for pa in db.query(ProyectoActivo).filter(ProyectoActivo.proyecto_id == p.id)]
+    # Una sola consulta para todos los activos del proyecto (antes era una por activo: N+1).
+    por_id = {a.id: a for a in db.query(Asset).filter(Asset.id.in_(vinculos))} if vinculos else {}
     acts = []
-    for pa in db.query(ProyectoActivo).filter(ProyectoActivo.proyecto_id == p.id):
-        a = db.query(Asset).filter(Asset.id == pa.asset_id).first()
-        acts.append({"id": pa.asset_id, "nombre": a.nombre if a else "",
+    for aid in vinculos:
+        a = por_id.get(aid)
+        acts.append({"id": aid, "nombre": a.nombre if a else "",
                      "tipo": a.tipo if a else "", "serial": a.serial if a else ""})
     tareas = [{"id": t.id, "titulo": t.titulo, "completada": t.completada == "1",
                "estado": t.estado or ("Realizado" if t.completada == "1" else "Pendiente"),
@@ -617,7 +629,8 @@ def _lenovo_garantia(serial):
         return None, None, "Serial vacio o invalido"
     url = "https://pcsupport.lenovo.com/ar/es/products/%s/warranty" % s
     try:
-        with _ureq.urlopen(_ureq.Request(url, headers=_HDR_LNV), timeout=25, context=_CTX) as r:
+        # Endpoint sincronico: corre en el threadpool, no bloquea el event loop; 10 s acota cuanto ocupa un hilo.
+        with _ureq.urlopen(_ureq.Request(url, headers=_HDR_LNV), timeout=10, context=_CTX) as r:
             html = r.read().decode("utf-8", "ignore")
     except Exception as e:
         return None, None, "No se pudo consultar (%s)" % type(e).__name__

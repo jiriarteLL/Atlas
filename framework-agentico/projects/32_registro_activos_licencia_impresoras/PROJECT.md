@@ -79,10 +79,10 @@ phases_status:
     status: "incomplete_pre_existing"
     exit_criteria_met: false
     sync_date: "2026-09-30"
-    sync_notes: "Codigo completo; 84 tests de backend, eslint 0 y build OK en local; maestro.yaml valido contra el schema v2. pip-audit 0 vulnerabilidades y npm audit sin altas ni criticas (docs/inventario/auditoria-dependencias.md)."
+    sync_notes: "Codigo completo; 108 tests de backend, eslint 0 y build OK en local; maestro.yaml valido contra el schema v2. pip-audit 0 vulnerabilidades y npm audit sin altas ni criticas (docs/inventario/auditoria-dependencias.md)."
     po_review: { fecha: "2026-09-30", decision: "b: incompleta con excepciones; validacion transversal despues; Trivy y tests en PostgreSQL con la VM" }
+    validacion_transversal: { fecha: "2026-09-30", intento: 1, resultado: "PASS tras correcciones (5/5)", detalle: "docs/inventario/03-validacion-transversal.md" }
     missing_criteria:
-      - "Validacion transversal (security-auditor, qa-tester, performance-analyst, compliance-analyst, code-reviewer)"
       - "Sin vulnerabilidades CRITICAL/HIGH: Trivy pendiente (requiere Docker); dependencias ya auditadas"
       - "Linter de Python en el backend"
       - "Tests contra PostgreSQL (DT-06)"
@@ -107,7 +107,7 @@ phases_status:
     po_review: { fecha: "2026-09-30", decision: "b: incompleta con excepciones; se cierra con ensayo.sh en contenedor y la validacion transversal" }
     missing_criteria:
       - "Logs del seeder sin password verificados en un contenedor real"
-      - "Validacion transversal"
+      - "Validacion transversal de la fase (la de 03 ya dio PASS; re-correr tras el ensayo en contenedor)"
   06-operations:
     status: "incomplete_pre_existing"
     exit_criteria_met: false
