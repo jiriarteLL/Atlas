@@ -4,7 +4,7 @@ metadata:
   name: inventario
   version: 2.0.0
   description: "Inventario LLYA: activos de TI, garantias, proyectos de IT y relevamiento automatico de equipos"
-  # Propuesta del desarrollador, a confirmar por el evaluador (PROJECT.md la espeja).
+  # Confirmado por el PO (2026-09-30); PROJECT.md la espeja.
   criticality: standard
 requires:
   database: postgres

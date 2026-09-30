@@ -21,9 +21,8 @@ el seguimiento de los proyectos de IT y sus tareas.
 | Reportes y tendencias (snapshots semanales) | |
 | Usuarios de la app, roles y permisos | |
 
-> ⚠️ El repo se llama `32_registro_activos_licencia_impresoras`, pero Licencias queda **fuera** de esta versión
-> porque vive en el UserManager (otra app). **Decisión del PO:** confirmar el alcance o planificar Licencias como
-> módulo propio de esta app.
+> El repo se llama `32_registro_activos_licencia_impresoras`, pero Licencias queda **fuera** de esta versión
+> porque vive en el UserManager (otra app). **Alcance confirmado por el PO el 2026-09-30.**
 
 ## 3. Requisitos funcionales (MoSCoW propuesto)
 

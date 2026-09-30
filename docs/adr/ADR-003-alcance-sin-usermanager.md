@@ -1,6 +1,6 @@
 # ADR-003 — La v2 no depende del UserManager
 
-- **Estado:** aceptado por el PO (2026-09-29, "V2 solo con lo propio")
+- **Estado:** aceptado por el PO (2026-09-29, "V2 solo con lo propio"; alcance sin Licencias reconfirmado el 2026-09-30)
 - **Fecha:** 2026-09-29
 
 ## Contexto

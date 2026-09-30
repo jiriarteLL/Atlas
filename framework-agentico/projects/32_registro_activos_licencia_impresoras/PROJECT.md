@@ -21,7 +21,7 @@ project_type: "app_huesped"
 preset_active: "web-maestro"
 
 # Tier de criticidad (MANUAL §7 Paso 1.3): DEBE coincidir con maestro.yaml metadata.criticality.
-# Propuesta del desarrollador; lo confirma el evaluador humano.
+# Confirmado por el PO el 2026-09-30. El evaluador humano revisa su coherencia (MANUAL §8.1).
 criticality: "standard"
 
 created_at: "2026-09-30"
@@ -65,7 +65,6 @@ phases_status:
     sync_notes: "Requisitos, MoSCoW, criterios de aceptacion, restricciones y glosario redactados a partir del codigo en docs/inventario/01-requisitos.md."
     missing_criteria:
       - "Priorizacion MoSCoW validada por el PO"
-      - "Alcance validado por el PO: el nombre del repo menciona licencias y Licencias quedo fuera (ADR-003)"
   02-planning:
     status: "incomplete_pre_existing"
     exit_criteria_met: false
@@ -146,7 +145,9 @@ decisions_log:
   - { fecha: "2026-09-30", por: "desarrollador", decision: "Adjuntos en la base por CONVENCIONES §4.2 (ADR-001)", estado: "a revisar por el evaluador" }
   - { fecha: "2026-09-30", por: "desarrollador", decision: "JWT HS256 con JWT_SECRET (ADR-002)", estado: "a revisar por el evaluador" }
   - { fecha: "2026-09-30", por: "desarrollador", decision: "Sin Tailwise (ADR-004)", estado: "a revisar por el evaluador" }
-  - { fecha: "2026-09-30", por: "desarrollador", decision: "criticality standard, data_policy pii true / regulated false", estado: "propuesta, la confirma el evaluador" }
+  - { fecha: "2026-09-30", por: "PO", decision: "Alcance confirmado sin Licencias (ADR-003)" }
+  - { fecha: "2026-09-30", por: "PO", decision: "Tier standard (metadata.criticality)" }
+  - { fecha: "2026-09-30", por: "desarrollador", decision: "data_policy pii true / regulated false", estado: "a revisar por el evaluador" }
 
 escalations_log:
   - { fecha: "2026-09-29", tema: "Rango de puertos de Test (3110-3199) completo: los 9 puertos responden", estado: "pedido por mail, sin respuesta" }

@@ -34,7 +34,7 @@ Las tablas se crean con `init_db()`, que es idempotente y corre en cada arranque
 ## Datos personales (data_policy)
 
 `pii: true`. Se guardan el nombre, el usuario de dominio y el email corporativo de las personas asignadas a cada
-equipo y de los usuarios de la app. No hay categorías sensibles. `regulated: false` es una **propuesta**: si el
+equipo y de los usuarios de la app. No hay categorías sensibles. El tier `standard` lo confirmó el PO (2026-09-30). `regulated: false` es una **propuesta**: si el
 estudio considera que aplica la Ley 25.326, corresponde `regulated: true`, `criticality: critical` y un ADR de
 cumplimiento (DP-006). Lo decide el evaluador o el PO.
 
