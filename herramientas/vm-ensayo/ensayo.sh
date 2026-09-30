@@ -80,7 +80,8 @@ esperar "api sin token"                     401 c "$B/api/assets"
 TOK=$(curl -s -m 5 -X POST "$B/login" -H 'Content-Type: application/json' \
       -d "{\"email\":\"admin@llyasoc.com\",\"password\":\"$SUPER\"}" | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
 [ -n "$TOK" ] && ok "login superadmin (seeder) -> token" || mal "login superadmin sin token"
-esperar "login invalido"                    401 c -X POST "$B/login" -H 'Content-Type: application/json' -d '{"email":"admin@llyasoc.com","password":"PRUEBA"}'
+MALA="Zz9-$(hex 8)"   # bien formada pero no es la de nadie
+esperar "login invalido"                    401 c -X POST "$B/login" -H 'Content-Type: application/json' -d "{\"email\":\"admin@llyasoc.com\",\"password\":\"$MALA\"}"
 esperar "api con token"                     200 c -H "Authorization: Bearer $TOK" "$B/api/assets"
 esperar "logout"                            200 c -X POST -H "Authorization: Bearer $TOK" "$B/auth/logout"
 esperar "api tras logout"                   401 c -H "Authorization: Bearer $TOK" "$B/api/assets"
