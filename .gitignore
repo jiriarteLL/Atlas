@@ -108,3 +108,5 @@ _referencia/
 # Resultado del ensayo en la VM
 ensayo-resultado.txt
 .env.previo
+# Salidas sueltas de corridas de tests
+*pytest_output*.txt
