@@ -793,7 +793,8 @@ def _glpi_map(c, previo):
         "usuario_alt": ("%s %s" % (dominio, login)).strip(),
         "ubicacion": _glpi_sede(nombre),
         "estado": "Activo", "garantia": "", "comentarios": "",
-        "monitores": "|".join(x for x in (_gc("%s %s" % (m.get("manufacturer") or "", m.get("caption") or "")) for m in (c.get("monitors") or [])) if x),
+        "monitores": "|".join(x for x in (_gc("%s %s" % (m.get("manufacturer") or "", m.get("caption") or ""))
+                                          for m in (c.get("monitors") or [])) if x),
         "impresoras": "|".join(x for x in (_gc(p.get("name")) for p in (c.get("printers") or [])) if x),
         "software": sw, "cifrado": cif, "tpm": "",
     }
@@ -828,7 +829,7 @@ def _glpi_resumen(c):
         "discos": "; ".join("%s %dGB %s" % (_gc(s.get("model")), round((s.get("disksize") or 0) / 1000.0), _gc(s.get("type")))
                             for s in (c.get("storages") or [])),
         "volumenes_sin_cifrar": ", ".join(sin_cif),
-        "office": "; ".join(_gc(l.get("name")) for l in (c.get("licenseinfos") or []) if "office" in (l.get("name") or "").lower()),
+        "office": "; ".join(_gc(li.get("name")) for li in (c.get("licenseinfos") or []) if "office" in (li.get("name") or "").lower()),
         "ultimo_arranque": _gc(so.get("boot_time")),
         "chasis": _gc(hw.get("chassis_type")), "virtual": _gc(hw.get("vmsystem")),
         "bios": "%s (%s)" % (_gc(bios.get("bversion")), _gc(bios.get("bdate"))),
@@ -874,7 +875,7 @@ async def sync_glpi(request: Request, x_sync_key: str = Header(default="")):
         txt = raw.decode("utf-8-sig")
         data = _json.loads(txt[txt.find("{"):])
     except (OSError, ValueError):
-        raise HTTPException(status_code=422, detail="JSON invalido")
+        raise HTTPException(status_code=422, detail="JSON invalido") from None
     c = data.get("content", data) if isinstance(data, dict) else {}
     bios = c.get("bios") or {}
     serial = _gc(bios.get("ssn") or bios.get("msn"))
@@ -1037,7 +1038,7 @@ def _loop_snapshots():
             db = SessionLocal()
             ultimo = db.query(func.max(Snapshot.fecha)).scalar()
             if ultimo is None or (datetime.utcnow() - ultimo).days >= config.SNAPSHOT_DIAS:
-                n = tomar_snapshot(db)
+                tomar_snapshot(db)
                 log.info("snapshot.ok", extra={"event": "snapshot"})
             db.close()
         except Exception as e:

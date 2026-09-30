@@ -1,6 +1,10 @@
 # -*- coding: utf-8 -*-
 """Envio de notificaciones por SMTP. Silencioso ante fallos: nunca rompe la operacion."""
-import html, logging, smtplib, ssl, threading
+import html
+import logging
+import smtplib
+import ssl
+import threading
 from email.message import EmailMessage
 from email.utils import formataddr
 import config
@@ -58,7 +62,7 @@ def enviar(destinatarios, asunto, cuerpo_html, cuerpo_txt=""):
 
 def _html(titulo, lineas, pie=""):
     c = _cfg()
-    filas = "".join("<p style='margin:6px 0;font-size:14px;color:#333'>%s</p>" % l for l in lineas)
+    filas = "".join("<p style='margin:6px 0;font-size:14px;color:#333'>%s</p>" % linea for linea in lineas)
     return """<html><body style="font-family:Segoe UI,Arial,sans-serif;background:#f4f6f8;padding:24px">
 <div style="max-width:560px;margin:auto;background:#fff;border-radius:8px;overflow:hidden;border:1px solid #e0e4e8">
   <div style="background:#0B7285;padding:16px 22px">
@@ -67,7 +71,9 @@ def _html(titulo, lineas, pie=""):
   <div style="padding:22px">
     %s
     <p style="margin-top:22px">
-      <a href="%s/#proyectos" style="background:#00AEAE;color:#fff;text-decoration:none;padding:10px 20px;border-radius:5px;font-size:14px;display:inline-block">Ver en Inventario</a>
+      <a href="%s/#proyectos"
+         style="background:#00AEAE;color:#fff;text-decoration:none;padding:10px 20px;
+                border-radius:5px;font-size:14px;display:inline-block">Ver en Inventario</a>
     </p>
     %s
   </div>

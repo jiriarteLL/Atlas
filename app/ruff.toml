@@ -1,0 +1,9 @@
+# Linter del backend y los tests (fase 03: "convenciones de codigo cumplidas").
+line-length = 140
+target-version = "py311"
+
+[lint]
+# E/W pycodestyle, F pyflakes, B bugbear
+select = ["E", "F", "W", "B"]
+# B008: Depends(...)/Header(...) en parametros es el patron de FastAPI para declarar dependencias.
+ignore = ["B008"]

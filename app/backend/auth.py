@@ -25,7 +25,7 @@ from limits.storage import MemoryStorage
 from limits.strategies import MovingWindowRateLimiter
 from passlib.context import CryptContext
 from pydantic import BaseModel
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, func
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String
 
 import config
 import contexto
@@ -178,7 +178,7 @@ def _cargar_blacklist():
     ruta = os.path.join(os.path.dirname(os.path.abspath(__file__)), "passwords_comunes.txt")
     if os.path.isfile(ruta):
         with open(ruta, encoding="utf-8", errors="ignore") as f:
-            s.update(l.strip().lower() for l in f if l.strip())
+            s.update(linea.strip().lower() for linea in f if linea.strip())
     return s
 
 
@@ -292,7 +292,7 @@ def _decodificar(token):
     try:
         return jwt.decode(token, config.JWT_SECRET, algorithms=[config.JWT_ALGORITHM])
     except JWTError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token invalido o expirado.")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token invalido o expirado.") from None
 
 
 def _sha(token):

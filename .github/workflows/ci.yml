@@ -22,6 +22,9 @@ jobs:
         with: { python-version: "3.11", cache: pip, cache-dependency-path: app/backend/requirements-dev.txt }
       - name: Dependencias del backend
         run: pip install -r app/backend/requirements-dev.txt
+      - name: Lint del backend (ruff)
+        working-directory: app
+        run: ruff check backend tests
       - name: Tests del backend (pytest)
         run: python -m pytest app/tests -q -p no:cacheprovider
 

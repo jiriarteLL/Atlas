@@ -6,8 +6,8 @@ import logging
 import pytest
 
 import config
-from conftest import (QA_ADMIN, QA_ADMIN_PASS, SUPERADMIN, SUPERADMIN_PASS, bearer, clave_mala, clave_valida,
-                      crear_usuario_db, login)
+from conftest import (QA_ADMIN_PASS, SUPERADMIN, SUPERADMIN_PASS, bearer, clave_mala, clave_valida,
+                      login)
 
 CLAVE_USUARIO = clave_valida()
 CLAVE_NUEVA = clave_valida()
@@ -190,8 +190,10 @@ def test_editor_no_elimina_activos(client, token):
 def test_email_obligatorio_y_unico(client, token):
     base = {"password": CLAVE_USUARIO, "nombre": "x", "rol": "viewer"}
     assert client.post("/auth/usuarios", headers=bearer(token), json={**base, "username": "u1", "email": "no-es-mail"}).status_code == 400
-    assert client.post("/auth/usuarios", headers=bearer(token), json={**base, "username": "u1", "email": "Rep@Example.test"}).status_code == 200
-    assert client.post("/auth/usuarios", headers=bearer(token), json={**base, "username": "u2", "email": "rep@example.test"}).status_code == 400
+    alta = lambda username, email: client.post("/auth/usuarios", headers=bearer(token),  # noqa: E731
+                                               json={**base, "username": username, "email": email}).status_code
+    assert alta("u1", "Rep@Example.test") == 200
+    assert alta("u2", "rep@example.test") == 400
     # login por email, sin distinguir mayusculas
     assert login(client, "REP@example.test", CLAVE_USUARIO).status_code == 200
 
@@ -294,6 +296,6 @@ def test_logs_json_sin_secretos(client):
     lineas = h.lineas
     todo = "\n".join(lineas)
     assert SUPERADMIN_PASS not in todo and tok not in todo
-    req = [json.loads(l) for l in lineas if '"http.request"' in l]
+    req = [json.loads(linea) for linea in lineas if '"http.request"' in linea]
     assert req and all(r["request_id"].startswith("req_") and r["app_slug"] == "inventario" for r in req)
     assert any(r["user_id"] for r in req if r["path"] == "/api/assets")

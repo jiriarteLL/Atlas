@@ -84,7 +84,6 @@ phases_status:
     validacion_transversal: { fecha: "2026-09-30", intento: 1, resultado: "PASS tras correcciones (5/5)", detalle: "docs/inventario/03-validacion-transversal.md" }
     missing_criteria:
       - "Sin vulnerabilidades CRITICAL/HIGH: Trivy pendiente (requiere Docker); dependencias ya auditadas"
-      - "Linter de Python en el backend"
       - "Tests contra PostgreSQL (DT-06)"
       - "PRs e issues del flujo del framework"
   04-delivery:

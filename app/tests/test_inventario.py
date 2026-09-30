@@ -6,9 +6,8 @@ from datetime import date, timedelta
 
 import pytest
 
-import config
 import main
-from conftest import SYNC_KEY, bearer, clave_valida, crear_usuario_db, login
+from conftest import SYNC_KEY, bearer, crear_usuario_db, login
 
 ACTIVO = {"tipo": "Notebook", "serial": "PF3ABCD", "marca": "Lenovo", "modelo": "T14", "usuario": "jperez"}
 
@@ -31,7 +30,8 @@ def test_sync_rechaza_clave_invalida_o_faltante(client):
 def test_sync_crea_y_actualiza_por_serial(client, token):
     h = {"X-Sync-Key": SYNC_KEY}
     assert client.post("/api/sync", json=dict(ACTIVO, software=[{"nombre": "7-Zip", "version": "23"}]), headers=h).status_code == 200
-    assert client.post("/api/sync", json=dict(ACTIVO, ram="16GB", software=[{"nombre": "7-Zip", "version": "24"}]), headers=h).status_code == 200
+    datos = dict(ACTIVO, ram="16GB", software=[{"nombre": "7-Zip", "version": "24"}])
+    assert client.post("/api/sync", json=datos, headers=h).status_code == 200
     activos = client.get("/api/assets", headers=bearer(token)).json()
     assert len(activos) == 1 and activos[0]["ram"] == "16GB"
     hist = client.get("/api/assets/%s/historial" % activos[0]["id"], headers=bearer(token)).json()
@@ -168,7 +168,8 @@ def test_proyecto_con_responsables_y_activos(client, token):
 
 def test_proyecto_finalizado_notifica_sin_romper(client, token, monkeypatch):
     enviados = []
-    monkeypatch.setattr(main, "notificar_proyecto_finalizado", lambda proy, quien, dest: enviados.append((proy["nombre"], sorted(set(dest)))))
+    monkeypatch.setattr(main, "notificar_proyecto_finalizado",
+                        lambda proy, quien, dest: enviados.append((proy["nombre"], sorted(set(dest)))))
     pid = client.post("/api/proyectos", headers=bearer(token),
                       json={"nombre": "Migracion", "responsables": ["jperez"]}).json()["id"]
     r = client.put("/api/proyectos/" + pid, headers=bearer(token),
