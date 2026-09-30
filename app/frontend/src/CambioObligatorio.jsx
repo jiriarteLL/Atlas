@@ -33,30 +33,31 @@ export default function CambioObligatorio() {
   }
 
   const campo = (k, label, auto) => (
-    <div className="form-group" style={{ marginBottom: 12 }}>
-      <label className="form-label">{label}</label>
-      <input type="password" autoComplete={auto} value={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} required style={{ width: "100%" }} />
-    </div>
+    <label className="ll-campo">
+      <span>{label}</span>
+      <input className="ll-input" type="password" autoComplete={auto} value={f[k]} onChange={(e) => setF({ ...f, [k]: e.target.value })} required />
+    </label>
   );
 
   return (
-    <div className="modal-overlay">
-      <form className="modal" onSubmit={enviar} style={{ maxWidth: 420 }}>
-        <div className="modal-head">
-          <div className="modal-icon">🔒</div>
-          <div className="modal-title">Cambiá tu contraseña</div>
+    <div className="ll-login-velo">
+      <form className="ll-login" onSubmit={enviar}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14 }}>
+          <div className="ll-logo" style={{ width: 58, height: 58, borderRadius: 16, fontSize: 22 }}>🔒</div>
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 21, fontWeight: 600 }}>Cambiá tu contraseña</div>
+            <div className="mono" style={{ fontSize: 10.5, letterSpacing: 3, color: "var(--accent)", marginTop: 5 }}>PRIMER INGRESO</div>
+          </div>
         </div>
-        <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: "0 0 16px" }}>
+        <p style={{ fontSize: 13, color: "var(--ll-text-2)", margin: 0, textAlign: "center" }}>
           {user?.username} tiene una contraseña inicial o reseteada. Antes de seguir tenés que elegir una propia.
         </p>
-        {campo("actual", "Contraseña actual", "current-password")}
-        {campo("nuevo", "Contraseña nueva", "new-password")}
-        {campo("confirmar", "Repetir la nueva", "new-password")}
-        {msg && <div style={{ fontSize: 13, color: "var(--critical-text)", marginBottom: 10 }}>{msg}</div>}
-        <div className="modal-actions">
-          <button type="button" className="btn" onClick={logout}>Cerrar sesión</button>
-          <button type="submit" className="btn btn-primary" disabled={enviando}>{enviando ? "Guardando..." : "Cambiar contraseña"}</button>
-        </div>
+        {campo("actual", "CONTRASEÑA ACTUAL", "current-password")}
+        {campo("nuevo", "CONTRASEÑA NUEVA", "new-password")}
+        {campo("confirmar", "REPETIR LA NUEVA", "new-password")}
+        {msg && <div className="ll-error" role="alert"><span>⚠</span>{msg}</div>}
+        <button type="submit" className="ll-login-btn" disabled={enviando}>{enviando ? "GUARDANDO…" : "CAMBIAR CONTRASEÑA"}</button>
+        <button type="button" className="ll-btn-borde" onClick={logout} style={{ alignSelf: "center" }}>Cerrar sesión</button>
       </form>
     </div>
   );

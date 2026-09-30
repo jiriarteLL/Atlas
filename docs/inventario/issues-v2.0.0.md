@@ -19,7 +19,7 @@ Cada issue sale de un pendiente real de `PROJECT.md` o de la deuda técnica (`06
 | 12 | Clave de sincronización por equipo o sede | `seguridad`, `deuda` | Reemplazar la `SYNC_API_KEY` única por claves revocables. DT-03. |
 | 13 | Antivirus para adjuntos | `seguridad`, `deuda` | Escaneo al subir (ClamAV o similar). DT-04. |
 | 14 | Tests de humo del frontend (Playwright) | `testing`, `deuda` | Login, refresh, cambio obligatorio de contraseña, exportar a Excel (verificar la CSP). DT-07. |
-| 15 | Fuentes servidas por la app | `frontend`, `deuda` | Sacar Google Fonts externo. DT-08. |
+| 15 | ~~Fuentes servidas por la app~~ | `frontend`, `deuda` | **Hecho (2026-09-30):** fuentes en `/fonts/`, CSP sin dominios externos y test. Crear el issue ya cerrado o no crearlo. DT-08. |
 | 16 | Migración de datos de producción a PostgreSQL | `datos`, `deuda` | Script SQLite → PostgreSQL. Recién cuando haya HTTPS (MANUAL §0.1). DT-10. |
 | 17 | Protocolo de incidentes: responsables y escalamiento | `operaciones`, `decisión-PO` | Completar los responsables y canales en `06-incidentes-y-deuda.md`. |
 | 18 | Decisión `regulated` (Ley 25.326) | `datos`, `decisión-PO` | Confirmar `data_policy.classification.regulated`. Si es `true`: tier `critical` + ADR de cumplimiento. |

@@ -36,7 +36,7 @@ corregir con un PR (el ciclo completo de MANUAL §7) → postmortem en `docs/inv
 | ~~DT-05~~ | ~~Migraciones con `create_all` (no versionadas)~~ | — | **Resuelta (2026-09-30):** Alembic con la migración `0001` (esquema y trigger del audit). Ver el runbook, "Cambios de esquema" |
 | DT-06 | Tests sobre SQLite, no sobre PostgreSQL | Diferencias de dialecto sin detectar | Correr la suite contra Postgres en la VM de ensayo y en CI (servicio `postgres`) |
 | DT-07 | Sin tests del frontend | Regresiones de UI | Tests de humo con Playwright del login, el refresh y el cambio obligatorio |
-| DT-08 | Google Fonts externo | Dependencia de terceros y privacidad | Servir las fuentes desde la app |
+| ~~DT-08~~ | ~~Google Fonts externo~~ | — | **Resuelta (2026-09-30):** Space Grotesk y JetBrains Mono (OFL 1.1) servidas por la app desde `/fonts/`; la CSP ya no habilita dominios externos |
 | DT-09 | Licencias y Nómina fuera de alcance (ADR-003) | Funcionalidad que hoy da el UserManager | A definir por el PO |
 | DT-10 | Migración de datos desde producción | La v2 arranca vacía | Script SQLite → PostgreSQL cuando haya HTTPS |
-| DT-11 | `App.jsx` concentra el shell y varias pantallas (~940 líneas) (code review, 2026-09-30) | Mantenibilidad del frontend | Extraer dashboard, listado de activos y ficha a `secciones/`, como ya se hizo con proyectos y perfil |
+| ~~DT-11~~ | ~~`App.jsx` concentra el shell y varias pantallas (~940 líneas)~~ | — | **Resuelta (2026-09-30):** con el diseño v2, cada pantalla quedó en `src/vistas/` y las piezas visuales en `src/diseno/`; `App.jsx` es solo el esqueleto (~230 líneas) |

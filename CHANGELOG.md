@@ -26,6 +26,11 @@ produccion (v3.4, servicio NSSM en Windows con SQLite).
 - CI: `ci.yml` (tests, lint, build, schema v2, compose, gitleaks) y `deploy.yml` (build, Trivy, ghcr, cosign).
 - Documentacion de fases en `docs/inventario/` y ADR-001..004; `SECURITY.md`; proyecto registrado en el framework.
 - 112 tests de backend (contrato, auth, sesion, seeder, negocio, logs y chequeos estaticos).
+- Interfaz con el diseño v2 del prototipo (`_referencia/inventario-llya.html`): intro con contador, esfera 3D de
+  fondo (three.js, carga diferida), login y cambio de contraseña en tarjeta, menu lateral, dashboard con tarjetas,
+  ficha del activo en panel lateral y panel de Ambientacion (color de acento, fondo animado, brillo, sonido).
+  Licencias y Nomina aparecen como pantallas de diseño sin datos (fuera del alcance de esta version).
+  Los usuarios de la app se administran en Herramientas → Accesos.
 
 ### Cambiado
 - Toda la configuracion por variables de entorno; sin IPs, puertos, rutas de Windows ni secretos en el codigo.
@@ -39,6 +44,9 @@ produccion (v3.4, servicio NSSM en Windows con SQLite).
   proyectos, mails, permisos, bcrypt, TTL).
 - Migraciones versionadas con Alembic (`0001`: esquema inicial y trigger del audit); linter ruff en el backend.
 - JWT con PyJWT en lugar de python-jose (que arrastraba `ecdsa`, CVE-2024-23342 sin fix); `npm audit fix`.
+- Fuentes servidas por la app (sin Google Fonts); la CSP no habilita ningun dominio externo (DT-08).
+- Exportar CSV neutraliza celdas que empiezan con `= + - @` (inyeccion de formulas) e importar respeta comillas.
+- Quitado `axios` (dependencia sin uso, con avisos altos de `npm audit`).
 - Claves de sincronizacion comparadas en tiempo constante (`hmac.compare_digest`).
 - Adjuntos guardados en la base (sin volumen de storage; ADR-001).
 - Frontend con rutas relativas (mismo origen) y controles segun permisos.

@@ -21,7 +21,7 @@ export function useGraficos() {
   useEffect(() => {
     if (modulo) return;
     let vivo = true;
-    cargar().then(x => { if (vivo) setM(x); }).catch(() => {});
+    cargar().then(x => { if (vivo) setM(x); }).catch((e) => { pedido = null; console.error("No se pudo cargar la libreria de graficos:", e); });
     return () => { vivo = false; };
   }, []);
   return m || PROVISORIO;

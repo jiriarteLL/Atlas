@@ -18,4 +18,6 @@ imagen: ese escaneo queda pendiente de la VM de ensayo (issue #2).
 | `brace-expansion` (vía `exceljs → archiver → glob/readdir-glob` y vía eslint) | Alta (DoS) | `npm audit fix`, sin cambios incompatibles. Además solo se usa en tiempo de build: la imagen final no lleva `node_modules`. |
 | `uuid` < 11.1.1 (vía `exceljs@4.4.0`) | Moderada (GHSA-w5hq-g745-h8pq) | **No aplica.** El bug está en v3/v5/v6 cuando se les pasa un buffer, y exceljs usa solo `uuid.v4()`. El arreglo que propone npm (bajar a `exceljs@3.4.0`) rompe compatibilidad. Tampoco se fuerza otra versión con `overrides`: el navegador carga el bundle ya compilado de exceljs, que trae su propia copia, así que forzar la versión solo silenciaría el aviso. Se revisa si sale exceljs 4.x con uuid ≥ 11.1.1. |
 
+| `axios` 1.x | Alta (varios GHSA) | **Quitado (2026-09-30):** figuraba en `package.json` pero el código no lo usaba (todo va por `fetch`). |
+
 **Resultado después del fix:** 2 moderadas, ambas del caso `uuid` descripto arriba. Ninguna alta ni crítica.

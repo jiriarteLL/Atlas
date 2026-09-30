@@ -47,6 +47,13 @@ def test_cabeceras_de_seguridad(client):
     assert client.get("/api/assets").headers.get("cache-control") == "no-store"
 
 
+def test_csp_sin_origenes_externos(client):
+    # Las fuentes las sirve la app (DT-08): la CSP no habilita ningun dominio de terceros.
+    csp = client.get("/health").headers["content-security-policy"]
+    assert "http" not in csp
+    assert "font-src 'self' data:" in csp
+
+
 def test_request_id_se_propaga_o_se_genera(client):
     assert client.get("/health", headers={"X-Request-Id": "abc123-def456"}).headers["x-request-id"] == "abc123-def456"
     generado = client.get("/health", headers={"X-Request-Id": "<script>"}).headers["x-request-id"]

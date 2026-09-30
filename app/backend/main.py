@@ -3,6 +3,7 @@ import gzip as _gzip
 import hmac
 import json as _json
 import logging
+import mimetypes
 import os
 import re
 import ssl as _ssl
@@ -59,8 +60,8 @@ if config.CORS_ORIGINS:
                        allow_credentials=True)
 
 # Cabeceras de seguridad (BEST_PRACTICES §5.4). Traefik puede agregar las suyas; estas valen igual sin proxy.
-_CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-        "font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; "
+_CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+        "font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; "
         "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'")
 
 
@@ -1075,6 +1076,9 @@ def forzar_snapshot(request: Request, user: UserOut = Depends(require_admin)):
 
 
 # ================================================================ frontend y archivos estaticos
+# Fuentes servidas por la app (DT-08): tipo correcto aunque el sistema no lo tenga registrado.
+mimetypes.add_type("font/woff2", ".woff2")
+
 _RESERVADAS = ("api/", "auth/", "maestro/", "metrics")
 
 
