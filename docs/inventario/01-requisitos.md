@@ -1,7 +1,6 @@
 # Inventario LLYA v2 — Requisitos (fase 01-discovery)
 
-> **Estado:** borrador armado por análisis del código existente. **La priorización MoSCoW la tiene que validar el
-> Product Owner** (01-discovery, exit criterion "Priorización validada").
+> **Estado:** validado por el Product Owner el 2026-09-30 (alcance y priorización MoSCoW).
 > **Fuente:** Inventario LLYA v3.4 en producción (Windows/NSSM/SQLite), adaptado al contrato `maestro.platform/v2`.
 
 ## 1. Propósito

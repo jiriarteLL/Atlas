@@ -33,6 +33,7 @@ produccion (v3.4, servicio NSSM en Windows con SQLite).
 - Rate limit del login: 5 intentos por minuto por IP (antes 10).
 - `DATABASE_URL` acepta el formato canonico del Maestro (`postgres://`).
 - Imagenes base fijadas por digest; usuario no-root con UID 1001.
+- JWT con PyJWT en lugar de python-jose (que arrastraba `ecdsa`, CVE-2024-23342 sin fix); `npm audit fix`.
 - Claves de sincronizacion comparadas en tiempo constante (`hmac.compare_digest`).
 - Adjuntos guardados en la base (sin volumen de storage; ADR-001).
 - Frontend con rutas relativas (mismo origen) y controles segun permisos.

@@ -35,10 +35,10 @@ stack:
   infra: "Docker multi-stage + Docker Compose por ambiente + Dokploy (Test/Preprod) + GitHub Actions"
 
 current_phase: "04-delivery"
-completed_phases: []
+completed_phases:
+  - "01-discovery"
 pending_phases:
   - "00-setup"
-  - "01-discovery"
   - "02-planning"
   - "03-development"
   - "04-delivery"
@@ -52,37 +52,39 @@ phases_status:
     status: "incomplete_pre_existing"
     exit_criteria_met: false
     sync_date: "2026-09-30"
-    sync_notes: "Repo accesible con la estructura del template; app integrada sobre origin/master sin reescribir su historial."
+    sync_notes: "Repo accesible con la estructura del template; app integrada sobre origin/master sin reescribir su historial. Issues habilitado (confirmado por el PO)."
+    po_review: { fecha: "2026-09-30", decision: "b: incompleta con excepciones documentadas; se cierra al probar Docker y PostgreSQL en la VM" }
     missing_criteria:
       - "Docker instalado y funcional (VM de ensayo pedida; herramientas/vm-ensayo)"
       - "Cliente de BD PostgreSQL probado (los tests corren sobre SQLite)"
-      - "GitHub Issues habilitado: no verificable sin gh"
       - "Ramas del upstream reportadas: master y chore/agregar-prueba-txt (esta ultima es una prueba ajena, sin relacion con la app)"
   01-discovery:
-    status: "incomplete_pre_existing"
-    exit_criteria_met: false
+    status: "verified_by_analysis"
+    exit_criteria_met: true
     sync_date: "2026-09-30"
-    sync_notes: "Requisitos, MoSCoW, criterios de aceptacion, restricciones y glosario redactados a partir del codigo en docs/inventario/01-requisitos.md."
-    missing_criteria:
-      - "Priorizacion MoSCoW validada por el PO"
+    sync_notes: "Fase verificada por analisis de proyecto existente. Requisitos, MoSCoW, criterios de aceptacion, restricciones y glosario en docs/inventario/01-requisitos.md; alcance y priorizacion validados por el PO."
+    po_review: { fecha: "2026-09-30", decision: "priorizacion MoSCoW validada sin cambios" }
+    missing_criteria: []
   02-planning:
     status: "incomplete_pre_existing"
     exit_criteria_met: false
     sync_date: "2026-09-30"
     sync_notes: "Arquitectura (C4 L2), modelo de datos, contratos de API, flujos de UI, threat model y ADR-001..004 en docs/inventario y docs/adr."
+    po_review: { fecha: "2026-09-30", decision: "b: incompleta con excepciones (coherencia de artefactos a revisar por el PO; issues del milestone a cargar)" }
     missing_criteria:
-      - "Decision de seeding (additional_users: []) confirmada por el PO"
       - "Coherencia entre artefactos validada por el PO"
-      - "GitHub Milestone + Issues creados"
+      - "GitHub Milestone + Issues creados (listado en docs/inventario/issues-v2.0.0.md; los carga el PO)"
       - "Compatibilidad con Web Maestro verificada contra el schema v2 (el criterio de fase dice 'schema v4'; confirmar que es el mismo)"
   03-development:
     status: "incomplete_pre_existing"
     exit_criteria_met: false
     sync_date: "2026-09-30"
-    sync_notes: "Codigo completo; 83 tests de backend, eslint 0 y build OK en local; maestro.yaml valido contra el schema v2."
+    sync_notes: "Codigo completo; 84 tests de backend, eslint 0 y build OK en local; maestro.yaml valido contra el schema v2. pip-audit 0 vulnerabilidades y npm audit sin altas ni criticas (docs/inventario/auditoria-dependencias.md)."
+    po_review: { fecha: "2026-09-30", decision: "b: incompleta con excepciones; validacion transversal despues; Trivy y tests en PostgreSQL con la VM" }
     missing_criteria:
       - "Validacion transversal (security-auditor, qa-tester, performance-analyst, compliance-analyst, code-reviewer)"
-      - "Sin vulnerabilidades CRITICAL/HIGH: Trivy pendiente (requiere Docker)"
+      - "Sin vulnerabilidades CRITICAL/HIGH: Trivy pendiente (requiere Docker); dependencias ya auditadas"
+      - "Linter de Python en el backend"
       - "Tests contra PostgreSQL (DT-06)"
       - "PRs e issues del flujo del framework"
   04-delivery:
@@ -119,7 +121,7 @@ phases_status:
 repo:
   url: "https://github.com/LLyAsoc-Digital/32_registro_activos_licencia_impresoras"
   is_fork: null                      # no verificable sin gh (gh repo view --json isFork,parent)
-  issues_enabled: null
+  issues_enabled: true               # confirmado por el PO (2026-09-30)
   upstream_branches: ["master", "chore/agregar-prueba-txt"]
   tailwise_template: false
   tailwise_template_compatible: false  # ADR-004
@@ -147,6 +149,8 @@ decisions_log:
   - { fecha: "2026-09-30", por: "desarrollador", decision: "Sin Tailwise (ADR-004)", estado: "a revisar por el evaluador" }
   - { fecha: "2026-09-30", por: "PO", decision: "Alcance confirmado sin Licencias (ADR-003)" }
   - { fecha: "2026-09-30", por: "PO", decision: "Tier standard (metadata.criticality)" }
+  - { fecha: "2026-09-30", por: "PO", decision: "Priorizacion MoSCoW de 01-requisitos validada sin cambios" }
+  - { fecha: "2026-09-30", por: "PO", decision: "Seeding: solo el superadmin (additional_users: [])" }
   - { fecha: "2026-09-30", por: "desarrollador", decision: "data_policy pii true / regulated false", estado: "a revisar por el evaluador" }
 
 escalations_log:

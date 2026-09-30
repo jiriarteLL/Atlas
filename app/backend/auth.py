@@ -18,7 +18,8 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordBearer
-from jose import JWTError, jwt
+import jwt   # PyJWT (python-jose arrastraba ecdsa, CVE-2024-23342 sin fix)
+from jwt import PyJWTError as JWTError
 from limits import parse as parse_limite
 from limits.storage import MemoryStorage
 from limits.strategies import MovingWindowRateLimiter

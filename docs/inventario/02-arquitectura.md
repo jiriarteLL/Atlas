@@ -58,7 +58,7 @@ guarda el access token en memoria y renueva la sesión con `/auth/refresh`. `Aut
 
 | Capa | Tecnología |
 |---|---|
-| Backend | Python 3.11, FastAPI 0.137, SQLAlchemy 2.0, psycopg 3, python-jose, passlib+bcrypt, slowapi, prometheus-client |
+| Backend | Python 3.11, FastAPI 0.137, SQLAlchemy 2.0, psycopg 3, PyJWT, passlib+bcrypt, slowapi, prometheus-client |
 | Frontend | React 19, Vite 8, recharts, exceljs, html2canvas, lucide-react |
 | Base | PostgreSQL 16 (tests con SQLite) |
 | Infra | Docker (multi-stage, digests fijos), Docker Compose por ambiente, Dokploy (Test/Preprod), Maestro v2 (producción) |

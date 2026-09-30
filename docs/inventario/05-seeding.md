@@ -21,7 +21,7 @@ Los logs no muestran la password ni el hash: solo `[seed] superadmin admin@llyas
 | Decisión | Valor | Quién decide |
 |---|---|---|
 | Email del superadmin | `admin@llyasoc.com` (canónico) | Framework (no se cambia) |
-| Usuarios adicionales (`seeding.additional_users`) | Ninguno (`[]`). Los usuarios se crean desde Configuración. | **PO: confirmar** |
+| Usuarios adicionales (`seeding.additional_users`) | Ninguno (`[]`). Los usuarios se crean desde Configuración. | PO (confirmado 2026-09-30) |
 | Cambio de password inicial | Obligatorio en el primer ingreso. Lo exige la UI, no la API, para no romper el smoke del Gate 2. | Implementado |
 
 ## Tests (README §10: los 6 obligatorios)
