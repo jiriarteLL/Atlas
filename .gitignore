@@ -1,44 +1,110 @@
-# Secretos
+# ============================================================
+# .gitignore — repo template Plataforma Maestro v4
+# ============================================================
+# Excluye archivos sensibles, builds, dependencias y temporales.
+# .env.example SI se commitea (referencia); .env y derivados NO.
+# ============================================================
+
+# ── Secretos y configs locales ──
 .env
 .env.*
 !.env.example
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+*.kdbx
+secrets/
+secrets.json
+credentials.json
+.aws/
+.gcp/
+.azure/
+id_rsa
+id_ed25519
+*.ppk
 
-# Bases de datos locales
-*.db
-*.sqlite
-*.sqlite3
-
-# Storage de la app (adjuntos, etc.)
-storage/
-
-# Backups y temporales
-*.bak
-*.bak-*
-*.txt.bak
-
-# Python
+# ── Dependencias ──
+node_modules/
+vendor/
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
 .venv/
 venv/
-.pytest_cache/
-.coverage
+target/
+.gradle/
 
-# Node
-node_modules/
+# ── Builds ──
 dist/
-.vite/
+build/
+out/
+*.egg-info/
+.next/
+.nuxt/
+.svelte-kit/
 
-# Logs
+# ── Coverage / tests ──
+coverage/
+.coverage
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+htmlcov/
+*.lcov
+
+# ── Logs ──
 *.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
-# Windows
+# ── IDE / OS ──
+.vscode/
+!.vscode/settings.json.example
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
 Thumbs.db
-desktop.ini
 
+# ── Random seed (sistema) ──
+.rnd
+*.rnd
+
+# ── Tooling local ──
+.claude/local/
+.claude/settings.local.json
+
+# ── Docker volumes locales ──
+.docker-data/
+
+# ── Python / Node temporal ──
+*.pid
+*.seed
+.cache/
+.parcel-cache/
+.eslintcache
+
+# ── Bases de datos locales ──
+*.sqlite
+*.sqlite3
+*.db
+
+# ── Archivos del editor ──
+*.bak
+*.tmp
+*~
+\#*\#
+
+# ── Propio de la app Inventario LLYA ──
 # Prototipo viejo (solo referencia local)
 _referencia/
-
 # Resultado del ensayo en la VM
 ensayo-resultado.txt
 .env.previo
