@@ -162,6 +162,7 @@ escalations_log:
   - { fecha: "2026-09-29", tema: "Rango de puertos de Test (3110-3199) completo: los 9 puertos responden", estado: "pedido por mail, sin respuesta" }
   - { fecha: "2026-09-30", tema: "EvaluacionAppHuesped/SPEC.md, /evaluar-app-huesped y la plantilla de PR no estan en este repo", estado: "pedido por mail" }
   - { fecha: "2026-09-30", tema: "GitHub Actions no arranca: pagos fallidos o limite de gasto en la organizacion LLyAsoc-Digital (7 corridas de ci.yml sin ejecutar ningun paso). MANUAL §7: Actions no es fuente de verdad; las validaciones corren en local", estado: "a resolver por el admin de la organizacion; workflow deshabilitado por el PO" }
+  - { fecha: "2026-10-01", tema: "Proteccion de master no disponible: el repo es privado y la organizacion LLyAsoc-Digital esta en el plan gratuito (branch protection y rulesets devuelven 403, piden GitHub Pro/Team). Mientras tanto: todo cambio entra a master por PR (#1) y el agente no pushea a master", estado: "a resolver por el admin de la organizacion (plan Team o superior)" }
   - { fecha: "2026-09-30", tema: "31 hallazgos de gitleaks heredados del historial del template (Tailwise, legacy, .env.example viejo)", estado: "a decidir por el evaluador; la app no los puede reescribir" }
 
 agents_determined: []
