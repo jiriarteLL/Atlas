@@ -39,7 +39,18 @@ export default function Esfera() {
       const col = new THREE.Color(color);
       const pg = new THREE.BufferGeometry();
       pg.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-      const pmat = new THREE.PointsMaterial({ color: col, size: 0.036, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false });
+      // Puntos redondos con borde suave: de cerca (al sumergirse) no se ven como cuadrados.
+      const lienzo = document.createElement("canvas");
+      lienzo.width = lienzo.height = 64;
+      const c2d = lienzo.getContext("2d");
+      const grad = c2d.createRadialGradient(32, 32, 0, 32, 32, 32);
+      grad.addColorStop(0, "rgba(255,255,255,1)");
+      grad.addColorStop(0.45, "rgba(255,255,255,0.9)");
+      grad.addColorStop(1, "rgba(255,255,255,0)");
+      c2d.fillStyle = grad;
+      c2d.fillRect(0, 0, 64, 64);
+      const punto = new THREE.CanvasTexture(lienzo);
+      const pmat = new THREE.PointsMaterial({ color: col, size: 0.05, map: punto, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false });
       grupo.add(new THREE.Points(pg, pmat));
 
       // Lineas entre puntos cercanos
@@ -85,7 +96,7 @@ export default function Esfera() {
         cancelAnimationFrame(raf);
         window.removeEventListener("resize", resize);
         window.removeEventListener("mousemove", mouse);
-        pg.dispose(); lg.dispose(); pmat.dispose(); lmat.dispose(); renderer.dispose();
+        pg.dispose(); lg.dispose(); punto.dispose(); pmat.dispose(); lmat.dispose(); renderer.dispose();
         escena.current = null;
       };
     }).catch(() => { /* sin three: fondo plano */ });
@@ -103,5 +114,6 @@ export default function Esfera() {
   }, [color]);
 
   if (!fx) return null;
-  return <canvas ref={canvasRef} className="ll-esfera" aria-hidden="true" />;
+  // Como en el prototipo: el globo se atenua un poco al sumergirse (la transicion la hace el CSS).
+  return <canvas ref={canvasRef} className="ll-esfera" style={{ opacity: entrado ? 0.7 : 0.92 }} aria-hidden="true" />;
 }

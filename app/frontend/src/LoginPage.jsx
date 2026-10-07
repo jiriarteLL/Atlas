@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useAuth } from "./AuthContext";
 
-export default function LoginPage() {
+export default function LoginPage({ saliendo }) {
   const { login, loading, error } = useAuth();
   const [usuario, setUsuario] = useState("");
   const [clave, setClave] = useState("");
@@ -18,7 +18,7 @@ export default function LoginPage() {
 
   const mensaje = aviso || error;
   return (
-    <div className="ll-login-velo">
+    <div className="ll-login-velo" style={saliendo ? { opacity: 0, pointerEvents: "none" } : undefined}>
       <form className="ll-login" onSubmit={enviar}>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14 }}>
           <div className="ll-logo" style={{ width: 58, height: 58, borderRadius: 16, fontSize: 17 }}>LLyA</div>

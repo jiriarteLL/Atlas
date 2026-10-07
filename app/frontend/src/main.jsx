@@ -15,21 +15,37 @@ import Intro from "./diseno/Intro.jsx";
 function introVista() { try { return sessionStorage.getItem("inventario_intro") === "1"; } catch { return false; } }
 function marcarIntro() { try { sessionStorage.setItem("inventario_intro", "1"); } catch { /* sin storage */ } }
 
+// Secuencia de entrada (como el prototipo): en el login el globo se ve entero; al ingresar, la tarjeta
+// se desvanece, la camara se sumerge en el globo y la app aparece con un fundido.
+const SALIDA_MS = 650;
+
 function Root() {
   const { isAuthenticated, listo, user } = useAuth();
   const { setEntrado } = useAmbiente();
   const [intro, setIntro] = useState(() => !introVista());
+  const [vista, setVista] = useState("inicio");   // inicio | login | cambio | saliendo | app
+
+  const destino = !listo ? "inicio" : !isAuthenticated ? "login" : user?.debe_cambiar_password ? "cambio" : "app";
+  useEffect(() => {
+    // Solo se anima la entrada cuando se viene del login; con la sesion recuperada se entra directo.
+    const t = setTimeout(() => setVista((v) => (destino === "app" && (v === "login" || v === "cambio") ? "saliendo" : destino)), 0);
+    return () => clearTimeout(t);
+  }, [destino]);
+  useEffect(() => {
+    if (vista !== "saliendo") return undefined;
+    const t = setTimeout(() => setVista("app"), SALIDA_MS);
+    return () => clearTimeout(t);
+  }, [vista]);
+
+  const enFondo = vista === "saliendo" || vista === "app";
+  useEffect(() => { setEntrado(enFondo); }, [enFondo, setEntrado]);
 
   let contenido;
-  if (!listo) contenido = <div className="ll-login-velo"><div className="spinner" /></div>;
-  else if (isAuthenticated && user?.debe_cambiar_password) contenido = <CambioObligatorio />;
-  else if (isAuthenticated) contenido = <App />;
-  else if (intro) contenido = <Intro alEntrar={() => { marcarIntro(); setIntro(false); }} />;
-  else contenido = <LoginPage />;
-
-  // Con la sesion recuperada (o la intro ya vista) la esfera arranca en su posicion de fondo.
-  const enFondo = listo && (isAuthenticated || !intro);
-  useEffect(() => { if (enFondo) setEntrado(true); }, [enFondo, setEntrado]);
+  if (vista === "inicio") contenido = <div className="ll-login-velo"><div className="spinner" /></div>;
+  else if (vista === "cambio") contenido = <CambioObligatorio />;
+  else if (vista === "app") contenido = <App />;
+  else if (vista === "login" && intro) contenido = <Intro alEntrar={() => { marcarIntro(); setIntro(false); }} />;
+  else contenido = <LoginPage saliendo={vista === "saliendo"} />;
   return <Escenario>{contenido}</Escenario>;
 }
 

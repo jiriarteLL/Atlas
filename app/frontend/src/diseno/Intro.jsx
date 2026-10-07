@@ -21,7 +21,7 @@ function ultimoTotal() {
 }
 
 export default function Intro({ alEntrar }) {
-  const { setEntrado, sonar, sonido } = useAmbiente();
+  const { sonar, sonido } = useAmbiente();
   const [lineas, setLineas] = useState([]);
   const [listo, setListo] = useState(false);
   const [saliendo, setSaliendo] = useState(false);
@@ -46,7 +46,6 @@ export default function Intro({ alEntrar }) {
   function entrar() {
     if (saliendo) return;
     setSaliendo(true);
-    setEntrado(true);
     if (sonido) sonar(true);
     setTimeout(alEntrar, 780);
   }
