@@ -58,6 +58,13 @@ class Asset(Base):
     software        = Column(Text, default="")
     cifrado         = Column(String, default="")
     tpm             = Column(String, default="")
+    # Campos de red/identidad que aporta el agente enriquecido (equivalentes a lo que daba Falcon)
+    ip_publica      = Column(String, default="")
+    mac             = Column(String, default="")
+    gateway         = Column(String, default="")
+    ou_ad           = Column(String, default="")
+    ultimo_reinicio = Column(String, default="")
+    ultimo_login    = Column(String, default="")
 
 
 class AssetGlpi(Base):

@@ -172,6 +172,12 @@ class AssetIn(BaseModel):
     software:        Optional[str] = ""
     cifrado:         Optional[str] = ""
     tpm:             Optional[str] = ""
+    ip_publica:      Optional[str] = ""
+    mac:             Optional[str] = ""
+    gateway:         Optional[str] = ""
+    ou_ad:           Optional[str] = ""
+    ultimo_reinicio: Optional[str] = ""
+    ultimo_login:    Optional[str] = ""
 
     @field_validator("*", mode="after")
     @classmethod

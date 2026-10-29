@@ -60,6 +60,14 @@ export default function FichaActivo({ activo, glpiMap, user, onCerrar, onEditar,
       </div>
 
       <div>
+        <Rotulo>RED E IDENTIDAD</Rotulo>
+        <Ficha filas={[
+          ["IP local", a.ip], ["IP pública", a.ip_publica], ["Gateway", a.gateway], ["MAC", a.mac],
+          ["OU (Active Directory)", a.ou_ad], ["Último reinicio", a.ultimo_reinicio], ["Último login", a.ultimo_login],
+        ]} />
+      </div>
+
+      <div>
         <Rotulo>ASIGNACIÓN</Rotulo>
         <Ficha filas={[
           ["Usuario", a.usuario || "Sin asignar"], ["Usuario alt.", a.usuario_alt], ["Sede", a.ubicacion], ["Grupo", a.grupo],
