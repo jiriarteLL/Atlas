@@ -1,6 +1,6 @@
 // Intro.jsx — Secuencia de arranque: contador de activos, barra y registro, y el boton ENTRAR.
 // Antes del login no se puede consultar la API, asi que el contador usa el ultimo total visto
-// en este navegador (0 la primera vez). Los mensajes son genericos: no muestran IPs ni hosts.
+// en este navegador ("—" la primera vez, para no sugerir un inventario vacio). Los mensajes son genericos: no muestran IPs ni hosts.
 import { useEffect, useRef, useState } from "react";
 import { useAmbiente } from "./ambiente";
 
@@ -17,7 +17,10 @@ export function recordarTotal(n) {
   try { localStorage.setItem(CLAVE_TOTAL, String(n)); } catch { /* sin storage */ }
 }
 function ultimoTotal() {
-  try { return Math.max(0, parseInt(localStorage.getItem(CLAVE_TOTAL) || "0", 10) || 0); } catch { return 0; }
+  try {
+    const n = parseInt(localStorage.getItem(CLAVE_TOTAL) ?? "", 10);
+    return Number.isFinite(n) && n >= 0 ? n : null;
+  } catch { return null; }
 }
 
 export default function Intro({ alEntrar }) {
@@ -35,7 +38,7 @@ export default function Intro({ alEntrar }) {
     const paso = (ahora) => {
       const p = Math.min((ahora - t0) / dur, 1);
       const e = 1 - Math.pow(1 - p, 3);
-      if (contador.current) contador.current.textContent = String(Math.round(e * meta));
+      if (contador.current) contador.current.textContent = meta === null ? "—" : String(Math.round(e * meta));
       if (barra.current) barra.current.style.width = (e * 100) + "%";
       if (p < 1) raf = requestAnimationFrame(paso); else setListo(true);
     };
@@ -63,7 +66,7 @@ export default function Intro({ alEntrar }) {
       <h1>INVENTARIO LLYA</h1>
       <div className="mono" style={{ fontSize: 12, letterSpacing: 5, color: "var(--accent)" }}>SISTEMA DE ACTIVOS · TI</div>
       <div style={{ display: "flex", alignItems: "baseline", gap: 15, marginTop: 42 }}>
-        <span ref={contador} className="mono" style={{ fontSize: 64, fontWeight: 600, letterSpacing: -2, color: "#fff" }}>0</span>
+        <span ref={contador} className="mono" style={{ fontSize: 64, fontWeight: 600, letterSpacing: -2, color: "#fff" }}>{ultimoTotal() === null ? "—" : "0"}</span>
         <span className="mono" style={{ fontSize: 13, letterSpacing: 3, color: "var(--ll-dim)" }}>ACTIVOS REGISTRADOS</span>
       </div>
       <div className="ll-intro-barra"><div ref={barra} style={{ width: "0%" }} /></div>
