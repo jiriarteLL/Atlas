@@ -192,8 +192,19 @@ function Unregister-Tarea {
     Write-Log "Tarea '$TASK' eliminada"
 }
 
+function Restrict-Ini {
+    # La clave vive en agente.ini: solo SYSTEM (S-1-5-18) y Administradores (S-1-5-32-544), sin herencia.
+    try {
+        $ini = Join-Path (Split-Path -Parent $SELF) "agente.ini"
+        if (Test-Path $ini) {
+            & icacls.exe "$ini" /inheritance:r /grant:r "*S-1-5-18:F" "*S-1-5-32-544:F" | Out-Null
+            Write-Log "ACL de agente.ini restringido a SYSTEM + Administradores"
+        }
+    } catch { Write-Log ("No se pudo restringir el ACL: " + $_.Exception.Message) }
+}
+
 if ($Uninstall) { Unregister-Tarea; return }
-if ($Install)   { Register-Tarea }
+if ($Install)   { Register-Tarea; Restrict-Ini }
 
 try {
     $body = Get-Inventario
