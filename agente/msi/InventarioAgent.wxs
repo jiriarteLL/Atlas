@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- MSI del agente de inventario LLyA v2. Instala agent_v2.ps1, escribe agente.ini con el servidor y la
+     clave, y registra una tarea programada (SYSTEM, cada 2 h + al iniciar sesion). Desinstala limpio.
+     Compilar:  candle -arch x64 InventarioAgent.wxs  &&  light InventarioAgent.wixobj -o InventarioAgent.msi
+     Instalar:  msiexec /i InventarioAgent.msi /qn SERVER="https://192.168.100.116:8543" SYNCKEY="xxxx" -->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="*" Name="Inventario LLyA Agent" Language="3082" Version="2.0.0"
+           Manufacturer="Lisicki, Litvin y Abelovich" UpgradeCode="1D9562A6-79E6-4EAB-AEE9-79520AA3B666">
+    <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Platform="x64"
+             Description="Agente de inventario LLyA (reporta al Inventario V2)"/>
+    <MajorUpgrade DowngradeErrorMessage="Ya hay una version mas nueva del agente instalada."/>
+    <MediaTemplate EmbedCab="yes"/>
+
+    <!-- Parametros de despliegue (se pasan en msiexec). SYNCKEY es la clave del endpoint /api/sync. -->
+    <Property Id="SERVER" Value="https://192.168.100.116:8543" Secure="yes"/>
+    <Property Id="SYNCKEY" Secure="yes"/>
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="LLYADIR" Name="LLyA">
+          <Directory Id="INSTALLFOLDER" Name="Inventario Agent">
+            <Component Id="cmpAgent" Guid="5A4BF4C7-63A6-40C1-AE47-5E8BF51933CF" Win64="yes">
+              <File Id="filAgent" Source="agent_v2.ps1" KeyPath="yes"/>
+              <IniFile Id="iniServer" Action="addLine" Directory="INSTALLFOLDER" Name="agente.ini"
+                       Section="inventario" Key="Server" Value="[SERVER]"/>
+              <IniFile Id="iniKey" Action="addLine" Directory="INSTALLFOLDER" Name="agente.ini"
+                       Section="inventario" Key="SyncKey" Value="[SYNCKEY]"/>
+              <RemoveFile Id="rmIni" Name="agente.ini" On="uninstall"/>
+            </Component>
+          </Directory>
+        </Directory>
+      </Directory>
+    </Directory>
+
+    <Feature Id="Main" Title="Agente de inventario" Level="1">
+      <ComponentRef Id="cmpAgent"/>
+    </Feature>
+
+    <!-- Al instalar: registrar la tarea (lee agente.ini). Al desinstalar: borrarla. Ambas como SYSTEM. -->
+    <CustomAction Id="RegisterTask" Directory="INSTALLFOLDER" Execute="deferred" Impersonate="no" Return="ignore"
+      ExeCommand="powershell.exe -ExecutionPolicy Bypass -NonInteractive -File &quot;C:\Program Files\LLyA\Inventario Agent\agent_v2.ps1&quot; -Install"/>
+    <CustomAction Id="RemoveTask" Directory="INSTALLFOLDER" Execute="deferred" Impersonate="no" Return="ignore"
+      ExeCommand="schtasks.exe /delete /tn &quot;LLyA Inventario Agent&quot; /f"/>
+
+    <InstallExecuteSequence>
+      <Custom Action="RegisterTask" After="WriteIniValues">NOT Installed</Custom>
+      <Custom Action="RemoveTask" Before="RemoveFiles">Installed AND REMOVE="ALL"</Custom>
+    </InstallExecuteSequence>
+  </Product>
+</Wix>

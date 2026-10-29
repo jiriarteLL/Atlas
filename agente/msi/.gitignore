@@ -1,0 +1,6 @@
+# Artefactos de compilacion del MSI
+*.wixobj
+*.wixpdb
+*.msi
+install.log
+agent_v2.ps1

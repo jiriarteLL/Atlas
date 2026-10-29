@@ -3,13 +3,28 @@
 #   IP publica, MAC, gateway, OU de Active Directory, ultimo reinicio y ultimo login.
 # Queda instalado por MSI con su propia tarea; no depende de SYSVOL.
 param(
-    [string]$Server  = "https://192.168.100.116:8543",
+    [string]$Server  = "",
     [string]$SyncKey = "",
-    [switch]$Once
+    [switch]$Install,     # registra la tarea programada (lo usa el MSI al instalar)
+    [switch]$Uninstall    # quita la tarea programada (lo usa el MSI al desinstalar)
 )
 
+$TASK   = "LLyA Inventario Agent"
+$SELF   = $PSCommandPath
 $LOGDIR = Join-Path $env:ProgramData "LLyA"
 $LOG    = Join-Path $LOGDIR "agente-v2.log"
+
+# Config (Server / SyncKey) desde agente.ini al lado del script si no vinieron por parametro.
+try {
+    $ini = Join-Path (Split-Path -Parent $SELF) "agente.ini"
+    if (Test-Path $ini) {
+        Get-Content $ini | ForEach-Object {
+            if ($_ -match '^\s*Server\s*=\s*(.+?)\s*$'  -and -not $Server)  { $Server  = $Matches[1] }
+            if ($_ -match '^\s*SyncKey\s*=\s*(.+?)\s*$' -and -not $SyncKey) { $SyncKey = $Matches[1] }
+        }
+    }
+} catch {}
+if (-not $Server) { $Server = "https://192.168.100.116:8543" }
 function Write-Log($m) {
     try {
         if (-not (Test-Path $LOGDIR)) { New-Item -ItemType Directory -Path $LOGDIR -Force | Out-Null }
@@ -161,6 +176,24 @@ function Send-Inventario($body) {
         $client.UploadData("$Server/api/sync", "POST", $bytes) | Out-Null
     }
 }
+
+function Register-Tarea {
+    $accion = "-ExecutionPolicy Bypass -NonInteractive -WindowStyle Hidden -File `"$SELF`""
+    $a   = New-ScheduledTaskAction -Execute "powershell.exe" -Argument $accion
+    $tr  = New-ScheduledTaskTrigger -Once -At 08:00 -RepetitionInterval (New-TimeSpan -Hours 2) -RepetitionDuration (New-TimeSpan -Days 1)
+    $tl  = New-ScheduledTaskTrigger -AtLogOn; $tl.Delay = "PT2M"
+    $p   = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+    $s   = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 30) -MultipleInstances IgnoreNew
+    Register-ScheduledTask -TaskName $TASK -Description "Inventario LLyA v2 - cada 2 horas y al iniciar sesion" -Action $a -Trigger @($tr, $tl) -Principal $p -Settings $s -Force | Out-Null
+    Write-Log "Tarea '$TASK' registrada (SYSTEM, cada 2 h + al iniciar sesion). Servidor: $Server"
+}
+function Unregister-Tarea {
+    Unregister-ScheduledTask -TaskName $TASK -Confirm:$false -ErrorAction SilentlyContinue
+    Write-Log "Tarea '$TASK' eliminada"
+}
+
+if ($Uninstall) { Unregister-Tarea; return }
+if ($Install)   { Register-Tarea }
 
 try {
     $body = Get-Inventario
