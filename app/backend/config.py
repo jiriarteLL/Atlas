@@ -70,6 +70,12 @@ COMPANY_PRIMARY_COLOR = os.getenv("COMPANY_PRIMARY_COLOR", "#0B7285")
 # Seeding
 SUPERADMIN_EMAIL = "admin@llyasoc.com"
 
+# Login con el usuario de Windows del dominio, como Argos (ad_auth.py). Vacio = desactivado.
+# Solo funciona si la app corre en un Windows unido al dominio (en Linux/Docker queda apagado).
+AD_DOMINIO = os.getenv("AD_DOMINIO", "").strip()                    # NetBIOS, p. ej. TANGO
+AD_SUFIJO_UPN = os.getenv("AD_SUFIJO_UPN", "").strip().lower()      # p. ej. llasesores.corp
+AD_ADMINS = {u.lower() for u in _lista("AD_ADMINS")}                # usuarios de Windows que entran como admin
+
 # Rutas dentro del contenedor (solo lectura: el estado persistente vive en la base, CONVENCIONES §4.2)
 FRONTEND_DIST = os.getenv("FRONTEND_DIST", "/app/frontend_dist")
 AGENTE_DIR = os.getenv("AGENTE_DIR", "/app/agente")

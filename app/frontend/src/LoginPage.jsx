@@ -31,7 +31,7 @@ export default function LoginPage({ saliendo }) {
         <label className="ll-campo">
           <span>USUARIO</span>
           <input className="ll-input" value={usuario} onChange={(e) => setUsuario(e.target.value)}
-            placeholder="usuario o email" autoComplete="username" autoFocus />
+            placeholder="usuario de Windows o email" autoComplete="username" autoFocus />
         </label>
         <label className="ll-campo">
           <span>CONTRASEÑA</span>

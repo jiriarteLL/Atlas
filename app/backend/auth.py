@@ -27,6 +27,7 @@ from passlib.context import CryptContext
 from pydantic import BaseModel
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String
 
+import ad_auth
 import config
 import contexto
 from audit import log_action
@@ -396,6 +397,48 @@ def _fallo(ident, motivo="credenciales"):
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=_ERROR_LOGIN)
 
 
+_PENDIENTE = ("Tu usuario todavía no tiene acceso a Atlas. Ya quedó registrado el pedido: "
+              "un administrador tiene que habilitarlo.")
+
+
+def _validar_windows(db, ident, password):
+    """Login con el usuario de Windows (ad_auth). Devuelve el User activo o corta con 401/403.
+
+    La primera vez que alguien entra se crea su usuario: activo y admin si esta en AD_ADMINS; si no, queda
+    pendiente (inactivo, viewer) hasta que un administrador lo habilite desde Accesos, como en Argos."""
+    sam = ad_auth.normalizar_usuario(ident)
+    if not sam:
+        _fallo(ident)
+    aviso = ad_auth.bloqueo_previo(sam)
+    if aviso:
+        LOGIN_FALLOS.labels("windows_pausa").inc()
+        log_action(usuario=sam, accion="LOGIN_FAILED", resultado="failure", detalle={"origen": "windows", "motivo": "pausa"})
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=aviso)
+    ok, codigo = ad_auth.validar(sam, password)
+    if not ok:
+        LOGIN_FALLOS.labels("windows").inc()
+        log_action(usuario=sam, accion="LOGIN_FAILED", resultado="failure", detalle={"origen": "windows", "codigo": codigo})
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=ad_auth.registrar_fallo(sam, codigo))
+    ad_auth.limpiar(sam)
+    u = db.query(User).filter(User.username == sam).first()
+    if u is None:
+        es_admin = sam in config.AD_ADMINS
+        u = User(username=sam, email=None, nombre=ad_auth.nombre_completo(sam), password_hash=ad_auth.MARCA,
+                 activo="1" if es_admin else "0", debe_cambiar_password=False)
+        db.add(u)
+        db.flush()
+        asignar_rol(db, u, "admin" if es_admin else "viewer")
+        db.commit()
+        log_action(usuario=sam, user_id=u.id, accion="CREATE_USER", entidad="usuario", entidad_id=sam,
+                   detalle={"origen": "windows", "estado": "activo" if es_admin else "pendiente"})
+    elif not ad_auth.es_usuario_windows(u):
+        _fallo(ident)   # hay un usuario local con ese nombre: no se mezcla con la cuenta de Windows
+    if u.activo != "1":
+        log_action(usuario=sam, user_id=u.id, accion="LOGIN_PENDING", resultado="failure")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=_PENDIENTE)
+    return u
+
+
 async def login(request: Request, response: Response):
     LOGIN_INTENTOS.inc()
     ident, password = await _credenciales(request)
@@ -408,7 +451,11 @@ async def login(request: Request, response: Response):
     db = SessionLocal()
     try:
         u = (db.query(User).filter((User.username == ident) | (User.email == ident.lower())).first())
-        ok = verify_password(password, u.password_hash if u else _HASH_SEÑUELO)
+        if ad_auth.habilitado() and (u is None or ad_auth.es_usuario_windows(u)):
+            u = _validar_windows(db, ident, password)
+            ok = True
+        else:
+            ok = verify_password(password, u.password_hash if u else _HASH_SEÑUELO)
         if not u or u.activo != "1":
             _fallo(ident)
         if u.bloqueado_hasta and u.bloqueado_hasta > datetime.utcnow():
@@ -638,6 +685,8 @@ def editar_usuario(username: str, data: UserUpdate, user: UserOut = Depends(requ
                 if nuevo == "0":
                     revocar_sesiones(db, u)
         if data.password:
+            if ad_auth.es_usuario_windows(u):
+                raise HTTPException(status_code=400, detail="Es un usuario de Windows: su contraseña es la del dominio.")
             motivo = validar_password(data.password)
             if motivo:
                 raise HTTPException(status_code=400, detail=motivo)
@@ -680,6 +729,8 @@ def cambiar_password(data: ChangePassword, response: Response, user: UserOut = D
     db = SessionLocal()
     try:
         u = db.query(User).filter(User.username == user.username).first()
+        if ad_auth.es_usuario_windows(u):
+            raise HTTPException(status_code=400, detail="Tu contraseña es la de Windows: se cambia desde tu PC (Ctrl+Alt+Supr).")
         if not u or not verify_password(data.password_actual, u.password_hash):
             raise HTTPException(status_code=400, detail="La contrasena actual es incorrecta.")
         if data.password_nuevo == data.password_actual:
