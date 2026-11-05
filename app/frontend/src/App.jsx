@@ -172,7 +172,7 @@ export default function App() {
       {menu && window.innerWidth <= 760 && <div className="ll-velo" style={{ zIndex: 40 }} onClick={() => setMenu(false)} />}
       <aside className={"ll-sidebar" + (menu ? "" : " cerrada")} aria-label="Menú principal">
         <div className="ll-marca">
-          <div className="ll-logo">LLyA</div>
+          <img className="ll-isotipo" src="/brand/isotipo.png" alt="LL&A" />
           <div style={{ lineHeight: 1.15 }}>
             <div style={{ fontSize: 16, fontWeight: 600, letterSpacing: -0.2 }}>Atlas</div>
             <div className="ll-marca-sub">ACTIVOS · TI</div>

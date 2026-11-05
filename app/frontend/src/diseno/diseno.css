@@ -81,6 +81,9 @@ input:focus, select:focus, textarea:focus { outline: none; }
 .ll-sidebar.cerrada { margin-left: -266px; }
 .ll-marca { display: flex; align-items: center; gap: 13px; padding: 4px 6px 20px; }
 .ll-logo { width: 46px; height: 46px; flex: 0 0 46px; border-radius: 13px; background: linear-gradient(135deg,var(--accent),var(--accent2)); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px; color: #05070d; letter-spacing: -1px; box-shadow: 0 8px 26px -6px var(--accent); }
+/* Logos de LLyA: isotipo LL&A (sidebar, intro) y logo completo en blanco para fondo oscuro (login). */
+.ll-isotipo { display: block; height: 30px; width: auto; flex: 0 0 auto; filter: drop-shadow(0 6px 18px color-mix(in srgb, var(--accent) 35%, transparent)); }
+.ll-login-logo { display: block; width: 236px; max-width: 82%; height: auto; margin-bottom: 4px; }
 .ll-marca-sub { font-size: 10.5px; font-weight: 500; letter-spacing: 2.5px; color: var(--accent); font-family: var(--ll-mono); }
 .ll-nav { flex: 1; overflow-y: auto; margin-top: 6px; }
 .ll-nav-sec { font-size: 10px; letter-spacing: 2.5px; color: var(--ll-ghost); font-weight: 600; margin: 8px 8px 10px; }
@@ -124,7 +127,10 @@ input:focus, select:focus, textarea:focus { outline: none; }
 
 .ll-input, .ll-select { width: 100%; padding: 11px 13px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.03); color: var(--ll-text); font-size: 13.5px; }
 .ll-select { background: #111830; }
-.ll-select option { background: #111830; }
+/* Opciones del desplegable: fondo oscuro Y texto claro. Sin el color, heredaban #1a1a1a de styles.css
+   ("select option", pensado para fondo blanco) y quedaban casi invisibles (contraste 1:1). */
+.ll-select option { background: #111830; color: var(--ll-text); }
+.ll-select option:checked { background: #1d2a52; color: #fff; }
 .ll-input:focus, .ll-select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent); }
 .ll-buscador { position: relative; flex: 1; min-width: 220px; max-width: 360px; }
 .ll-buscador > span { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--ll-faint); }
@@ -150,7 +156,7 @@ input:focus, select:focus, textarea:focus { outline: none; }
 
 .ll-tabla-wrap { overflow-x: auto; }
 .ll-tabla { width: 100%; border-collapse: collapse; font-size: 13px; }
-.ll-tabla th { padding: 13px 10px; color: var(--ll-faint); text-align: left; font-size: 10.5px; letter-spacing: 1.5px; font-weight: 600; white-space: nowrap; }
+.ll-tabla th { padding: 13px 10px; color: var(--ll-dim); text-align: left; font-size: 10.5px; letter-spacing: 1.5px; font-weight: 600; white-space: nowrap; }
 .ll-tabla th.orden { cursor: pointer; user-select: none; }
 .ll-tabla th.orden:hover { color: var(--ll-text-2); }
 .ll-tabla td { padding: 13px 10px; color: var(--ll-text-2); border-top: 1px solid rgba(255,255,255,0.05); }
@@ -191,7 +197,7 @@ input:focus, select:focus, textarea:focus { outline: none; }
 
 /* ── Intro y login ── */
 .ll-intro { position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; background: radial-gradient(ellipse at 50% 42%, rgba(8,11,20,0.55), rgba(3,5,10,0.95)); backdrop-filter: blur(2px); transition: opacity .75s ease; }
-.ll-intro-logo { width: 74px; height: 74px; border-radius: 20px; background: linear-gradient(135deg,var(--accent),var(--accent2)); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 22px; color: #05070d; letter-spacing: -1px; box-shadow: 0 0 54px -6px var(--accent); animation: ll-floatY 4s ease-in-out infinite; }
+.ll-intro-logo { display: block; width: 150px; height: auto; margin-bottom: 18px; filter: drop-shadow(0 0 34px color-mix(in srgb, var(--accent) 45%, transparent)); animation: ll-floatY 4s ease-in-out infinite; }
 .ll-intro h1 { margin: 26px 0 6px; font-size: clamp(32px,6vw,66px); font-weight: 700; letter-spacing: 7px; background: linear-gradient(90deg,#fff,var(--accent),#fff); background-size: 200% auto; -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; animation: ll-shimmer 5s linear infinite; text-align: center; }
 .ll-intro-barra { width: min(430px,72vw); height: 3px; border-radius: 3px; background: rgba(255,255,255,0.1); margin-top: 22px; overflow: hidden; }
 .ll-intro-barra div { height: 100%; background: linear-gradient(90deg,var(--accent),var(--accent2)); box-shadow: 0 0 12px var(--accent); }
