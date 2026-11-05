@@ -1,10 +1,10 @@
 # instalar-atlas.ps1 - Deja Atlas funcionando en la VM de Azure (LLAZSVRAPP01), al costado de Kairos y LEX.
 # Ejecutar EN LA VM, en PowerShell como administrador:
 #     powershell -ExecutionPolicy Bypass -File C:\Atlas\deploy\instalar-atlas.ps1
-# Pide la contrasena del usuario "postgres" (no se guarda). Es idempotente: se puede volver a correr.
+# Requiere antes instalar-postgres-atlas.ps1 (PostgreSQL 16 propio, 127.0.0.1:5433). No pide contrasenas. Idempotente.
 #
 # Que hace (y que NO toca):
-#   - Crea el usuario y la base "atlas" en el PostgreSQL 17 existente. No toca otras bases ni pg_hba.conf.
+#   - Crea el usuario y la base "atlas" en el PostgreSQL 16 PROPIO de Atlas. No toca el PostgreSQL 17 de nddPrint.
 #   - Genera C:\Atlas\.env con secretos nuevos (si ya existe, lo conserva).
 #   - Registra los servicios Atlas-HTTP (8700) y Atlas-HTTPS (8743) con el NSSM que ya esta en C:\nssm.
 #   - Abre 8700/8743 en el firewall de Windows (perfiles Dominio y Privado).
@@ -16,7 +16,8 @@ $ErrorActionPreference = "Stop"
 $RAIZ  = "C:\Atlas"
 $PY    = "$RAIZ\.venv\Scripts\python.exe"
 $NSSM  = "C:\nssm\nssm-2.24\win64\nssm.exe"
-$PGBIN = "C:\Program Files\PostgreSQL\17\bin"
+$PGBIN = "C:\Atlas\pgsql\bin"
+$PGPORT = 5433
 $LOG   = "$RAIZ\logs\instalacion.log"
 function Paso($m) { Write-Host "==> $m" -ForegroundColor Cyan; Add-Content $LOG ("{0}  {1}" -f (Get-Date -Format s), $m) }
 function Token {
@@ -48,7 +49,7 @@ if (Test-Path $envFile) {
     @(
         "APP_ENV=production"
         "APP_NAME=atlas"
-        "DATABASE_URL=postgres://atlas:$dbPass@127.0.0.1:5432/atlas"
+        "DATABASE_URL=postgres://atlas:$dbPass@127.0.0.1:$PGPORT/atlas"
         "JWT_SECRET=$(Token)"
         "SUPERADMIN_INITIAL_PASSWORD=$admPass"
         "SYNC_API_KEY=$syncKey"
@@ -72,7 +73,7 @@ if (Test-Path $envFile) {
         "Agentes (X-Sync-Key / SYNCKEY del MSI):"
         "  $syncKey"
         ""
-        "Base: PostgreSQL 17 local, base 'atlas', usuario 'atlas' (contrasena en C:\Atlas\.env)"
+        "Base: PostgreSQL 16 propio (servicio Atlas-PostgreSQL, 127.0.0.1:5433), base 'atlas', usuario 'atlas' (contrasena en C:\Atlas\.env)"
     ) | Set-Content "$RAIZ\CREDENCIALES.txt" -Encoding utf8
     foreach ($f in $envFile, "$RAIZ\CREDENCIALES.txt") {
         & icacls.exe $f /inheritance:r /grant:r "*S-1-5-18:F" "*S-1-5-32-544:F" | Out-Null
@@ -81,22 +82,21 @@ if (Test-Path $envFile) {
 }
 
 # ---- 2. Usuario y base en PostgreSQL
-$pg = Read-Host "Contrasena del usuario 'postgres' de PostgreSQL 17" -AsSecureString
-$env:PGPASSWORD = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($pg))
+$env:PGPASSWORD = Get-Content "$RAIZ\pg-superusuario.txt"
 try {
     $psql = "$PGBIN\psql.exe"
-    $existe = & $psql -h 127.0.0.1 -U postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname='atlas'"
+    $existe = & $psql -h 127.0.0.1 -p $PGPORT -U postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname='atlas'"
     if ($LASTEXITCODE -ne 0) { throw "No se pudo entrar a PostgreSQL con el usuario postgres (contrasena?)." }
     if ($existe -ne "1") {
-        & $psql -h 127.0.0.1 -U postgres -v ON_ERROR_STOP=1 -c "CREATE ROLE atlas LOGIN PASSWORD '$dbPass'" | Out-Null
+        & $psql -h 127.0.0.1 -p $PGPORT -U postgres -v ON_ERROR_STOP=1 -c "CREATE ROLE atlas LOGIN PASSWORD '$dbPass'" | Out-Null
         Paso "Usuario 'atlas' creado"
     } else {
-        & $psql -h 127.0.0.1 -U postgres -v ON_ERROR_STOP=1 -c "ALTER ROLE atlas PASSWORD '$dbPass'" | Out-Null
+        & $psql -h 127.0.0.1 -p $PGPORT -U postgres -v ON_ERROR_STOP=1 -c "ALTER ROLE atlas PASSWORD '$dbPass'" | Out-Null
         Paso "Usuario 'atlas' ya existia: contrasena alineada con .env"
     }
-    $hayBase = & $psql -h 127.0.0.1 -U postgres -tAc "SELECT 1 FROM pg_database WHERE datname='atlas'"
+    $hayBase = & $psql -h 127.0.0.1 -p $PGPORT -U postgres -tAc "SELECT 1 FROM pg_database WHERE datname='atlas'"
     if ($hayBase -ne "1") {
-        & $psql -h 127.0.0.1 -U postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE atlas OWNER atlas ENCODING 'UTF8' TEMPLATE template0" | Out-Null
+        & $psql -h 127.0.0.1 -p $PGPORT -U postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE atlas OWNER atlas ENCODING 'UTF8' TEMPLATE template0" | Out-Null
         Paso "Base 'atlas' creada"
     } else { Paso "Base 'atlas' ya existia" }
 } finally { Remove-Item Env:\PGPASSWORD -ErrorAction SilentlyContinue }
@@ -117,7 +117,7 @@ foreach ($s in @(@{N = "Atlas-HTTP"; M = "http"; D = "Atlas (HTTP 8700)"}, @{N =
     & $NSSM set $s.N AppRotateFiles 1 | Out-Null
     & $NSSM set $s.N AppRotateBytes 10485760 | Out-Null
     & $NSSM set $s.N Start SERVICE_AUTO_START | Out-Null
-    & $NSSM set $s.N DependOnService postgresql-x64-17 | Out-Null
+    & $NSSM set $s.N DependOnService Atlas-PostgreSQL | Out-Null
     Paso "Servicio $($s.N) configurado"
 }
 Restart-Service Atlas-HTTP
