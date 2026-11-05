@@ -10,7 +10,7 @@ from email.utils import formataddr
 import config
 
 _lock = threading.Lock()
-log = logging.getLogger("inventario.mail")
+log = logging.getLogger("atlas.mail")
 
 def _cfg():
     return {
@@ -73,12 +73,12 @@ def _html(titulo, lineas, pie=""):
     <p style="margin-top:22px">
       <a href="%s/#proyectos"
          style="background:#00AEAE;color:#fff;text-decoration:none;padding:10px 20px;
-                border-radius:5px;font-size:14px;display:inline-block">Ver en Inventario</a>
+                border-radius:5px;font-size:14px;display:inline-block">Ver en Atlas</a>
     </p>
     %s
   </div>
   <div style="background:#f7f9fa;padding:12px 22px;font-size:11.5px;color:#8a9199;border-top:1px solid #e0e4e8">
-    Notificacion automatica - Inventario LLYA
+    Notificacion automatica - Atlas (inventario LLyA)
   </div>
 </div></body></html>""" % (titulo, filas, c["url"], pie)
 

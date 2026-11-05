@@ -1,4 +1,4 @@
-# Inventario LLYA v2 — imagen unica: el backend FastAPI sirve el frontend compilado.
+# Atlas (antes Inventario LLYA v2) — imagen unica: el backend FastAPI sirve el frontend compilado.
 # Requisitos: SPEC §2.2 / CONVENCIONES §8 / README §12 (multi-stage, no-root, EXPOSE, HEALTHCHECK, CMD).
 
 # ── Stage 1: build del frontend ──

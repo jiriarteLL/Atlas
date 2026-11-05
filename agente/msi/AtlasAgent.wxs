@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- MSI del agente de Atlas (inventario LLyA). Instala atlas_agent.ps1, escribe atlas.ini con el servidor y la
+     clave, y registra la tarea "Atlas Inventario" (SYSTEM, cada 2 h de 8 a 22 + al iniciar sesion). Desinstala limpio.
+     Sirve para equipos fuera del dominio; los del dominio lo reciben por la GPO de inicio, como hoy.
+     Compilar:  candle -arch x64 AtlasAgent.wxs  &&  light -sval AtlasAgent.wixobj -o AtlasAgent.msi
+     Instalar:  msiexec /i AtlasAgent.msi /qn SERVER="https://atlas.llyasoc.com" SYNCKEY="xxxx" -->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="*" Name="Atlas Agent" Language="3082" Version="5.0.0"
+           Manufacturer="Lisicki, Litvin y Abelovich" UpgradeCode="7C1E4B52-3A9D-4F0E-9B6A-2D8C5E1F7A40">
+    <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Platform="x64"
+             Description="Agente de inventario de Atlas (LLyA)"/>
+    <MajorUpgrade DowngradeErrorMessage="Ya hay una version mas nueva del agente de Atlas instalada."/>
+    <MediaTemplate EmbedCab="yes"/>
+
+    <!-- Parametros de despliegue (obligatorios). SYNCKEY es la SYNC_API_KEY de Atlas (header X-Sync-Key). -->
+    <Property Id="SERVER" Secure="yes"/>
+    <Property Id="SYNCKEY" Secure="yes" Hidden="yes"/>
+    <Property Id="GLPI" Value="piloto" Secure="yes"/>
+    <Condition Message="Faltan SERVER y SYNCKEY. Ejemplo: msiexec /i AtlasAgent.msi SERVER=&quot;https://atlas.llyasoc.com&quot; SYNCKEY=&quot;...&quot;">
+      Installed OR (SERVER AND SYNCKEY)
+    </Condition>
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="LLYADIR" Name="LLyA">
+          <Directory Id="INSTALLFOLDER" Name="Atlas Agent">
+            <Component Id="cmpAgent" Guid="B3F2A6D1-8C4E-4B7A-9E15-6F0D2C3A8B91" Win64="yes">
+              <File Id="filAgent" Source="atlas_agent.ps1" KeyPath="yes"/>
+              <IniFile Id="iniServer" Action="addLine" Directory="INSTALLFOLDER" Name="atlas.ini"
+                       Section="atlas" Key="Server" Value="[SERVER]"/>
+              <IniFile Id="iniKey" Action="addLine" Directory="INSTALLFOLDER" Name="atlas.ini"
+                       Section="atlas" Key="SyncKey" Value="[SYNCKEY]"/>
+              <IniFile Id="iniGlpi" Action="addLine" Directory="INSTALLFOLDER" Name="atlas.ini"
+                       Section="atlas" Key="Glpi" Value="[GLPI]"/>
+              <RemoveFile Id="rmIni" Name="atlas.ini" On="uninstall"/>
+            </Component>
+          </Directory>
+        </Directory>
+      </Directory>
+    </Directory>
+
+    <Feature Id="Main" Title="Agente de Atlas" Level="1">
+      <ComponentRef Id="cmpAgent"/>
+    </Feature>
+
+    <!-- Al instalar: restringe atlas.ini, registra la tarea y hace el primer envio. Al desinstalar: borra la tarea. -->
+    <CustomAction Id="RegisterTask" Directory="INSTALLFOLDER" Execute="deferred" Impersonate="no" Return="ignore"
+      ExeCommand="powershell.exe -ExecutionPolicy Bypass -NonInteractive -WindowStyle Hidden -File &quot;[INSTALLFOLDER]atlas_agent.ps1&quot; -Install"/>
+    <CustomAction Id="RemoveTask" Directory="INSTALLFOLDER" Execute="deferred" Impersonate="no" Return="ignore"
+      ExeCommand="schtasks.exe /delete /tn &quot;Atlas Inventario&quot; /f"/>
+
+    <InstallExecuteSequence>
+      <Custom Action="RegisterTask" After="WriteIniValues">NOT Installed</Custom>
+      <Custom Action="RemoveTask" Before="RemoveFiles">Installed AND REMOVE="ALL"</Custom>
+    </InstallExecuteSequence>
+  </Product>
+</Wix>

@@ -76,7 +76,7 @@ def configurar_logs():
     logging.getLogger("uvicorn.access").disabled = True
 
 
-log = logging.getLogger("inventario")
+log = logging.getLogger("atlas")
 
 
 class ContextoMiddleware:

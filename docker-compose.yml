@@ -1,14 +1,14 @@
 # docker-compose.yml — DESARROLLO LOCAL (IN-011). No se sube a Dokploy.
-# App: inventario | APP_ID: 1 -> puerto local 3100 (README §5)
+# App: atlas | APP_ID: 1 -> puerto local 3100 (README §5)
 # Uso: cp .env.example .env  (completar secretos)  &&  docker compose up -d --build
-name: inventario-dev
+name: atlas-dev
 
 services:
   app:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: app-inventario-dev
+    container_name: app-atlas-dev
     restart: "no"
     env_file: .env
     environment:
@@ -36,7 +36,7 @@ services:
 
   db:
     image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
-    container_name: db-inventario-dev
+    container_name: db-atlas-dev
     restart: "no"
     environment:
       - POSTGRES_DB=${DB_NAME}
@@ -60,4 +60,4 @@ volumes:
 networks:
   app-net:
     driver: bridge
-    name: app-inventario-dev-net
+    name: app-atlas-dev-net

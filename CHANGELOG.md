@@ -1,4 +1,24 @@
-# Changelog — Inventario LLYA
+# Changelog — Atlas (antes Inventario LLYA v2)
+
+## [2.1.0] — sin publicar (2026-11-05)
+
+### Cambiado — Renombre a Atlas
+- El producto pasa a llamarse **Atlas** (antes "Inventario LLYA v2"): titulo de la web, login, intro, encabezado,
+  titulo de la API (OpenAPI), firma y boton de los mails, nombre del CSV exportado (`atlas_inventario.csv`).
+- Slug de la app: `maestro.yaml` `metadata.name: atlas` y default de `APP_SLUG` = `atlas` (`APP_NAME=atlas` en
+  `.env.example`). Loggers: `atlas`, `atlas.audit`, `atlas.mail`.
+- **La cookie de sesion pasa de `inventario_session` a `atlas_session`** (sale del slug): al desplegar esta version
+  se cierran las sesiones abiertas y cada usuario vuelve a iniciar sesion una vez.
+- Compose: proyecto, contenedores y red pasan a `atlas*`. **Los volumenes de datos conservan su nombre**
+  (`inventario-dev_pgdata`, `inventario-test_pgdata`, `inventario_pgdata`) para no arrancar con una base vacia.
+- Sin cambios: tablas, migraciones, endpoints de la API (`/api/sync`, `/api/sync-glpi`, ...) y codigos de permiso
+  (`inventario.ver`, `inventario.editar`).
+
+### Agregado
+- Agente Atlas v5.0 (`agente/atlas_agent.ps1`): une el agente de produccion v4.3 (GLPI piloto + respaldo, tarea
+  SYSTEM) con los campos de la v2; detecta el tipo real (Notebook/CPU/Servidor), reintenta el envio y valida el
+  certificado. MSI `agente/msi/AtlasAgent.wxs` (SERVER y SYNCKEY obligatorios) y `agente/Sincronizar-Atlas.bat`.
+- `herramientas/migrar-v1/`: migracion de datos v1 (SQLite) -> v2 (DT-10), con simulacro y verificacion de conteos.
 
 ## [2.0.0] — sin publicar (2026-09-30)
 

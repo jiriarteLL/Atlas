@@ -1,4 +1,4 @@
-# Inventario LLYA v2 — Flujos de usuario (fase 02-planning)
+# Atlas — Flujos de usuario (fase 02-planning)
 
 ## Sesión
 

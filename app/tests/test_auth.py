@@ -116,7 +116,7 @@ def test_token_invalido_401(client):
 def test_cookie_de_sesion_httponly_samesite_path(client, token, monkeypatch):
     r = login(client)
     sc = r.headers["set-cookie"].lower()
-    assert sc.startswith("inventario_session=")
+    assert sc.startswith("atlas_session=")
     assert "httponly" in sc and "samesite=strict" in sc and "path=/auth" in sc
     assert "secure" not in sc   # COOKIES_SEGURAS=0 en los tests (ambiente HTTP, MANUAL §6.4)
     monkeypatch.setattr(config, "COOKIES_SEGURAS", True)
@@ -306,5 +306,5 @@ def test_logs_json_sin_secretos(client):
     todo = "\n".join(lineas)
     assert SUPERADMIN_PASS not in todo and tok not in todo
     req = [json.loads(linea) for linea in lineas if '"http.request"' in linea]
-    assert req and all(r["request_id"].startswith("req_") and r["app_slug"] == "inventario" for r in req)
+    assert req and all(r["request_id"].startswith("req_") and r["app_slug"] == "atlas" for r in req)
     assert any(r["user_id"] for r in req if r["path"] == "/api/assets")

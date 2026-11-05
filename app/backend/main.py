@@ -37,7 +37,7 @@ from metricas import metricas_texto, registrar_request
 from ratelimit import limiter
 
 contexto.configurar_logs()
-log = logging.getLogger("inventario")
+log = logging.getLogger("atlas")
 
 
 @asynccontextmanager
@@ -49,7 +49,7 @@ async def lifespan(app):
     yield
 
 
-app = FastAPI(title="Inventario LLYA", version=config.APP_VERSION, lifespan=lifespan,
+app = FastAPI(title="Atlas", version=config.APP_VERSION, lifespan=lifespan,
               docs_url=None, redoc_url=None, openapi_url=None)  # sin documentacion publica de la API
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)

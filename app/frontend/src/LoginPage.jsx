@@ -23,7 +23,7 @@ export default function LoginPage({ saliendo }) {
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14 }}>
           <div className="ll-logo" style={{ width: 58, height: 58, borderRadius: 16, fontSize: 17 }}>LLyA</div>
           <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 21, fontWeight: 600, letterSpacing: -0.3 }}>Inventario LLYA</div>
+            <div style={{ fontSize: 21, fontWeight: 600, letterSpacing: -0.3 }}>Atlas</div>
             <div className="mono" style={{ fontSize: 10.5, letterSpacing: 3, color: "var(--accent)", marginTop: 5 }}>ACCESO · SISTEMA DE ACTIVOS</div>
           </div>
         </div>

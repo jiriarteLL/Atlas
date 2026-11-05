@@ -169,7 +169,7 @@ def asignar_rol(db, user, nombre_rol):
 
 # ---------------------------------------------------------------- passwords
 _BLACKLIST_BASE = {"admin", "password", "123456789012", "contrasena", "contraseña", "qwertyuiop", "llyasoc",
-                   "administrador", "password1234", "admin1234567", "passw0rd", "cambiar", "inventario"}
+                   "administrador", "password1234", "admin1234567", "passw0rd", "cambiar", "inventario", "atlas"}
 
 
 def _cargar_blacklist():

@@ -1,4 +1,4 @@
-/* diseno.css — Diseño "Inventario LLYA v2" (portado del prototipo de Claude Design).
+/* diseno.css — Diseño de Atlas (antes "Inventario LLYA v2") (portado del prototipo de Claude Design).
    Se importa DESPUES de styles.css: redefine sus variables para que las secciones existentes
    (Proyectos, Tendencias, Mi perfil, adjuntos, historial) tomen la misma paleta.
    --accent y --accent2 los fija Ambientacion en <html> (color de acento elegido). */

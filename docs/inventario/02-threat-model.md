@@ -1,4 +1,4 @@
-# Inventario LLYA v2 — Threat model (fase 02-planning)
+# Atlas — Threat model (fase 02-planning)
 
 Modelo STRIDE simplificado sobre los flujos de `02-arquitectura.md`. Donde dice "Pendiente", el control depende de
 la infraestructura o de una decisión humana.

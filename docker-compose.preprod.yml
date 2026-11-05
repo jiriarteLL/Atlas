@@ -1,14 +1,14 @@
 # docker-compose.preprod.yml — ambiente PREPRODUCCION en Dokploy (servicio "App Preprod").
 # Lo despliega SOLO el evaluador humano (AGENTS.md §3, MANUAL §9). Autocontenido; requiere createEnvFile: true.
 # APP_PORT es obligatorio: rango Preprod 3200-3299, de 10 en 10, verificado libre (MANUAL §2.3).
-name: inventario
+name: atlas
 
 services:
   app:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: app-inventario
+    container_name: app-atlas
     restart: always
     env_file: .env
     environment:
@@ -41,7 +41,7 @@ services:
 
   db:
     image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
-    container_name: db-inventario
+    container_name: db-atlas
     restart: always
     environment:
       - POSTGRES_DB=${DB_NAME}
@@ -69,4 +69,4 @@ volumes:
 networks:
   app-net:
     driver: bridge
-    name: app-inventario-net
+    name: app-atlas-net

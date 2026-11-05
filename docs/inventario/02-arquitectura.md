@@ -1,4 +1,4 @@
-# Inventario LLYA v2 — Arquitectura (fase 02-planning)
+# Atlas — Arquitectura (fase 02-planning)
 
 ## 1. Contenedores (C4 nivel 2)
 

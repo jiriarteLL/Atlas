@@ -1,4 +1,4 @@
-# Inventario LLYA v2 — Requisitos (fase 01-discovery)
+# Atlas — Requisitos (fase 01-discovery)
 
 > **Estado:** validado por el Product Owner el 2026-09-30 (alcance y priorización MoSCoW).
 > **Fuente:** Inventario LLYA v3.4 en producción (Windows/NSSM/SQLite), adaptado al contrato `maestro.platform/v2`.

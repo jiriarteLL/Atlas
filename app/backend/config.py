@@ -41,7 +41,7 @@ def _normalizar_db_url(url):
 
 
 # Identidad (el slug es metadata.name de maestro.yaml; el Maestro lo inyecta como MAESTRO_APP_SLUG)
-APP_SLUG = os.getenv("MAESTRO_APP_SLUG", "") or "inventario"
+APP_SLUG = os.getenv("MAESTRO_APP_SLUG", "") or "atlas"
 APP_VERSION = "2.0.0"  # = maestro.yaml metadata.version
 APP_ENV = os.getenv("APP_ENV", "production")
 
@@ -91,7 +91,7 @@ SMTP_HOST = os.getenv("SMTP_HOST", "")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USER = os.getenv("SMTP_USER", "")
 SMTP_PASS = os.getenv("SMTP_PASS", "")
-SMTP_FROM_NAME = os.getenv("SMTP_FROM_NAME", "Inventario LLYA")
+SMTP_FROM_NAME = os.getenv("SMTP_FROM_NAME", "Atlas - LLyA")
 SMTP_DOMINIO = os.getenv("SMTP_DOMINIO", "")
 
 # Tendencias: snapshot automatico cada N dias (0 = desactivado)

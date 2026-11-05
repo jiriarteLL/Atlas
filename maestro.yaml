@@ -1,9 +1,9 @@
 apiVersion: maestro.platform/v2
 kind: Application
 metadata:
-  name: inventario
+  name: atlas
   version: 2.0.0
-  description: "Inventario LLYA: activos de TI, garantias, proyectos de IT y relevamiento automatico de equipos"
+  description: "Atlas (inventario LLyA): activos de TI, garantias, proyectos de IT y relevamiento automatico de equipos"
   # Confirmado por el PO (2026-09-30); PROJECT.md la espeja.
   criticality: standard
 requires:

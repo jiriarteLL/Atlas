@@ -1,4 +1,4 @@
-# Inventario LLYA v2 — Incidentes, alertas y deuda técnica (fase 06-operations)
+# Atlas — Incidentes, alertas y deuda técnica (fase 06-operations)
 
 ## Protocolo de incidentes
 

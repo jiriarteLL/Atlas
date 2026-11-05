@@ -1,4 +1,4 @@
-# Inventario LLYA v2 — Contratos de API (fase 02-planning)
+# Atlas — Contratos de API (fase 02-planning)
 
 Todo lo que no está marcado como público exige `Authorization: Bearer <access token>` y el permiso indicado.
 Sin token o con un token inválido o revocado → **401**. Sin el permiso → **403**. La documentación interactiva

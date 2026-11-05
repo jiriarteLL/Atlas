@@ -63,7 +63,7 @@ export default function Intro({ alEntrar }) {
   return (
     <div className="ll-intro" style={{ opacity: saliendo ? 0 : 1, pointerEvents: saliendo ? "none" : "auto" }}>
       <div className="ll-intro-logo">LLyA</div>
-      <h1>INVENTARIO LLYA</h1>
+      <h1>ATLAS</h1>
       <div className="mono" style={{ fontSize: 12, letterSpacing: 5, color: "var(--accent)" }}>SISTEMA DE ACTIVOS · TI</div>
       <div style={{ display: "flex", alignItems: "baseline", gap: 15, marginTop: 42 }}>
         <span ref={contador} className="mono" style={{ fontSize: 64, fontWeight: 600, letterSpacing: -2, color: "#fff" }}>{ultimoTotal() === null ? "—" : "0"}</span>

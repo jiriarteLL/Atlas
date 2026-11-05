@@ -5,7 +5,7 @@ import logging
 import contexto
 from database import SessionLocal, AuditLog
 
-log = logging.getLogger("inventario.audit")
+log = logging.getLogger("atlas.audit")
 
 
 def log_action(usuario, accion, entidad="", entidad_id="", detalle=None, ip="", resultado="success", user_id=""):

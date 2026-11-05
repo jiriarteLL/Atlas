@@ -19,7 +19,7 @@ const celda = (v) => {
 
 export function exportarCSV(activos) {
   const filas = activos.map((a) => COLS_CSV.map((c) => celda(a[c])).join(","));
-  descargar(new Blob([COLS_CSV.join(",") + "\n" + filas.join("\n")], { type: "text/csv" }), "inventario_llya.csv");
+  descargar(new Blob([COLS_CSV.join(",") + "\n" + filas.join("\n")], { type: "text/csv" }), "atlas_inventario.csv");
 }
 
 // Separa una linea CSV respetando comillas ("a, b" es un solo campo; "" es una comilla).

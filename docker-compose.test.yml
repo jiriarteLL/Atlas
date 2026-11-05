@@ -1,14 +1,14 @@
 # docker-compose.test.yml — ambiente TEST en Dokploy (servicio "App Test"). docs/deployment/MANUAL.md §1.5
 # Autocontenido: Dokploy recibe un solo composePath. Requiere createEnvFile: true (usa env_file: .env).
 # APP_PORT es obligatorio: rango Test 3110-3199, de 10 en 10, verificado libre (MANUAL §2.3).
-name: inventario-test
+name: atlas-test
 
 services:
   app:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: app-inventario-test
+    container_name: app-atlas-test
     restart: unless-stopped
     env_file: .env
     environment:
@@ -41,7 +41,7 @@ services:
 
   db:
     image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
-    container_name: db-inventario-test
+    container_name: db-atlas-test
     restart: unless-stopped
     environment:
       - POSTGRES_DB=${DB_NAME}
@@ -69,4 +69,4 @@ volumes:
 networks:
   app-net:
     driver: bridge
-    name: app-inventario-test-net
+    name: app-atlas-test-net

@@ -1,4 +1,4 @@
-# Inventario LLYA v2 — Runbook operativo (fase 06-operations)
+# Atlas — Runbook operativo (fase 06-operations)
 
 > Aplica a Test y Preprod en Dokploy. Producción la opera el Maestro v2 con su propio runbook.
 

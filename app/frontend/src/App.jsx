@@ -174,7 +174,7 @@ export default function App() {
         <div className="ll-marca">
           <div className="ll-logo">LLyA</div>
           <div style={{ lineHeight: 1.15 }}>
-            <div style={{ fontSize: 16, fontWeight: 600, letterSpacing: -0.2 }}>Inventario LLYA</div>
+            <div style={{ fontSize: 16, fontWeight: 600, letterSpacing: -0.2 }}>Atlas</div>
             <div className="ll-marca-sub">ACTIVOS · TI</div>
           </div>
         </div>
