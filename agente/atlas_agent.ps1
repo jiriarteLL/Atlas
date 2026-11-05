@@ -1,9 +1,10 @@
-# Atlas - Agente de inventario LLyA v5.0
+# Atlas - Agente de inventario LLyA v5.1
 # Une el agente de produccion v4.3 (GLPI Agent + respaldo clasico, tarea SYSTEM) con el agente enriquecido de
 # la v2 (IP publica, MAC, gateway, OU de AD, ultimo reinicio y login). Reporta a Atlas (/api/sync y /api/sync-glpi).
 #
 # Funciona igual que hoy en produccion:
-#   - Desde la GPO de inicio (SYSVOL): corre, y si tiene permisos registra la tarea programada apuntando a si mismo.
+#   - Desde la GPO de inicio (SYSVOL): se copia a C:\Program Files\LLyA\Atlas Agent y registra la tarea programada
+#     sobre esa copia; despues se actualiza solo desde la GPO (ver Sync-CopiaLocal).
 #   - Instalado por MSI (equipos fuera del dominio): igual, con la configuracion en atlas.ini al lado del script.
 #   - A mano: muestra el resultado en pantalla y lo deja en C:\ProgramData\LLyA\atlas-agente.log.
 #
@@ -24,9 +25,10 @@ param(
     [switch]$ForzarLegacy  # no usa GLPI Agent aunque el equipo este en el piloto
 )
 
-$VERSION = "5.0.2"
+$VERSION = "5.1.0"
 $TASK    = "Atlas Inventario"
 $SELF    = $PSCommandPath
+$LOCALDIR = Join-Path $env:ProgramFiles "LLyA\Atlas Agent"
 $LOGDIR  = Join-Path $env:ProgramData "LLyA"
 $LOG     = Join-Path $LOGDIR "atlas-agente.log"
 
@@ -275,18 +277,69 @@ function Invoke-Glpi {
     return $true
 }
 
-# Tarea programada como SYSTEM: cada 2 horas de 8 a 22 y al iniciar sesion. Apunta a este mismo script
-# (SYSVOL si vino por GPO, Program Files si vino por MSI). Solo se re-registra si cambio algo.
-function Set-Tarea {
+function Test-Elevado {
+    $id = [Security.Principal.WindowsIdentity]::GetCurrent()
+    return ($id.Name -eq "NT AUTHORITY\SYSTEM") -or
+           ([Security.Principal.WindowsPrincipal]$id).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+function Test-InstaladoPorMsi {
+    $claves = "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*", "HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
+    return [bool](Get-ItemProperty $claves -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -eq "Atlas Agent" })
+}
+
+function Copiar-Si-Cambio($desde, $hacia) {
+    if (-not (Test-Path $desde)) { return $false }
+    if ((Test-Path $hacia) -and (Get-FileHash $desde).Hash -eq (Get-FileHash $hacia).Hash) { return $false }
+    Copy-Item $desde $hacia -Force
+    return $true
+}
+
+# Copia local: el agente no depende de que el controlador de dominio que le toque al equipo tenga la GPO al dia
+# (si la replicacion de SYSVOL falla, sigue funcionando con la ultima version que recibio).
+#   - Corriendo desde SYSVOL: se copia con su atlas.ini a Program Files y anota de donde vino (origen.txt).
+#   - Corriendo desde la copia local: si el origen esta accesible y tiene otra version, se actualiza (rige desde la
+#     proxima corrida). Si el origen no esta o esta atrasado, no pasa nada.
+#   - Instalado por MSI: no se toca (el MSI maneja su propia copia).
+# Devuelve la ruta que tiene que usar la tarea programada.
+function Sync-CopiaLocal {
     try {
-        $id = [Security.Principal.WindowsIdentity]::GetCurrent()
-        $esSystem = $id.Name -eq "NT AUTHORITY\SYSTEM"
-        $esAdmin  = ([Security.Principal.WindowsPrincipal]$id).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-        if (-not ($esSystem -or $esAdmin)) { return }
-        $desc = "Atlas - inventario LLyA cada 2 horas y al iniciar sesion (v$VERSION) - $SELF"
+        if (-not (Test-Elevado) -or (Test-InstaladoPorMsi)) { return $SELF }
+        if ($SELF -like "\\*") {
+            $origenDir = Split-Path -Parent $SELF
+            New-Item -ItemType Directory -Force $LOCALDIR | Out-Null
+            $nuevo = Copiar-Si-Cambio $SELF (Join-Path $LOCALDIR "atlas_agent.ps1")
+            $nuevo = (Copiar-Si-Cambio (Join-Path $origenDir "atlas.ini") (Join-Path $LOCALDIR "atlas.ini")) -or $nuevo
+            Set-Content (Join-Path $LOCALDIR "origen.txt") $origenDir -Encoding ascii
+            Restrict-Ini (Join-Path $LOCALDIR "atlas.ini")
+            if ($nuevo) { Write-Log "Copia local instalada/actualizada en $LOCALDIR desde $origenDir" }
+            return (Join-Path $LOCALDIR "atlas_agent.ps1")
+        }
+        $origenTxt = Join-Path (Split-Path -Parent $SELF) "origen.txt"
+        if (Test-Path $origenTxt) {
+            $origenDir = (Get-Content $origenTxt -TotalCount 1).Trim()
+            if ($origenDir -and (Test-Path (Join-Path $origenDir "atlas_agent.ps1"))) {
+                $nuevo = Copiar-Si-Cambio (Join-Path $origenDir "atlas_agent.ps1") $SELF
+                $nuevo = (Copiar-Si-Cambio (Join-Path $origenDir "atlas.ini") (Join-Path (Split-Path -Parent $SELF) "atlas.ini")) -or $nuevo
+                if ($nuevo) {
+                    Restrict-Ini (Join-Path (Split-Path -Parent $SELF) "atlas.ini")
+                    Write-Log "Copia local actualizada desde $origenDir (rige desde la proxima corrida)"
+                }
+            }
+        }
+    } catch { Write-Log ("Copia local: " + $_.Exception.Message) }
+    return $SELF
+}
+
+# Tarea programada como SYSTEM: cada 2 horas de 8 a 22 y al iniciar sesion. Apunta a la copia local (o al MSI).
+# Solo se re-registra si cambio algo.
+function Set-Tarea($ruta) {
+    try {
+        if (-not (Test-Elevado)) { return }
+        $desc = "Atlas - inventario LLyA cada 2 horas y al iniciar sesion (v$VERSION) - $ruta"
         $t = Get-ScheduledTask -TaskName $TASK -ErrorAction SilentlyContinue
         if ($t -and $t.Principal.UserId -eq "SYSTEM" -and $t.Description -eq $desc) { return }
-        $a   = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-ExecutionPolicy Bypass -NonInteractive -WindowStyle Hidden -File `"$SELF`""
+        $a   = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-ExecutionPolicy Bypass -NonInteractive -WindowStyle Hidden -File `"$ruta`""
         $tr  = New-ScheduledTaskTrigger -Daily -At 08:00 -RandomDelay (New-TimeSpan -Minutes 15)
         $rep = New-ScheduledTaskTrigger -Once -At 08:00 -RepetitionInterval (New-TimeSpan -Hours 2) -RepetitionDuration (New-TimeSpan -Hours 14)
         $tr.Repetition = $rep.Repetition
@@ -294,15 +347,14 @@ function Set-Tarea {
         $p   = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
         $s   = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 30) -MultipleInstances IgnoreNew
         Register-ScheduledTask -TaskName $TASK -Description $desc -Action $a -Trigger @($tr, $tl) -Principal $p -Settings $s -Force | Out-Null
-        Write-Log "Tarea '$TASK' registrada como SYSTEM -> $SELF"
+        Write-Log "Tarea '$TASK' registrada como SYSTEM -> $ruta"
     } catch { Write-Log ("No se pudo registrar la tarea: " + $_.Exception.Message) }
 }
 
-function Restrict-Ini {
+function Restrict-Ini($ini = (Join-Path (Split-Path -Parent $SELF) "atlas.ini")) {
     # La clave vive en atlas.ini: solo SYSTEM (S-1-5-18) y Administradores (S-1-5-32-544), sin herencia.
     try {
-        $ini = Join-Path (Split-Path -Parent $SELF) "atlas.ini"
-        if ((Test-Path $ini) -and $SELF -notlike "\\*") {
+        if ((Test-Path $ini) -and $ini -notlike "\\*") {
             & icacls.exe "$ini" /inheritance:r /grant:r "*S-1-5-18:F" "*S-1-5-32-544:F" | Out-Null
             Write-Log "ACL de atlas.ini restringido a SYSTEM + Administradores"
         }
@@ -324,7 +376,7 @@ if (-not $Server -or -not $SyncKey) {
     Say "ERROR: falta Server o SyncKey (atlas.ini al lado del script o parametros -Server / -SyncKey)." Red
     exit 2
 }
-Set-Tarea
+Set-Tarea (Sync-CopiaLocal)
 
 $codigo = 0
 try {
