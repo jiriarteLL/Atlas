@@ -298,6 +298,7 @@ def delete_asset(aid: str, request: Request, user: UserOut = Depends(require_per
 CAMPOS_LOG = ["nombre", "tipo", "marca", "modelo", "serial", "estado", "usuario", "usuario_alt",
               "ubicacion", "grupo", "red", "cpu", "ram", "disco", "ip", "so", "so_version",
               "so_arquitectura", "garantia", "comentarios", "monitores", "impresoras", "cifrado", "tpm"]
+CAMPOS_SOLO_AGENTE = ("ip_publica", "mac", "gateway", "ou_ad", "ultimo_reinicio", "ultimo_login")
 
 
 def _parse_sw(txt):
@@ -361,6 +362,10 @@ def _aplicar_sync(a: AssetSync):
             # No pisar cifrado/tpm con vacio o "Sin acceso": la tarea local
             # corre sin elevacion y no puede leerlos, pero el arranque si.
             if k in ("cifrado", "tpm") and (v is None or str(v).strip() == "" or str(v).strip().lower().startswith("sin acceso")):
+                continue
+            # Los campos de red e identidad solo los manda el agente de Atlas: el inventario GLPI (que llega
+            # despues en la misma corrida) no los trae y no tiene que borrarlos.
+            if k in CAMPOS_SOLO_AGENTE and (v is None or str(v).strip() == ""):
                 continue
             setattr(obj, k, v)
         obj.updated = datetime.utcnow()
@@ -788,7 +793,9 @@ def _glpi_map(c, previo):
     return {
         "nombre": nombre, "tipo": tipo, "serial": _gc(bios.get("ssn") or bios.get("msn")),
         "marca": _gc(bios.get("smanufacturer") or bios.get("mmanufacturer")),
-        "modelo": _gc(bios.get("mmodel") or bios.get("smodel")),
+        # smodel es el nombre comercial ("ThinkPad E14 Gen 6"); mmodel suele ser el codigo de placa o el
+        # machine type de Lenovo ("21M80017AR"). Se prefiere el comercial, como hace el agente.
+        "modelo": _gc(bios.get("smodel") or bios.get("mmodel")),
         "cpu": _gc(((c.get("cpus") or [{}])[0]).get("name")),
         "ram": ("%dGB" % round(mem / 1024.0)) if mem else "",
         "disco": " + ".join("%dGB" % round(s["disksize"] / 1000.0) for s in discos),

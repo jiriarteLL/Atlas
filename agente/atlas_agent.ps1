@@ -24,7 +24,7 @@ param(
     [switch]$ForzarLegacy  # no usa GLPI Agent aunque el equipo este en el piloto
 )
 
-$VERSION = "5.0"
+$VERSION = "5.0.2"
 $TASK    = "Atlas Inventario"
 $SELF    = $PSCommandPath
 $LOGDIR  = Join-Path $env:ProgramData "LLyA"
@@ -88,6 +88,18 @@ function Get-Tipo($cs, $os) {
     return "CPU"
 }
 
+# Modelo con el nombre comercial. Lenovo informa en Model el machine type ("21M80017AR") y el nombre que conoce
+# la gente en Win32_ComputerSystemProduct.Version ("ThinkPad E14 Gen 6"); HP y Dell ya lo traen en Model.
+function Get-Modelo($cs) {
+    $modelo = Clean($cs.Model)
+    try {
+        $ver = Clean((Get-WmiObject Win32_ComputerSystemProduct -ErrorAction Stop).Version)
+        $generico = '^(none|default string|system version|to be filled.*|not applicable|n/?a|0+|[\d.\s]+)$'
+        if ($ver.Length -ge 3 -and $ver -match '[A-Za-z]' -and $ver -notmatch $generico -and $ver -ne $modelo) { return $ver }
+    } catch {}
+    return $modelo
+}
+
 function Get-Inventario {
     $serial  = (Get-WmiObject Win32_BIOS).SerialNumber
     $cpu     = (Get-WmiObject Win32_Processor | Select-Object -First 1).Name.Trim()
@@ -133,8 +145,12 @@ function Get-Inventario {
     $ultReinicio = ""; $ultLogin = ""
     try { $ultReinicio = ([Management.ManagementDateTimeConverter]::ToDateTime($os.LastBootUpTime)).ToString("yyyy-MM-dd HH:mm") } catch {}
     try {
-        $ev = Get-WinEvent -FilterHashtable @{LogName='Security';Id=4624} -MaxEvents 60 -ErrorAction Stop |
-              Where-Object { $_.Properties[8].Value -in 2,10,11 } | Select-Object -First 1
+        # Filtro en el propio log (no entre los ultimos N eventos): en un equipo con mucho acceso de red los 4624
+        # recientes son casi todos tipo 3. 2 = consola, 10 = escritorio remoto, 11 = credenciales en cache.
+        # Se descartan las cuentas internas de Windows que tambien inician sesion tipo 2 (DWM-n, UMFD-n).
+        $xp = "*[System[EventID=4624] and EventData[Data[@Name='LogonType']='2' or Data[@Name='LogonType']='10' or Data[@Name='LogonType']='11']]"
+        $ev = Get-WinEvent -LogName Security -FilterXPath $xp -MaxEvents 30 -ErrorAction Stop |
+              Where-Object { $_.Properties[5].Value -notmatch '^(DWM|UMFD)-\d+$' } | Select-Object -First 1
         if ($ev) { $ultLogin = $ev.TimeCreated.ToString("yyyy-MM-dd HH:mm") }
     } catch {}
 
@@ -193,7 +209,7 @@ function Get-Inventario {
     } catch {}
 
     return [ordered]@{
-        nombre = "$(Clean($nombre))"; tipo = "$(Get-Tipo $cs $os)"; marca = "$(Clean($cs.Manufacturer))"; modelo = "$(Clean($cs.Model))"
+        nombre = "$(Clean($nombre))"; tipo = "$(Get-Tipo $cs $os)"; marca = "$(Clean($cs.Manufacturer))"; modelo = "$(Get-Modelo $cs)"
         serial = "$(Clean($serial))"; cpu = "$(Clean($cpu))"; ram = "$($ramGB)GB"; disco = "$($discoGB)GB"
         so = "$(Clean($os.Caption))"; so_version = "$(Clean($os.Version))"; so_arquitectura = "$(Clean($os.OSArchitecture))"
         ip = "$ip"; red = "$(Clean($cs.Domain))"; grupo = "$(Clean($cs.SystemType))"

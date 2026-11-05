@@ -53,6 +53,23 @@ def test_sync_glpi_upsert(client, token):
     assert a[0]["ubicacion"] == "Mendoza" and a[0]["tipo"] == "Notebook"
 
 
+def test_glpi_no_borra_los_campos_del_agente_y_usa_el_modelo_comercial(client, token):
+    """En una corrida del agente llega primero /api/sync (con MAC, OU...) y despues GLPI, que no los trae."""
+    red = {"mac": "AA:BB:CC:DD:EE:FF", "gateway": "192.168.100.4", "ip_publica": "190.210.78.1",
+           "ou_ad": "OU=CABA,DC=LLASESORES,DC=CORP", "ultimo_reinicio": "2026-11-05 08:00", "ultimo_login": "2026-11-05 08:05"}
+    h = {"X-Sync-Key": SYNC_KEY}
+    assert client.post("/api/sync", json=dict(ACTIVO, serial="GLPI0002", **red), headers=h).status_code == 200
+    inv = {"content": {"bios": {"ssn": "GLPI0002", "smanufacturer": "LENOVO", "mmodel": "21M80017AR",
+                                "smodel": "ThinkPad E14 Gen 6"},
+                       "hardware": {"name": "TEST", "chassis_type": "Notebook", "memory": 32768},
+                       "operatingsystem": {"full_name": "Windows 11 Pro", "arch": "64-bit"}}}
+    r = client.post("/api/sync-glpi", content=json.dumps(inv), headers=dict(h, **{"Content-Type": "application/json"}))
+    assert r.status_code == 200, r.text
+    a = client.get("/api/assets", headers=bearer(token)).json()[0]
+    assert a["modelo"] == "ThinkPad E14 Gen 6"
+    assert {k: a[k] for k in red} == red
+
+
 def test_proyecto_con_tareas(client, token):
     r = client.post("/api/proyectos", headers=bearer(token), json={"nombre": "Migracion de servidores"})
     assert r.status_code == 200
