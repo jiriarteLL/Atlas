@@ -16,6 +16,8 @@
     <Property Id="SERVER" Secure="yes"/>
     <Property Id="SYNCKEY" Secure="yes" Hidden="yes"/>
     <Property Id="GLPI" Value="piloto" Secure="yes"/>
+    <!-- 1 = aceptar el certificado interno (mkcert) del servidor; 0 = validar normalmente. -->
+    <Property Id="CERTINTERNO" Value="0" Secure="yes"/>
     <Condition Message="Faltan SERVER y SYNCKEY. Ejemplo: msiexec /i AtlasAgent.msi SERVER=&quot;https://atlas.llyasoc.com&quot; SYNCKEY=&quot;...&quot;">
       Installed OR (SERVER AND SYNCKEY)
     </Condition>
@@ -32,6 +34,8 @@
                        Section="atlas" Key="SyncKey" Value="[SYNCKEY]"/>
               <IniFile Id="iniGlpi" Action="addLine" Directory="INSTALLFOLDER" Name="atlas.ini"
                        Section="atlas" Key="Glpi" Value="[GLPI]"/>
+              <IniFile Id="iniCert" Action="addLine" Directory="INSTALLFOLDER" Name="atlas.ini"
+                       Section="atlas" Key="CertInterno" Value="[CERTINTERNO]"/>
               <RemoveFile Id="rmIni" Name="atlas.ini" On="uninstall"/>
             </Component>
           </Directory>
