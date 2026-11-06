@@ -35,6 +35,7 @@ from database import (Adjunto, Asset, AssetGlpi, Historial, Proyecto, ProyectoAc
 from impresoras import borrar_datos_impresora, router as impresoras_router
 from impresoras_relevamiento import router as relevamiento_router
 from salud import borrar_datos_salud, guardar_salud, limitar_salud, router as salud_router
+from telefonia import router as telefonia_router
 from mailer import notificar_proyecto_finalizado
 from metricas import metricas_texto, registrar_request
 from ratelimit import limiter
@@ -61,6 +62,7 @@ app.include_router(login_router)
 app.include_router(relevamiento_router)   # antes que /api/impresoras/{id}
 app.include_router(impresoras_router)
 app.include_router(salud_router)
+app.include_router(telefonia_router)
 if config.CORS_ORIGINS:
     app.add_middleware(CORSMiddleware, allow_origins=config.CORS_ORIGINS, allow_methods=["*"], allow_headers=["*"],
                        allow_credentials=True)

@@ -12,6 +12,7 @@ import Dashboard from "./vistas/Dashboard";
 import Activos from "./vistas/Activos";
 import Impresoras from "./vistas/Impresoras";
 import Salud from "./vistas/Salud";
+import Telefonia from "./vistas/Telefonia";
 import AlertaToner from "./vistas/AlertaToner";
 import FichaActivo from "./vistas/FichaActivo";
 import ModalActivo from "./vistas/ModalActivo";
@@ -24,7 +25,7 @@ import { SeccionPerfil } from "./secciones/SeccionPerfil";
 
 const SECCIONES = {
   dashboard: ["Dashboard", "Vista general"], activos: ["Activos", "Inventario completo"],
-  licencias: ["Licencias", "Software y suscripciones"], proyectos: ["Proyectos", "Seguimiento de IT"],
+  telefonia: ["Telefonía", "Internos de 3CX y teléfonos"], licencias: ["Licencias", "Software y suscripciones"], proyectos: ["Proyectos", "Seguimiento de IT"],
   reportes: ["Reportes", "Análisis"], tendencias: ["Tendencias", "Evolución en el tiempo"],
   usuarios: ["Usuarios", "Nómina"], perfil: ["Mi perfil", "Cuenta, permisos y seguridad"],
   agente: ["Agente", "Scripts de sincronización"], accesos: ["Accesos", "Usuarios de la aplicación"],
@@ -34,7 +35,7 @@ const FILTROS_VACIOS = { q: "", tipo: "", estado: "", sede: "" };
 const VISTAS_ACTIVOS = [["todos", "Todos los activos"], ["salud", "Notebooks y PC"], ["impresoras", "Impresoras"]];
 // Modulo de permisos que habilita cada seccion y subseccion (ver backend/auth.py MODULOS). Sin entrada = siempre.
 const MODULO_DE_VISTA = { todos: "activos", salud: "salud", impresoras: "impresoras" };
-const MODULO_DE_SECCION = { dashboard: "dashboard", proyectos: "proyectos", reportes: "reportes", tendencias: "tendencias",
+const MODULO_DE_SECCION = { dashboard: "dashboard", telefonia: "telefonia", proyectos: "proyectos", reportes: "reportes", tendencias: "tendencias",
   agente: "agente", accesos: "accesos" };
 // Para cargar /api/assets alcanza con ver alguno de estos (igual que MODULOS_LISTA_ACTIVOS del servidor)
 const MODULOS_LISTA_ACTIVOS = ["activos", "dashboard", "salud", "reportes", "proyectos"];
@@ -136,7 +137,7 @@ export default function App() {
   // Si el inicio (Dashboard) no esta permitido, se arranca en la primera seccion que si
   useEffect(() => {
     if (tab !== "dashboard" || permitida("dashboard")) return;
-    const primera = ["activos", "proyectos", "reportes", "tendencias", "agente", "perfil"].find((x) => permitida(x));
+    const primera = ["activos", "telefonia", "proyectos", "reportes", "tendencias", "agente", "perfil"].find((x) => permitida(x));
     if (primera) setTab(primera);
   }, [tab, permitida]);
 
@@ -196,7 +197,7 @@ export default function App() {
   const exportarGrafico = async (t, d, id) => { try { await exportarReporte(t, d, id); } catch (e) { alert("Error al exportar: " + e.message); } };
 
   const principal = [
-    ["dashboard", "▦", "Dashboard"], ["activos", "▭", "Activos", puedeVer("activos") ? assets.length : undefined], ["licencias", "⬡", "Licencias"],
+    ["dashboard", "▦", "Dashboard"], ["activos", "▭", "Activos", puedeVer("activos") ? assets.length : undefined], ["telefonia", "☏", "Telefonía"], ["licencias", "⬡", "Licencias"],
     ["proyectos", "◧", "Proyectos"], ["reportes", "◫", "Reportes"], ["tendencias", "◭", "Tendencias"],
     ["usuarios", "⚇", "Usuarios"], ["perfil", "◉", "Mi perfil"],
   ].filter(([k]) => permitida(k));
@@ -287,6 +288,7 @@ export default function App() {
             {tab === "activos" && vistaEf === "todos" && <Activos filtrados={filtrados} filtros={filtros} setFiltros={setFiltros} orden={orden} setOrden={setOrden}
               verFicha={verFicha} editar={(a) => setEdicion(a)} eliminar={eliminarActivo} nuevo={() => setEdicion({})}
               exportar={exportarExcel} puedeEditar={puedeEditar} puedeEliminar={puedeEliminar} esAdmin={esAdmin} />}
+            {tab === "telefonia" && <Telefonia puedeEditar={puede(user, "telefonia", "editar")} avisar={avisar} />}
             {tab === "licencias" && <Proximamente titulo="Licencias" columnas={["PRODUCTO", "CLAVE", "ASIGNADO A", "SEDE", "VENCE", "ESTADO", "ACCIONES"]}
               texto="El control de licencias (Claude, Office, antivirus) está diseñado pero quedó fuera del alcance de la v2.0.0. Se habilita en una versión posterior." />}
             {tab === "usuarios" && <Proximamente titulo="Usuarios"

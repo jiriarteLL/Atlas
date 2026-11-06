@@ -186,6 +186,7 @@ MODULOS = [
     ("activos",    "Activos",        "Todos los activos, ficha, historial, adjuntos, tickets y garantías", ("ver", "editar")),
     ("salud",      "Notebooks y PC", "Salud y seguridad: Windows, BitLocker, antivirus, parches, discos, batería", ("ver",)),
     ("impresoras", "Impresoras",     "Impresoras de red y USB, tóner y contadores", ("ver", "editar")),
+    ("telefonia",  "Telefonía",      "Internos de 3CX y teléfonos IP / WiFi", ("ver", "editar")),
     ("proyectos",  "Proyectos",      "Proyectos de IT, tareas y equipo", ("ver", "editar")),
     ("reportes",   "Reportes",       "Gráficos y exportación a Excel / CSV", ("ver",)),
     ("tendencias", "Tendencias",     "Evolución del inventario en el tiempo", ("ver",)),

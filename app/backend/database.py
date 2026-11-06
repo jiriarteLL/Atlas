@@ -276,6 +276,47 @@ class AssetSalud(Base):
     actualizado    = Column(DateTime, default=datetime.utcnow)
 
 
+# ---------------------------------------------------------------- telefonia (internos de 3CX + telefonos)
+# Un registro por interno de la central 3CX (importado de la exportacion de usuarios de la consola). El telefono
+# fisico (Grandstream IP o WiFi) se identifica por la MAC que trae la exportacion; la IP sale de las concesiones
+# DHCP (relevamiento-dhcp). Lo administrativo (tipo, sede, piso, notas, estado) se edita a mano y no se pisa.
+# Nunca se guardan PIN, claves ni otros secretos de 3CX: el importador lee solo una lista blanca de columnas.
+class LineaTelefonica(Base):
+    __tablename__ = "linea_telefonica"
+    id            = Column(String, primary_key=True, default=_uuid)
+    interno       = Column(String, nullable=False, unique=True)
+    nombre        = Column(String, default="")
+    email         = Column(String, default="")
+    departamento  = Column(String, default="")
+    did           = Column(String, default="")
+    deshabilitado = Column(Boolean, default=False)       # "Disabled" en 3CX
+    mac           = Column(String, default="", index=True)
+    modelo        = Column(String, default="")
+    tipo          = Column(String, default="")           # IP | WiFi | "" (sin equipo)
+    tipo_manual   = Column(Boolean, default=False)       # lo eligio un usuario: la importacion no lo cambia
+    ip            = Column(String, default="")
+    ip_origen     = Column(String, default="")           # dhcp | manual
+    ip_visto      = Column(DateTime, nullable=True)      # ultima concesion DHCP vista
+    hostname      = Column(String, default="")
+    sede          = Column(String, default="")
+    sede_manual   = Column(Boolean, default=False)
+    piso          = Column(String, default="")
+    notas         = Column(Text, default="")
+    estado        = Column(String, default="Activa")     # Activa | Deshabilitada | Baja
+    en_3cx        = Column(Boolean, default=True)        # aparecio en la ultima importacion de 3CX
+    creado        = Column(DateTime, default=datetime.utcnow)
+    actualizado   = Column(DateTime, default=datetime.utcnow)
+
+
+class TelefonoSinInterno(Base):
+    """Telefono visto por DHCP (OUI de Grandstream) cuya MAC no figura en ningun interno de 3CX."""
+    __tablename__ = "telefono_sin_interno"
+    mac      = Column(String, primary_key=True)
+    ip       = Column(String, default="")
+    hostname = Column(String, default="")
+    visto    = Column(DateTime, default=datetime.utcnow)
+
+
 def init_db():
     """Lleva la base a la ultima migracion de Alembic (idempotente; corre en cada arranque).
 
