@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import func
 
+import config
 from audit import log_action
 from auth import UserOut, require_escritura, require_lectura
 from database import Asset, Historial, ImpresoraConsumible, ImpresoraDetalle, ImpresoraLectura, SessionLocal
@@ -180,6 +181,28 @@ def listar_impresoras(user: UserOut = Depends(require_lectura)):
     try:
         assets = db.query(Asset).filter(Asset.tipo == "Impresora").order_by(Asset.ubicacion, Asset.nombre).all()
         return _armar(db, assets)
+    finally:
+        db.close()
+
+
+@router.get("/alertas")
+def alertas_toner(user: UserOut = Depends(require_lectura)):
+    """Cartuchos (toner/color) por debajo del umbral (TONER_ALERTA_PCT, 10% por defecto): el aviso emergente."""
+    umbral = config.TONER_ALERTA_PCT
+    db = SessionLocal()
+    try:
+        filas = (db.query(Asset, ImpresoraConsumible, ImpresoraDetalle)
+                 .join(ImpresoraConsumible, ImpresoraConsumible.asset_id == Asset.id)
+                 .outerjoin(ImpresoraDetalle, ImpresoraDetalle.asset_id == Asset.id)
+                 .filter(Asset.tipo == "Impresora", Asset.estado != "Dado de baja",
+                         ImpresoraConsumible.tipo.in_(("toner", "color")),
+                         ImpresoraConsumible.porcentaje.isnot(None), ImpresoraConsumible.porcentaje >= 0,
+                         ImpresoraConsumible.porcentaje < umbral)
+                 .order_by(ImpresoraConsumible.porcentaje, Asset.nombre).all())
+        return {"umbral": umbral, "alertas": [
+            {"id": a.id, "nombre": a.nombre, "ubicacion": a.ubicacion, "piso": d.piso if d else "",
+             "consumible": c.descripcion, "porcentaje": c.porcentaje, "actualizado": c.actualizado}
+            for a, c, d in filas]}
     finally:
         db.close()
 

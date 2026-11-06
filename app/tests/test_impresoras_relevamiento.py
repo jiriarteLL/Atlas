@@ -90,6 +90,21 @@ def test_impresora_usb_y_otros_activos_no_se_tocan(client, token):
     assert usb["detalle"]["conexion"] == "usb" and usb["ip"] in ("", None) and usb["lectura"] is None
 
 
+def test_alertas_de_toner_bajo(client, token):
+    consumibles = [
+        {"indice": 1, "descripcion": "Cartucho negro HP W9150MC", "maximo": 100, "nivel": 84, "porcentaje": 84, "nota": ""},
+        {"indice": 2, "descripcion": "Cartucho cian HP W9141", "maximo": 100, "nivel": 9, "porcentaje": 9, "nota": ""},
+        {"indice": 3, "descripcion": "Tambor cian HP W9075MC", "maximo": 100, "nivel": 3, "porcentaje": 3, "nota": ""},
+        {"indice": 4, "descripcion": "Unidad de recogida de tóner HP", "maximo": 100, "nivel": -3, "porcentaje": None,
+         "nota": "queda algo"}]
+    client.post(URL, json={"lecturas": [_lectura(serie="MXCCV14082", mac="4C:CF:7C:79:FF:E3", consumibles=consumibles)]},
+                headers=H)
+    assert client.get("/api/impresoras/alertas").status_code == 401
+    r = client.get("/api/impresoras/alertas", headers=bearer(token)).json()
+    assert r["umbral"] == 10
+    assert [(a["consumible"], a["porcentaje"]) for a in r["alertas"]] == [("Cartucho cian HP W9141", 9)]
+
+
 def test_sede_por_red_y_color(client, token):
     color = _lectura(ip="192.168.9.71", serie="MXCCV14082", mac="4C:CF:7C:79:FF:E3", modelo="HP Color LaserJet MFP E78625",
                      consumibles=[{"indice": 2, "descripcion": "Cartucho cian HP W9141", "maximo": 100, "nivel": 9,

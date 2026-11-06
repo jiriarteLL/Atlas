@@ -11,6 +11,7 @@ import { cumpleEstado } from "./vistas/filtros";
 import Dashboard from "./vistas/Dashboard";
 import Activos from "./vistas/Activos";
 import Impresoras from "./vistas/Impresoras";
+import AlertaToner from "./vistas/AlertaToner";
 import FichaActivo from "./vistas/FichaActivo";
 import ModalActivo from "./vistas/ModalActivo";
 import Reportes from "./vistas/Reportes";
@@ -250,6 +251,7 @@ export default function App() {
         </div>
       </main>
 
+      <AlertaToner onVer={() => ir("activos", {}, "impresoras")} />
       {ficha && <FichaActivo key={ficha.id} activo={ficha} glpiMap={glpiMap} user={user} onCerrar={() => setFicha(null)}
         onEditar={(a) => setEdicion(a)} onEliminar={eliminarActivo} consultarGarantia={consultarGarantia}
         puedeEditar={puedeEditar} puedeEliminar={puedeEliminar} />}
