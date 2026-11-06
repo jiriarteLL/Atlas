@@ -22,7 +22,7 @@ function Tarjeta({ valor, rotulo, sub, subColor, barra, demora, onClick, childre
 // Riesgos de seguridad de notebooks y PC (resumen de /api/salud/resumen); cada numero lleva a Activos -> Notebooks y PC
 const RIESGOS = [
   ["sin_soporte", "Windows sin soporte", "#f87171"], ["sin_cifrar", "Sin BitLocker", "#f472b6"],
-  ["av_problema", "Antivirus con problemas", "#f87171"], ["sin_parches_30d", "Sin parches +30 días", "#fbbf24"],
+  ["av_problema", "Sin CrowdStrike o con problemas", "#f87171"], ["sin_parches_30d", "Sin parches +30 días", "#fbbf24"],
   ["disco_riesgo", "Disco en riesgo", "#f87171"], ["vence_pronto", "Soporte vence pronto", "#fbbf24"],
 ];
 

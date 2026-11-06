@@ -14,7 +14,8 @@ PC = {"nombre": "NB-TEST-01", "tipo": "Notebook", "marca": "Lenovo", "modelo": "
       "so": "Microsoft Windows 11 Pro", "so_version": "10.0.26200", "cifrado": "Cifrado"}
 
 SALUD = {"so": {"edicion": "Professional", "display_version": "25H2", "build": 26200, "ubr": 7019},
-         "antivirus": [{"nombre": "Windows Defender", "activo": True, "actualizado": True}],
+         "antivirus": [{"nombre": "Windows Defender", "activo": False, "actualizado": True},
+                      {"nombre": "CrowdStrike Falcon Sensor", "activo": True, "actualizado": True}],
          "parches": {"ultimo": date.today().isoformat(), "cantidad_90d": 4},
          "discos": [{"nombre": "SSD TEST", "tipo": "SSD", "salud": "Healthy", "desgaste": 5, "temperatura": 38,
                      "errores_lectura": 0, "tamano_gb": 512}],
@@ -59,10 +60,13 @@ def test_edicion_y_build():
 def test_estados_de_antivirus_disco_y_bateria():
     n = normalizar(SALUD)
     assert n["av_estado"] == "ok" and n["disco_estado"] == "ok" and n["bateria_salud"] == 92 and n["so_build"] == 26200
-    n = normalizar({"antivirus": [{"nombre": "X", "activo": False, "actualizado": True}]})
+    n = normalizar({"antivirus": [{"nombre": "CrowdStrike Falcon", "activo": False, "actualizado": True}]})
     assert n["av_estado"] == "desactivado"
-    n = normalizar({"antivirus": [{"nombre": "X", "activo": "true", "actualizado": "false"}]})
+    n = normalizar({"antivirus": [{"nombre": "CrowdStrike Falcon", "activo": "true", "actualizado": "false"}]})
     assert n["av_estado"] == "desactualizado"
+    # solo Defender (aunque este activo y al dia): falta el antivirus de la empresa
+    n = normalizar({"antivirus": [{"nombre": "Windows Defender", "activo": True, "actualizado": True}]})
+    assert n["av_estado"] == "falta_corporativo"
     assert normalizar({})["av_estado"] == "" and normalizar({})["disco_estado"] == ""
     assert normalizar({"discos": [{"salud": "Warning"}]})["disco_estado"] == "riesgo"
     assert normalizar({"discos": [{"salud": "Healthy", "desgaste": 85}]})["disco_estado"] == "riesgo"

@@ -94,6 +94,10 @@ SEDES_POR_RED = [tuple(x.split("=", 1)) for x in _lista("SEDES_POR_RED") if "=" 
 # Aviso emergente de toner: cartuchos por debajo de este porcentaje
 TONER_ALERTA_PCT = int(os.getenv("TONER_ALERTA_PCT", "10"))
 
+# Antivirus de la empresa (Notebooks y PC): un equipo sin este producto activo cuenta como alerta.
+# Se busca dentro del nombre que reporta el agente; vacio = vale cualquier antivirus activo.
+AV_CORPORATIVO = os.getenv("AV_CORPORATIVO", "CrowdStrike").strip()
+
 # Logs (CONVENCIONES §10: JSON a stdout)
 LOG_LEVEL = os.getenv("LOG_LEVEL", "info")
 LOG_FORMAT = os.getenv("LOG_FORMAT", "json").lower()

@@ -13,7 +13,7 @@ export const ALERTAS_SALUD = [
   ["sin_soporte", "Windows sin soporte", ROJO, (f) => f.soporte_estado === "sin_soporte"],
   ["vence_pronto", "Soporte vence pronto", AMBAR, (f) => f.soporte_estado === "vence_pronto"],
   ["sin_cifrar", "Sin BitLocker", "#f472b6", (f) => f.sin_cifrar],
-  ["av_problema", "Antivirus con problemas", ROJO, (f) => f.av_estado === "desactivado" || f.av_estado === "desactualizado"],
+  ["av_problema", "Sin CrowdStrike o con problemas", ROJO, (f) => ["falta_corporativo", "desactivado", "desactualizado"].includes(f.av_estado)],
   ["sin_parches_30d", "Sin parches +30 días", AMBAR, (f) => f.dias_sin_parches !== null && f.dias_sin_parches > 30],
   ["disco_riesgo", "Disco en riesgo", ROJO, (f) => f.disco_estado === "riesgo"],
   ["bateria_baja", "Batería por debajo del 60%", AMBAR, (f) => f.bateria_baja],
@@ -49,12 +49,16 @@ export function InsigniaSoporte({ f }) {
   return f.so_build ? <Insignia color="var(--ll-muted)" titulo="Build o edición sin fecha conocida (LTSC, Insider…)">sin dato de soporte</Insignia> : null;
 }
 
-const AV_TEXTO = { ok: ["Al día", VERDE], desactualizado: ["Desactualizado", AMBAR], desactivado: ["Desactivado", ROJO] };
+// El antivirus de la empresa es CrowdStrike (AV_CORPORATIVO en el servidor); Defender queda pasivo a su lado.
+const AV_TEXTO = { ok: ["Al día", VERDE], desactualizado: ["Desactualizado", AMBAR], desactivado: ["Desactivado", ROJO],
+  falta_corporativo: ["Sin CrowdStrike", ROJO] };
 
 export function EstadoAntivirus({ f }) {
   const [txt, color] = AV_TEXTO[f.av_estado] || ["—", "var(--ll-dim)"];
-  const activos = (f.antivirus || []).filter((a) => a.activo).map((a) => a.nombre);
-  const nombres = (activos.length ? activos : (f.antivirus || []).map((a) => a.nombre)).join(", ");
+  const avs = f.antivirus || [];
+  const cs = avs.filter((a) => /crowdstrike/i.test(a.nombre));
+  const activos = avs.filter((a) => a.activo);
+  const nombres = (cs.length ? cs : activos.length ? activos : avs).map((a) => a.nombre).join(", ");
   return (
     <span style={{ display: "inline-flex", flexDirection: "column", gap: 2 }}>
       <span style={{ color, fontWeight: 600, fontSize: 12.5 }}>{txt}</span>

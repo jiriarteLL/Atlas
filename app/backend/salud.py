@@ -17,6 +17,7 @@ from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Depends
 
+import config
 from auth import UserOut, require_lectura
 from ciclo_vida import build_de, soporte
 from database import Asset, AssetSalud, SessionLocal
@@ -31,6 +32,7 @@ DESGASTE_RIESGO = 80      # % de vida consumida del SSD
 BATERIA_BAJA = 60         # % de la capacidad de diseno
 DIAS_SIN_PARCHES = 30
 DIAS_SIN_REPORTAR = 15
+AV_PROBLEMA = ("falta_corporativo", "desactivado", "desactualizado")
 
 
 # ---------------------------------------------------------------- normalizacion de lo que manda el agente
@@ -81,10 +83,22 @@ def limitar_salud(v):
     return v
 
 
+def es_corporativo(a):
+    nombre = (a.get("nombre") or "").lower()
+    return bool(config.AV_CORPORATIVO) and config.AV_CORPORATIVO.lower() in nombre
+
+
 def estado_antivirus(avs):
-    """'' sin datos | 'desactivado' ninguno activo | 'desactualizado' activo pero ninguno al dia | 'ok'."""
+    """'' sin datos | 'falta_corporativo' no tiene el antivirus de la empresa (CrowdStrike) |
+    'desactivado' lo tiene pero apagado | 'desactualizado' activo sin firmas al dia | 'ok'.
+    Defender pasivo al lado de CrowdStrike es lo normal y no cuenta como problema.
+    Sin AV_CORPORATIVO configurado vale cualquier antivirus activo."""
     if not avs:
         return ""
+    if config.AV_CORPORATIVO:
+        avs = [a for a in avs if es_corporativo(a)]
+        if not avs:
+            return "falta_corporativo"
     activos = [a for a in avs if a["activo"]]
     if not activos:
         return "desactivado"
@@ -177,7 +191,8 @@ def armar(a, s, hoy=None):
         "soporte_producto": sop["producto"], "fin_soporte": sop["fin_soporte"], "soporte_estado": sop["estado"],
         "soporte_dias": sop["dias"],
         "cifrado": a.cifrado, "sin_cifrar": sin_cifrar(a.cifrado), "tpm": a.tpm,
-        "antivirus": _json(s.antivirus) if s else [], "av_estado": s.av_estado if s else "",
+        # el estado se recalcula al leer: si cambia AV_CORPORATIVO no hace falta esperar al proximo sync
+        "antivirus": _json(s.antivirus) if s else [], "av_estado": estado_antivirus(_json(s.antivirus)) if s else "",
         "ultimo_parche": s.ultimo_parche if s else None, "parches_90d": s.parches_90d if s else None,
         "dias_sin_parches": (hoy - s.ultimo_parche).days if s and s.ultimo_parche else None,
         "discos": discos, "disco_estado": s.disco_estado if s else "",
@@ -206,7 +221,7 @@ def resumir(filas):
         c["sin_soporte"] += f["soporte_estado"] == "sin_soporte"
         c["vence_pronto"] += f["soporte_estado"] == "vence_pronto"
         c["sin_cifrar"] += f["sin_cifrar"]
-        c["av_problema"] += f["av_estado"] in ("desactivado", "desactualizado")
+        c["av_problema"] += f["av_estado"] in AV_PROBLEMA
         c["sin_parches_30d"] += f["dias_sin_parches"] is not None and f["dias_sin_parches"] > DIAS_SIN_PARCHES
         c["disco_riesgo"] += f["disco_estado"] == "riesgo"
         c["bateria_baja"] += f["bateria_baja"]
