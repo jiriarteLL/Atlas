@@ -162,15 +162,28 @@ function Get-Salud($os) {
         })
     } catch {}
 
-    # Bateria: capacidad de carga completa / de diseno (root\wmi). Equipos de escritorio y servidores: null.
+    # Bateria: capacidad de carga completa / de diseno. Equipos de escritorio y servidores: null.
+    # BatteryStaticData da "Generic failure" en muchas notebooks modernas -> respaldo: powercfg /batteryreport /xml.
     try {
-        $dis = Get-CimInstance -Namespace root\wmi -ClassName BatteryStaticData -ErrorAction Stop | Select-Object -First 1
-        $full = Get-CimInstance -Namespace root\wmi -ClassName BatteryFullChargedCapacity -ErrorAction Stop | Select-Object -First 1
-        if ($dis -and $full -and $dis.DesignedCapacity -gt 0) {
-            $cic = $null; try { $cic = (Get-CimInstance -Namespace root\wmi -ClassName BatteryCycleCount -ErrorAction Stop | Select-Object -First 1).CycleCount } catch {}
-            $s.bateria = [ordered]@{ salud = [int][math]::Min(100, [math]::Round($full.FullChargedCapacity * 100 / $dis.DesignedCapacity))
-                                     ciclos = $(if ($cic) { [int]$cic } else { $null })
-                                     diseno_mwh = [int]$dis.DesignedCapacity; actual_mwh = [int]$full.FullChargedCapacity }
+        if (Get-CimInstance Win32_Battery -ErrorAction Stop) {
+            $dis = $null; $full = $null; $cic = $null
+            try { $dis = [int](Get-CimInstance -Namespace root\wmi -ClassName BatteryStaticData -ErrorAction Stop | Select-Object -First 1).DesignedCapacity } catch {}
+            try { $full = [int](Get-CimInstance -Namespace root\wmi -ClassName BatteryFullChargedCapacity -ErrorAction Stop | Select-Object -First 1).FullChargedCapacity } catch {}
+            try { $cic = [int](Get-CimInstance -Namespace root\wmi -ClassName BatteryCycleCount -ErrorAction Stop | Select-Object -First 1).CycleCount } catch {}
+            if (-not $dis -or -not $full) {
+                $xml = Join-Path $env:TEMP "atlas-bateria.xml"
+                & powercfg.exe /batteryreport /xml /output $xml | Out-Null
+                if (Test-Path $xml) {
+                    $b = ([xml](Get-Content $xml -Raw)).BatteryReport.Batteries.Battery | Select-Object -First 1
+                    [IO.File]::Delete($xml)
+                    if ($b) { if (-not $dis) { $dis = [int]$b.DesignCapacity }; if (-not $full) { $full = [int]$b.FullChargeCapacity }
+                              if (-not $cic -and $b.CycleCount) { $cic = [int]$b.CycleCount } }
+                }
+            }
+            if ($dis -gt 0 -and $full -gt 0) {
+                $s.bateria = [ordered]@{ salud = [int][math]::Min(100, [math]::Round($full * 100 / $dis))
+                                         ciclos = $(if ($cic) { $cic } else { $null }); diseno_mwh = $dis; actual_mwh = $full }
+            }
         }
     } catch {}
     return $s
