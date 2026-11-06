@@ -25,7 +25,7 @@ param(
     [switch]$ForzarLegacy  # no usa GLPI Agent aunque el equipo este en el piloto
 )
 
-$VERSION = "5.2.0"
+$VERSION = "5.2.1"
 $TASK    = "Atlas Inventario"
 $SELF    = $PSCommandPath
 $LOCALDIR = Join-Path $env:ProgramFiles "LLyA\Atlas Agent"
@@ -444,7 +444,8 @@ function Set-Tarea($ruta) {
             # cada 2 horas durante 10 anios (el equivalente que acepta esa version; corre tambien de noche).
             $tr = New-ScheduledTaskTrigger -Once -At 08:00 -RandomDelay (New-TimeSpan -Minutes 15) -RepetitionInterval (New-TimeSpan -Hours 2) -RepetitionDuration (New-TimeSpan -Days 3650)
         }
-        $tl  = New-ScheduledTaskTrigger -AtLogOn; $tl.Delay = "PT2M"
+        $tl  = New-ScheduledTaskTrigger -AtLogOn
+        if ($tl.PSObject.Properties["Delay"]) { $tl.Delay = "PT2M" }   # 2012 R2: el disparador de inicio de sesion no trae Delay
         $p   = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
         $s   = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 30) -MultipleInstances IgnoreNew
         Register-ScheduledTask -TaskName $TASK -Description $desc -Action $a -Trigger @($tr, $tl) -Principal $p -Settings $s -Force | Out-Null
