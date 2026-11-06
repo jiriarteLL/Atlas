@@ -33,6 +33,7 @@ from auth import (User, UserOut, auth_router, login_router, require_admin, requi
 from database import (Adjunto, Asset, AssetGlpi, Historial, Proyecto, ProyectoActivo, ProyectoResponsable,
                       ProyectoTarea, SessionLocal, Snapshot, Ticket, init_db)
 from impresoras import borrar_datos_impresora, router as impresoras_router
+from impresoras_relevamiento import router as relevamiento_router
 from mailer import notificar_proyecto_finalizado
 from metricas import metricas_texto, registrar_request
 from ratelimit import limiter
@@ -56,6 +57,7 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.include_router(auth_router)
 app.include_router(login_router)
+app.include_router(relevamiento_router)   # antes que /api/impresoras/{id}
 app.include_router(impresoras_router)
 if config.CORS_ORIGINS:
     app.add_middleware(CORSMiddleware, allow_origins=config.CORS_ORIGINS, allow_methods=["*"], allow_headers=["*"],
