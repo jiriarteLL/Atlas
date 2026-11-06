@@ -2,7 +2,7 @@
 """Motor de base y modelos de negocio. El motor sale de DATABASE_URL (PostgreSQL en los compose)."""
 import uuid
 from datetime import datetime
-from sqlalchemy import create_engine, event, Boolean, Column, String, DateTime, ForeignKey, Text, Integer, LargeBinary
+from sqlalchemy import create_engine, event, Boolean, Column, Date, String, DateTime, ForeignKey, Text, Integer, LargeBinary
 from sqlalchemy.orm import declarative_base, deferred, sessionmaker
 import config
 
@@ -252,6 +252,28 @@ class ImpresoraConsumible(Base):
     maximo      = Column(Integer, nullable=True)
     porcentaje  = Column(Integer, nullable=True)
     actualizado = Column(DateTime, default=datetime.utcnow)
+
+
+# ---------------------------------------------------------------- salud y seguridad (notebooks y PC)
+# Lo manda el agente de Atlas dentro de /api/sync (campo "salud"). Una fila por equipo con la ultima foto:
+# version de Windows, antivirus, parches, discos y bateria. antivirus y discos van como JSON en texto;
+# av_estado y disco_estado se calculan al recibirlos para poder filtrar sin abrir el JSON.
+class AssetSalud(Base):
+    __tablename__ = "asset_salud"
+    asset_id       = Column(String, ForeignKey("assets.id", ondelete="CASCADE"), primary_key=True)
+    so_edicion     = Column(String, default="")
+    so_display     = Column(String, default="")    # 23H2, 24H2...
+    so_build       = Column(Integer, nullable=True)
+    so_ubr         = Column(Integer, nullable=True)
+    antivirus      = Column(Text, default="")      # JSON: [{nombre, activo, actualizado}]
+    av_estado      = Column(String, default="")    # ok | desactualizado | desactivado | "" (sin datos)
+    ultimo_parche  = Column(Date, nullable=True)
+    parches_90d    = Column(Integer, nullable=True)
+    discos         = Column(Text, default="")      # JSON: [{nombre, tipo, salud, desgaste, temperatura, ...}]
+    disco_estado   = Column(String, default="")    # ok | riesgo | "" (sin datos)
+    bateria_salud  = Column(Integer, nullable=True)  # % de la capacidad de diseno; NULL = sin bateria
+    bateria_ciclos = Column(Integer, nullable=True)
+    actualizado    = Column(DateTime, default=datetime.utcnow)
 
 
 def init_db():

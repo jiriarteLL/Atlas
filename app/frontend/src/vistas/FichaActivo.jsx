@@ -1,19 +1,26 @@
 // FichaActivo.jsx — Panel lateral con la ficha completa del activo: datos tecnicos, seguridad,
 // relevamiento GLPI, garantia Lenovo, QR, software, licencias (diseño), adjuntos e historial.
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { apiFetch } from "../api";
 import { QR, fmtFechaHora } from "../ui";
 import { Drawer, Ficha, Rotulo, estadoColor } from "../diseno/comunes";
 import { AdjuntosActivo } from "../secciones/AdjuntosActivo";
 import { HistorialActivo } from "../secciones/HistorialActivo";
-import { glpiDe } from "./filtros";
-
-const COLOR_CIFRADO = (c) => c === "Cifrado" ? "#34d399" : (c || "").startsWith("Cifrado (") ? "#fbbf24"
-  : c === "Sin cifrar" ? "#f472b6" : c === "Cifrando" ? "#60a5fa" : "var(--ll-dim)";
+import { COLOR_CIFRADO, glpiDe } from "./filtros";
+import { BarraBateria, EstadoAntivirus, InsigniaSoporte, fmtFecha, textoWindows } from "./Salud";
 
 export default function FichaActivo({ activo, glpiMap, user, onCerrar, onEditar, onEliminar, consultarGarantia, puedeEditar, puedeEliminar }) {
   const [verQR, setVerQR] = useState(false);
   const [consultando, setConsultando] = useState(false);
   const [verSoft, setVerSoft] = useState(false);
+  const [salud, setSalud] = useState(null);
+  const id = activo?.id;
+  useEffect(() => {
+    if (!id) return undefined;
+    let vivo = true;
+    apiFetch("/api/salud/" + id).then((r) => (r.ok ? r.json() : null)).then((d) => { if (vivo) setSalud(d); }).catch(() => {});
+    return () => { vivo = false; };
+  }, [id]);
   if (!activo) return null;
   const a = activo;
   const gl = glpiDe(glpiMap, a);
@@ -90,6 +97,30 @@ export default function FichaActivo({ activo, glpiMap, user, onCerrar, onEditar,
         {(a.cifrado || "").startsWith("Cifrado (") && <div style={{ fontSize: 11.5, color: "var(--ll-warn)", marginTop: 8, lineHeight: 1.5 }}>El disco está cifrado pero la protección está suspendida: la clave queda disponible sin autenticación.</div>}
         {a.cifrado === "Sin acceso" && <div style={{ fontSize: 11.5, color: "var(--ll-dim)", marginTop: 8, lineHeight: 1.5 }}>No se pudo leer el estado (requiere privilegios elevados o BitLocker no está instalado).</div>}
       </div>
+
+      {salud && <div>
+        <Rotulo>SALUD Y SEGURIDAD</Rotulo>
+        <div className="ll-ficha">
+          <div><span className="k">Windows</span><span className="v">{textoWindows(salud)}{salud.so_build ? " · " + salud.so_build + (salud.so_ubr != null ? "." + salud.so_ubr : "") : ""}</span></div>
+          <div><span className="k">Soporte de Microsoft</span><span className="v"><InsigniaSoporte f={salud} />{!salud.so_build && "—"}</span></div>
+          {salud.con_datos ? <>
+            <div><span className="k">Antivirus</span><span className="v"><EstadoAntivirus f={salud} /></span></div>
+            <div><span className="k">Último parche</span><span className={"v" + (salud.dias_sin_parches > 30 ? " alerta" : "")}>
+              {salud.ultimo_parche ? fmtFecha(salud.ultimo_parche) + (salud.dias_sin_parches != null ? ` (hace ${salud.dias_sin_parches} días)` : "") : "—"}</span></div>
+            {salud.parches_90d != null && <div><span className="k">Parches en 90 días</span><span className="v">{salud.parches_90d}</span></div>}
+            {(salud.discos || []).map((d, i) => (
+              <div key={i}><span className="k">Disco {d.nombre || i + 1}</span>
+                <span className={"v" + (salud.disco_estado === "riesgo" && (!/^(healthy|ok)$/i.test(d.salud || "") || d.desgaste >= 80 || d.errores_lectura > 0) ? " alerta" : "")}>
+                  {[d.tipo, d.tamano_gb ? d.tamano_gb + " GB" : "", d.salud, d.desgaste != null ? d.desgaste + "% desgaste" : "",
+                    d.temperatura != null ? d.temperatura + " °C" : "", d.errores_lectura ? d.errores_lectura + " errores de lectura" : ""].filter(Boolean).join(" · ")}
+                </span></div>
+            ))}
+            {salud.bateria_salud != null && <div><span className="k">Batería</span><span className="v"><BarraBateria porcentaje={salud.bateria_salud} ciclos={salud.bateria_ciclos} />
+              {salud.bateria_ciclos != null ? <span className="tenue" style={{ marginLeft: 8 }}>{salud.bateria_ciclos} ciclos</span> : null}</span></div>}
+            <div><span className="k">Relevado</span><span className="v">{fmtFechaHora(salud.salud_actualizada)}</span></div>
+          </> : <div><span className="k">Antivirus, parches, discos</span><span className="v tenue">Sin datos: el equipo todavía no tiene el agente nuevo</span></div>}
+        </div>
+      </div>}
 
       {gl && <div>
         <Rotulo>RELEVAMIENTO GLPI</Rotulo>

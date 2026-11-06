@@ -11,6 +11,7 @@ import { cumpleEstado } from "./vistas/filtros";
 import Dashboard from "./vistas/Dashboard";
 import Activos from "./vistas/Activos";
 import Impresoras from "./vistas/Impresoras";
+import Salud from "./vistas/Salud";
 import AlertaToner from "./vistas/AlertaToner";
 import FichaActivo from "./vistas/FichaActivo";
 import ModalActivo from "./vistas/ModalActivo";
@@ -30,7 +31,7 @@ const SECCIONES = {
 };
 const FILTROS_VACIOS = { q: "", tipo: "", estado: "", sede: "" };
 // Subsecciones de Activos (pestañas). Para sumar otro tipo con vista propia, agregarlo aca y en el render.
-const VISTAS_ACTIVOS = [["todos", "Todos los activos"], ["impresoras", "Impresoras"]];
+const VISTAS_ACTIVOS = [["todos", "Todos los activos"], ["salud", "Notebooks y PC"], ["impresoras", "Impresoras"]];
 const vistaValida = (v) => (VISTAS_ACTIVOS.some(([k]) => k === v) ? v : "todos");
 
 function leerHash() {
@@ -246,6 +247,7 @@ export default function App() {
               {VISTAS_ACTIVOS.map(([k, l]) => <button key={k} className={"ll-pestana" + (vista === k ? " activa" : "")}
                 aria-current={vista === k ? "page" : undefined} onClick={() => setVista(k)}>{l}</button>)}
             </nav>}
+            {tab === "activos" && vista === "salud" && <Salud assets={assets} verFicha={verFicha} />}
             {tab === "activos" && vista === "impresoras" && <Impresoras puedeEditar={puedeEditar} avisar={avisar} />}
             {tab === "activos" && vista === "todos" && <Activos filtrados={filtrados} filtros={filtros} setFiltros={setFiltros} orden={orden} setOrden={setOrden}
               verFicha={verFicha} editar={(a) => setEdicion(a)} eliminar={eliminarActivo} nuevo={() => setEdicion({})}

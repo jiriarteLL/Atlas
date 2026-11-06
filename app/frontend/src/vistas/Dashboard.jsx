@@ -1,5 +1,6 @@
 // Dashboard.jsx — Vista general: tarjetas, activos por sede, distribucion por tipo y ultimos sincronizados.
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { apiFetch } from "../api";
 import { SEDES, TIPOS, fmtFechaHora } from "../ui";
 import { Estado, TIPO_COLOR } from "../diseno/comunes";
 import { diasGarantia } from "./filtros";
@@ -14,6 +15,40 @@ function Tarjeta({ valor, rotulo, sub, subColor, barra, demora, onClick, childre
       <div className="ll-rotulo" style={{ marginTop: 12 }}>{rotulo}</div>
       {sub && <div style={{ marginTop: 7, fontSize: 12.5, color: subColor || "var(--ll-dim)" }}>{sub}</div>}
       {children}
+    </div>
+  );
+}
+
+// Riesgos de seguridad de notebooks y PC (resumen de /api/salud/resumen); cada numero lleva a Activos -> Notebooks y PC
+const RIESGOS = [
+  ["sin_soporte", "Windows sin soporte", "#f87171"], ["sin_cifrar", "Sin BitLocker", "#f472b6"],
+  ["av_problema", "Antivirus con problemas", "#f87171"], ["sin_parches_30d", "Sin parches +30 días", "#fbbf24"],
+  ["disco_riesgo", "Disco en riesgo", "#f87171"], ["vence_pronto", "Soporte vence pronto", "#fbbf24"],
+];
+
+function RiesgosSeguridad({ ir }) {
+  const [r, setR] = useState(null);
+  useEffect(() => {
+    let vivo = true;
+    apiFetch("/api/salud/resumen").then((x) => (x.ok ? x.json() : null)).then((d) => { if (vivo) setR(d); }).catch(() => {});
+    return () => { vivo = false; };
+  }, []);
+  if (!r) return null;
+  return (
+    <div className="ll-card" style={{ marginTop: 22, padding: "20px 24px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, gap: 12, flexWrap: "wrap" }}>
+        <div className="ll-card-titulo">Riesgos de seguridad <span className="tenue" style={{ fontSize: 12.5, fontWeight: 400 }}>· {r.total} notebooks y PC</span></div>
+        <button className="ll-btn-borde" onClick={() => ir("activos", null, "salud")}>Ver notebooks y PC</button>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 12 }}>
+        {RIESGOS.map(([k, l, c]) => (
+          <button key={k} type="button" onClick={() => ir("activos", null, "salud")}
+            style={{ textAlign: "left", border: "1px solid var(--ll-line)", borderRadius: 12, background: "none", padding: "12px 14px", cursor: "pointer", color: "inherit", font: "inherit" }}>
+            <div className="mono" style={{ fontSize: 22, fontWeight: 600, color: r[k] ? c : "var(--ll-dim)" }}>{r[k]}</div>
+            <div style={{ fontSize: 12.5, color: "var(--ll-text-2)", marginTop: 3 }}>{l}</div>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -68,6 +103,8 @@ export default function Dashboard({ assets, ir, verFicha }) {
         <Tarjeta valor={cuenta("Servidor")} rotulo="SERVIDORES" sub="Ver inventario →" subColor={acento} barra="#ec4899" demora=".3s" onClick={() => ir("activos", { tipo: "Servidor" })} />
         <Tarjeta valor="—" rotulo="LICENCIAS ASIGNADAS" sub="Ver nómina →" subColor={acento} barra="var(--accent2)" demora=".35s" onClick={() => ir("usuarios")} />
       </div>
+
+      <RiesgosSeguridad ir={ir} />
 
       <div className="ll-grid-dash">
         <div className="ll-card" style={{ padding: "24px 26px 20px" }}>
