@@ -1,7 +1,7 @@
 // FichaActivo.jsx — Panel lateral con la ficha completa del activo: datos tecnicos, seguridad,
 // relevamiento GLPI, garantia Lenovo, QR, software, licencias (diseño), adjuntos e historial.
 import { useState } from "react";
-import { QR, fmtDate } from "../ui";
+import { QR, fmtFechaHora } from "../ui";
 import { Drawer, Ficha, Rotulo, estadoColor } from "../diseno/comunes";
 import { AdjuntosActivo } from "../secciones/AdjuntosActivo";
 import { HistorialActivo } from "../secciones/HistorialActivo";
@@ -41,7 +41,7 @@ export default function FichaActivo({ activo, glpiMap, user, onCerrar, onEditar,
         <span style={{ width: 8, height: 8, borderRadius: "50%", background: ec, boxShadow: "0 0 10px " + ec }} />
         <span style={{ fontSize: 13.5, fontWeight: 600, color: ec }}>{a.estado}</span>
         <span style={{ flex: 1 }} />
-        <span className="mono" style={{ fontSize: 11.5, color: "var(--ll-dim)" }}>SYNC {fmtDate(a.updated)}</span>
+        <span className="mono" style={{ fontSize: 11.5, color: "var(--ll-dim)" }}>SYNC {fmtFechaHora(a.updated)}</span>
       </div>
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -71,7 +71,7 @@ export default function FichaActivo({ activo, glpiMap, user, onCerrar, onEditar,
         <Rotulo>ASIGNACIÓN</Rotulo>
         <Ficha filas={[
           ["Usuario", a.usuario || "Sin asignar"], ["Usuario alt.", a.usuario_alt], ["Sede", a.ubicacion], ["Grupo", a.grupo],
-          ["Comentarios", a.comentarios], ["Últ. sync", fmtDate(a.updated)],
+          ["Comentarios", a.comentarios], ["Últ. sync", fmtFechaHora(a.updated)],
         ]} />
       </div>
 

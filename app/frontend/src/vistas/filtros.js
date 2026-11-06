@@ -1,4 +1,5 @@
 // filtros.js — Calculos compartidos sobre los activos (garantia, dias sin reportar, filtros especiales).
+import { fechaUtc } from "../ui";
 
 export function diasGarantia(a) {
   if (!a.garantia || a.garantia === "-") return null;
@@ -7,7 +8,7 @@ export function diasGarantia(a) {
   return Math.floor((new Date(+p[0], +p[1] - 1, +p[2]) - new Date()) / 86400000);
 }
 
-export const diasSinReportar = (a) => a.updated ? Math.floor((Date.now() - new Date(a.updated).getTime()) / 86400000) : 9999;
+export const diasSinReportar = (a) => a.updated ? Math.floor((Date.now() - fechaUtc(a.updated).getTime()) / 86400000) : 9999;
 
 export const glpiDe = (glpiMap, a) => glpiMap[(a.serial || "").trim().toUpperCase()];
 

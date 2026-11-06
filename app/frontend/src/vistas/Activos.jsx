@@ -1,6 +1,6 @@
 // Activos.jsx — Inventario completo: busqueda, filtros, orden, paginado y acciones por fila.
 import { useState } from "react";
-import { SEDES, TIPOS, fmtDate } from "../ui";
+import { SEDES, TIPOS, fmtFechaHora } from "../ui";
 import { ESTADOS, Estado } from "../diseno/comunes";
 import { ESPECIALES } from "./filtros";
 
@@ -82,7 +82,7 @@ export default function Activos({ filtrados, filtros, setFiltros, orden, setOrde
                   <td>{a.ubicacion}</td>
                   <td className="tenue">{a.tipo}</td>
                   <td className="tenue">{a.so}</td>
-                  <td className="tenue mono">{fmtDate(a.updated)}</td>
+                  <td className="tenue mono">{fmtFechaHora(a.updated)}</td>
                   <td><Estado valor={a.estado} /></td>
                   {(puedeEditar || puedeEliminar) && <td style={{ textAlign: "right", whiteSpace: "nowrap" }} onClick={(e) => e.stopPropagation()}>
                     {puedeEditar && <button className="ll-btn-borde ll-btn-chico" onClick={() => editar(a)}>Editar</button>}

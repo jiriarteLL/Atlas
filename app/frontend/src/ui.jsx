@@ -22,4 +22,19 @@ export const QR = ({ value, size=100 }) => {
 export const emptyAsset = { nombre:"",tipo:"Notebook",marca:"",modelo:"",serial:"",usuario:"",usuario_alt:"",ubicacion:"",grupo:"",red:"",estado:"Activo",cpu:"",ram:"",disco:"",so:"",so_version:"",so_arquitectura:"",ip:"",garantia:"",comentarios:"" };
 export const fmtDate = d => { if(!d) return "—"; try { return new Date(d).toLocaleDateString("es-AR"); } catch { return d; } };
 
+// El backend guarda los momentos en UTC (datetime.utcnow) y los manda sin zona ("2026-11-05T18:14:48"):
+// sin la Z, el navegador los tomaria como hora local y la hora saldria corrida 3 h.
+export const fechaUtc = d => {
+  if (!d) return null;
+  const s = String(d);
+  return new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(s) ? s : s.replace(" ", "T") + "Z");
+};
+// "05/11/2026 15:14" en hora de Argentina (para la ultima sincronizacion).
+export const fmtFechaHora = d => {
+  const f = fechaUtc(d);
+  if (!f || isNaN(f)) return d ? String(d) : "—";
+  return f.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" }) + " " +
+         f.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hour12: false });
+};
+
 export const COL_TEND = ["#00B0B9","#0B7285","#E67E22","#9085e9","#0ca30c","#d03b3b","#3987e5","#fab219","#6E7A90"];

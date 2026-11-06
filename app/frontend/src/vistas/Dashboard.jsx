@@ -1,6 +1,6 @@
 // Dashboard.jsx — Vista general: tarjetas, activos por sede, distribucion por tipo y ultimos sincronizados.
 import { useState } from "react";
-import { SEDES, TIPOS, fmtDate } from "../ui";
+import { SEDES, TIPOS, fmtFechaHora } from "../ui";
 import { Estado, TIPO_COLOR } from "../diseno/comunes";
 import { diasGarantia } from "./filtros";
 
@@ -129,7 +129,7 @@ export default function Dashboard({ assets, ir, verFicha }) {
                   <td>{a.usuario}</td>
                   <td>{a.ubicacion}</td>
                   <td className="tenue">{a.so}</td>
-                  <td className="tenue mono">{fmtDate(a.updated)}</td>
+                  <td className="tenue mono">{fmtFechaHora(a.updated)}</td>
                   <td><Estado valor={a.estado} /></td>
                 </tr>
               ))}
