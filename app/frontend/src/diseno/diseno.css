@@ -96,6 +96,11 @@ input:focus, select:focus, textarea:focus { outline: none; }
 .ll-nav-ico { display: flex; width: 19px; justify-content: center; color: var(--ll-faint); }
 .ll-nav-item.activo .ll-nav-ico { color: var(--accent); }
 .ll-nav-badge { font-family: var(--ll-mono); font-size: 11px; font-weight: 600; color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); padding: 2px 8px; border-radius: 20px; }
+/* Submenu en cascada (Activos > Todos los activos / Impresoras) */
+.ll-nav-sub { display: flex; flex-direction: column; gap: 2px; margin: 2px 0 6px 24px; padding-left: 12px; border-left: 1px solid rgba(255,255,255,0.10); }
+.ll-nav-subitem { display: block; padding: 8px 12px; border-radius: 9px; color: var(--ll-dim); font-size: 13px; text-decoration: none; }
+.ll-nav-subitem:hover { background: rgba(255,255,255,0.04); color: var(--ll-text); }
+.ll-nav-subitem.activo { color: #fff; background: color-mix(in srgb, var(--accent) 16%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent); }
 .ll-nav-item.peligro { color: var(--ll-bad); }
 .ll-nav-item.peligro:hover { background: rgba(244,114,182,0.08); color: var(--ll-bad); }
 .ll-pie { border-top: 1px solid rgba(255,255,255,0.06); padding-top: 12px; display: flex; flex-direction: column; gap: 2px; }

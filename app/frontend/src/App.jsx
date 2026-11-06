@@ -1,6 +1,6 @@
 // App.jsx — Esqueleto de la app con el diseño v2: menu lateral, encabezado y vistas.
 // Ruteo por hash (#seccion?tipo=..&sede=..&estado=..) para que atras/adelante y los links funcionen.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth, tienePermiso } from "./AuthContext";
 import { API, apiFetch, http, setUsuarioActual } from "./api";
 import { useToast, Proximamente } from "./diseno/comunes";
@@ -190,11 +190,24 @@ export default function App() {
           <div className="ll-nav-sec">PRINCIPAL</div>
           <div className="ll-nav-lista">
             {principal.map(([k, ico, l, badge]) => (
-              <a key={k} href={"#" + k} className={"ll-nav-item" + (tab === k ? " activo" : "")} aria-current={tab === k ? "page" : undefined}
-                onClick={(e) => { if (e.ctrlKey || e.metaKey || e.shiftKey || e.button === 1) return; e.preventDefault(); ir(k); }}>
-                <span className="ll-nav-ico">{ico}</span><span style={{ flex: 1 }}>{l}</span>
-                {badge !== undefined && <span className="ll-nav-badge">{badge}</span>}
-              </a>
+              <Fragment key={k}>
+                <a href={"#" + k} className={"ll-nav-item" + (tab === k ? " activo" : "")}
+                  aria-current={tab === k && !(k === "activos") ? "page" : undefined}
+                  onClick={(e) => { if (e.ctrlKey || e.metaKey || e.shiftKey || e.button === 1) return; e.preventDefault(); ir(k); }}>
+                  <span className="ll-nav-ico">{ico}</span><span style={{ flex: 1 }}>{l}</span>
+                  {badge !== undefined && <span className="ll-nav-badge">{badge}</span>}
+                </a>
+                {k === "activos" && <div className="ll-nav-sub" aria-label="Subsecciones de Activos">
+                  {VISTAS_ACTIVOS.map(([v, lv]) => {
+                    const act = tab === "activos" && vista === v;
+                    return <a key={v} href={"#activos" + (v === "todos" ? "" : "?vista=" + v)}
+                      className={"ll-nav-subitem" + (act ? " activo" : "")} aria-current={act ? "page" : undefined}
+                      onClick={(e) => { if (e.ctrlKey || e.metaKey || e.shiftKey || e.button === 1) return; e.preventDefault(); ir("activos", {}, v); }}>
+                      {lv}
+                    </a>;
+                  })}
+                </div>}
+              </Fragment>
             ))}
           </div>
           <div className="ll-nav-sec" style={{ marginTop: 22 }}>HERRAMIENTAS</div>
