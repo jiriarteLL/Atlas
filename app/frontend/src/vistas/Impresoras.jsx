@@ -64,7 +64,7 @@ export default function Impresoras({ puedeEditar, avisar }) {
     const q = filtros.q.trim().toLowerCase();
     return lista.filter((i) => {
       const d = i.detalle || {};
-      return (!q || [i.nombre, i.marca, i.modelo, i.serial, i.usuario, i.ip, d.nombre_cola, d.piso].some((v) => String(v || "").toLowerCase().includes(q)))
+      return (!q || [i.nombre, i.marca, i.modelo, i.serial, i.usuario, i.ip, d.nombre_cola, d.piso, d.toner_modelo].some((v) => String(v || "").toLowerCase().includes(q)))
         && (!filtros.sede || i.ubicacion === filtros.sede)
         && (!filtros.conexion || d.conexion === filtros.conexion)
         && (!filtros.tenencia || (filtros.tenencia === "-" ? !d.tenencia : d.tenencia === filtros.tenencia));
@@ -117,7 +117,11 @@ export default function Impresoras({ puedeEditar, avisar }) {
                     <td><span className={"ll-chip" + (d.conexion === "usb" ? "" : " acento")}>{textoConexion(d)}</span></td>
                     <td>{i.usuario || <span className="tenue">{d.uso === "personal" ? "—" : "Compartida"}</span>}</td>
                     <td className="tenue">{textoTenencia(d) || "—"}</td>
-                    <td><BarraToner porcentaje={p} /></td>
+                    <td>
+                      {/* USB: no hay nivel por SNMP, se muestra que toner lleva; red: el nivel y, si esta cargado, el modelo */}
+                      {p !== null || !d.toner_modelo ? <BarraToner porcentaje={p} /> : null}
+                      {d.toner_modelo && <div className="tenue" style={{ fontSize: 11.5, marginTop: p !== null ? 3 : 0, maxWidth: 230 }}>{d.toner_modelo}</div>}
+                    </td>
                     <td className="mono tenue">{i.lectura ? (i.lectura.contador_total ?? "—").toLocaleString("es-AR") + " · " + fmtFechaHora(i.lectura.fecha) : "—"}</td>
                     <td><Estado valor={i.estado} /></td>
                   </tr>
