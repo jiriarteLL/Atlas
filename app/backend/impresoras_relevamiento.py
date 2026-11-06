@@ -124,8 +124,13 @@ def _guardar_consumibles(db, asset_id, consumibles, ahora):
     db.query(ImpresoraConsumible).filter(ImpresoraConsumible.asset_id == asset_id).delete(synchronize_session=False)
     for c in consumibles:
         desc = _limpio(c.descripcion)
-        tipo = ("color" if re.search(r"\b(cian|cyan|magenta|amarill|yellow)", desc, re.I)
-                else "toner" if re.search(r"(t[oó]ner|cartucho|cartridge)", desc, re.I) else "otro")
+        # Solo los cartuchos son "toner"/"color"; tambores, reveladores, fusor, kits y la unidad de recogida
+        # de toner usado son "otro" (no son lo que se cambia seguido ni lo que dispara el aviso de toner bajo).
+        if re.search(r"(recogida|residual|waste|collect)", desc, re.I) or \
+                not re.search(r"(cartucho|cartridge|t[oó]ner)", desc, re.I):
+            tipo = "otro"
+        else:
+            tipo = "color" if re.search(r"\b(cian|cyan|magenta|amarill|yellow)", desc, re.I) else "toner"
         db.add(ImpresoraConsumible(asset_id=asset_id, indice=c.indice, descripcion=desc, tipo=tipo,
                                    nivel=c.nivel, maximo=c.maximo, porcentaje=c.porcentaje, actualizado=ahora))
 
