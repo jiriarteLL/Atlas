@@ -150,7 +150,7 @@ export default function FichaActivo({ activo, glpiMap, user, onCerrar, onEditar,
 
       <div>
         <Rotulo>LICENCIAS VINCULADAS</Rotulo>
-        <div style={{ padding: 18, textAlign: "center", fontSize: 12.5, color: "var(--ll-faint)", borderRadius: 12, border: "1px dashed rgba(255,255,255,0.1)" }}>
+        <div style={{ padding: 18, textAlign: "center", fontSize: 12.5, color: "var(--ll-faint)", borderRadius: 12, border: "1px dashed var(--ll-line-3)" }}>
           El módulo de licencias no está incluido en esta versión.
         </div>
       </div>

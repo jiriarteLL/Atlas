@@ -2,8 +2,8 @@
 import { fechaUtc } from "../ui";
 
 // Color del estado de BitLocker (ficha del activo y Notebooks y PC)
-export const COLOR_CIFRADO = (c) => c === "Cifrado" ? "#34d399" : (c || "").startsWith("Cifrado (") ? "#fbbf24"
-  : c === "Sin cifrar" ? "#f472b6" : c === "Cifrando" ? "#60a5fa" : "var(--ll-dim)";
+export const COLOR_CIFRADO = (c) => c === "Cifrado" ? "var(--ll-verde)" : (c || "").startsWith("Cifrado (") ? "var(--ll-ambar)"
+  : c === "Sin cifrar" ? "var(--ll-rosa)" : c === "Cifrando" ? "var(--ll-azul)" : "var(--ll-dim)";
 
 export function diasGarantia(a) {
   if (!a.garantia || a.garantia === "-") return null;

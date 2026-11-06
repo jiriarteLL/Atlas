@@ -5,11 +5,11 @@ export const ESTADOS = ["Activo", "Mantenimiento", "Libre", "Stock", "Robado", "
 export const TIPO_COLOR = { Notebook: "#3b82f6", Impresora: "#22c55e", Servidor: "#ec4899", Monitor: "#a78bfa", Switch: "#fbbf24", UPS: "#f97316", CPU: "#22d3ee" };
 
 export function estadoColor(e) {
-  if (e === "Activo" || e === "Activa") return "#34d399";
-  if (e === "Mantenimiento" || e === "Por vencer" || e === "Inactivo") return "#fbbf24";
-  if (e === "Libre" || e === "Stock") return "#60a5fa";
-  if (e === "Dado de baja") return "#7c8798";
-  return "#f472b6";
+  if (e === "Activo" || e === "Activa") return "var(--ll-verde)";
+  if (e === "Mantenimiento" || e === "Por vencer" || e === "Inactivo") return "var(--ll-ambar)";
+  if (e === "Libre" || e === "Stock") return "var(--ll-azul)";
+  if (e === "Dado de baja") return "var(--ll-gris)";
+  return "var(--ll-rosa)";
 }
 
 export const Estado = ({ valor }) => (

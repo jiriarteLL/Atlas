@@ -94,7 +94,7 @@ export async function exportarReporte(titulo, datos, elementId) {
   const el = elementId && document.getElementById(elementId);
   if (el) {
     const html2canvas = (await import("html2canvas")).default;
-    const canvas = await html2canvas(el, { scale: 2, backgroundColor: "#0b1020" });
+    const canvas = await html2canvas(el, { scale: 2, backgroundColor: getComputedStyle(document.documentElement).getPropertyValue("--ll-panel").trim() || "#0b1020" });
     const img = wb.addImage({ base64: canvas.toDataURL("image/png"), extension: "png" });
     ws.addImage(img, { tl: { col: 3, row: 2 }, ext: { width: canvas.width / 2, height: canvas.height / 2 } });
   }

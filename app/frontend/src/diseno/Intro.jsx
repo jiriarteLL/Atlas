@@ -66,7 +66,7 @@ export default function Intro({ alEntrar }) {
       <h1>ATLAS</h1>
       <div className="mono" style={{ fontSize: 12, letterSpacing: 5, color: "var(--accent)" }}>SISTEMA DE ACTIVOS · TI</div>
       <div style={{ display: "flex", alignItems: "baseline", gap: 15, marginTop: 42 }}>
-        <span ref={contador} className="mono" style={{ fontSize: 64, fontWeight: 600, letterSpacing: -2, color: "#fff" }}>{ultimoTotal() === null ? "—" : "0"}</span>
+        <span ref={contador} className="mono" style={{ fontSize: 64, fontWeight: 600, letterSpacing: -2, color: "var(--ll-strong)" }}>{ultimoTotal() === null ? "—" : "0"}</span>
         <span className="mono" style={{ fontSize: 13, letterSpacing: 3, color: "var(--ll-dim)" }}>ACTIVOS REGISTRADOS</span>
       </div>
       <div className="ll-intro-barra"><div ref={barra} style={{ width: "0%" }} /></div>

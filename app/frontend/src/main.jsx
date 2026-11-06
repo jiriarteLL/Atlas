@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import "./fuentes.css";
 import "./styles.css";
 import "./diseno/diseno.css";
+import "./diseno/temas.css";
 import App from "./App.jsx";
 import { AuthProvider, useAuth } from "./AuthContext.jsx";
 import LoginPage from "./LoginPage.jsx";

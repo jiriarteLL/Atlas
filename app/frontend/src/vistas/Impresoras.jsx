@@ -24,14 +24,14 @@ const pctMinimo = (i) => {
   const ps = (i.consumibles || []).map((c) => c.porcentaje).filter((p) => p !== null && p !== undefined && p >= 0);
   return ps.length ? Math.min(...ps) : null;
 };
-const colorToner = (p) => (p === null ? "var(--ll-dim)" : p <= 15 ? "#f472b6" : p <= 30 ? "#fbbf24" : "#34d399");
+const colorToner = (p) => (p === null ? "var(--ll-dim)" : p <= 15 ? "var(--ll-rosa)" : p <= 30 ? "var(--ll-ambar)" : "var(--ll-verde)");
 
 function BarraToner({ porcentaje, etiqueta }) {
   if (porcentaje === null || porcentaje === undefined) return <span className="tenue">—</span>;
   const c = colorToner(porcentaje);
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }} title={etiqueta || ""}>
-      <span style={{ width: 70, height: 7, borderRadius: 4, background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
+      <span style={{ width: 70, height: 7, borderRadius: 4, background: "var(--ll-track)", overflow: "hidden" }}>
         <span style={{ display: "block", width: Math.max(2, Math.min(100, porcentaje)) + "%", height: "100%", background: c }} />
       </span>
       <span className="mono" style={{ color: c, fontSize: 12 }}>{porcentaje}%</span>

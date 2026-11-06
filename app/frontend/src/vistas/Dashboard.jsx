@@ -21,9 +21,9 @@ function Tarjeta({ valor, rotulo, sub, subColor, barra, demora, onClick, childre
 
 // Riesgos de seguridad de notebooks y PC (resumen de /api/salud/resumen); cada numero lleva a Activos -> Notebooks y PC
 const RIESGOS = [
-  ["sin_soporte", "Windows sin soporte", "#f87171"], ["sin_cifrar", "Sin BitLocker", "#f472b6"],
-  ["av_problema", "Sin CrowdStrike o con problemas", "#f87171"], ["sin_parches_30d", "Sin parches +30 días", "#fbbf24"],
-  ["disco_riesgo", "Disco en riesgo", "#f87171"], ["vence_pronto", "Soporte vence pronto", "#fbbf24"],
+  ["sin_soporte", "Windows sin soporte", "var(--ll-rojo)"], ["sin_cifrar", "Sin BitLocker", "var(--ll-rosa)"],
+  ["av_problema", "Sin CrowdStrike o con problemas", "var(--ll-rojo)"], ["sin_parches_30d", "Sin parches +30 días", "var(--ll-ambar)"],
+  ["disco_riesgo", "Disco en riesgo", "var(--ll-rojo)"], ["vence_pronto", "Soporte vence pronto", "var(--ll-ambar)"],
 ];
 
 function RiesgosSeguridad({ ir }) {
@@ -76,7 +76,7 @@ export default function Dashboard({ assets, ir, verFicha }) {
   const dona = tipos.length ? `conic-gradient(${tipos.map((t) => {
     const desde = acc / total * 100; acc += t.value;
     return `${t.color} ${desde}% ${acc / total * 100}%`;
-  }).join(", ")})` : "rgba(255,255,255,0.06)";
+  }).join(", ")})` : "var(--ll-track)";
 
   const recientes = [...assets].sort((a, b) => new Date(b.updated || 0) - new Date(a.updated || 0)).slice(0, 8);
 
@@ -84,10 +84,10 @@ export default function Dashboard({ assets, ir, verFicha }) {
     <div>
       <div className="ll-grid-4">
         <Tarjeta valor={total} rotulo="TOTAL ACTIVOS" sub={enUso + " activos en uso"} subColor="var(--ll-ok)" barra={acento} demora="0s" onClick={() => ir("activos")} />
-        <Tarjeta valor={enMant} rotulo="EN MANTENIMIENTO" sub={enMant ? "Requieren atención" : "Sin urgencias"} subColor={enMant ? "var(--ll-warn)" : undefined} barra="#fbbf24" demora=".05s"
+        <Tarjeta valor={enMant} rotulo="EN MANTENIMIENTO" sub={enMant ? "Requieren atención" : "Sin urgencias"} subColor={enMant ? "var(--ll-warn)" : undefined} barra="var(--ll-ambar)" demora=".05s"
           onClick={() => ir("activos", { estado: "Mantenimiento" })} />
         <Tarjeta valor="—" rotulo="LICENCIAS CLAUDE" sub="Módulo no incluido" barra="var(--accent2)" demora=".1s" onClick={() => ir("licencias")} />
-        <Tarjeta valor={garVencen} rotulo="GARANTÍAS POR VENCER" sub="Próximos 3 meses" barra="#f472b6" demora=".15s"
+        <Tarjeta valor={garVencen} rotulo="GARANTÍAS POR VENCER" sub="Próximos 3 meses" barra="var(--ll-rosa)" demora=".15s"
           onClick={() => ir("activos", { estado: "__gar_vencen__" })} />
         <Tarjeta valor={nbValor} rotulo="NOTEBOOKS / CPU" barra="#3b82f6" demora=".2s">
           <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
@@ -109,7 +109,7 @@ export default function Dashboard({ assets, ir, verFicha }) {
       <div className="ll-grid-dash">
         <div className="ll-card" style={{ padding: "24px 26px 20px" }}>
           <div className="ll-card-titulo" style={{ marginBottom: 22 }}>Activos por sede</div>
-          <div style={{ display: "flex", alignItems: "flex-end", gap: 10, height: 220, paddingBottom: 26, borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 10, height: 220, paddingBottom: 26, borderBottom: "1px solid var(--ll-line-2)" }}>
             {sedes.map((s) => (
               <button key={s.name} onClick={() => ir("activos", { sede: s.name })} title={`${s.name}: ${s.nb} notebooks, ${s.im} impresoras`}
                 style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", height: "100%", justifyContent: "flex-end", position: "relative", border: "none", background: "none", padding: 0, cursor: "pointer" }}>
@@ -131,7 +131,7 @@ export default function Dashboard({ assets, ir, verFicha }) {
           <div className="ll-card-titulo" style={{ marginBottom: 18 }}>Distribución por tipo</div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 200 }}>
             <div style={{ position: "relative", width: 186, height: 186, borderRadius: "50%", background: dona }}>
-              <div style={{ position: "absolute", inset: 30, borderRadius: "50%", background: "#080b14", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+              <div style={{ position: "absolute", inset: 30, borderRadius: "50%", background: "var(--ll-hueco)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
                 <div className="mono" style={{ fontSize: 30, fontWeight: 600 }}>{total}</div>
                 <div style={{ fontSize: 10.5, letterSpacing: 1.5, color: "var(--ll-dim)" }}>ACTIVOS</div>
               </div>

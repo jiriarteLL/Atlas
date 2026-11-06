@@ -7,7 +7,7 @@ function Bloque({ titulo, comando, codigo }) {
     <div className="ll-card" style={{ padding: 24 }}>
       <div className="ll-card-titulo" style={{ marginBottom: 14 }}>{titulo}</div>
       <code className="mono" style={{ fontSize: 11.5, display: "block", marginBottom: 10, color: "var(--accent)", wordBreak: "break-all" }}>{comando}</code>
-      <pre className="mono" style={{ margin: 0, background: "rgba(0,0,0,0.35)", border: "1px solid var(--ll-line)", color: "#c4cdda", padding: 14, borderRadius: 12, fontSize: 11.5, overflow: "auto" }}>{codigo}</pre>
+      <pre className="mono" style={{ margin: 0, background: "var(--ll-codigo-bg)", border: "1px solid var(--ll-line)", color: "var(--ll-text-2)", padding: 14, borderRadius: 12, fontSize: 11.5, overflow: "auto" }}>{codigo}</pre>
     </div>
   );
 }

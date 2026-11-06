@@ -21,7 +21,9 @@ export default function LoginPage({ saliendo }) {
     <div className="ll-login-velo" style={saliendo ? { opacity: 0, pointerEvents: "none" } : undefined}>
       <form className="ll-login" onSubmit={enviar}>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14 }}>
-          <img className="ll-login-logo" src="/brand/logo-light.png" alt="Lisicki, Litvin & Abelovich — Member of Nexia" />
+          {/* logo-light: letras blancas para el tema oscuro; logo-dark: letras oscuras para Claro y Blanco */}
+          <img className="ll-login-logo ll-solo-oscuro" src="/brand/logo-light.png" alt="Lisicki, Litvin & Abelovich — Member of Nexia" />
+          <img className="ll-login-logo ll-solo-claro" src="/brand/logo-dark.png" alt="" />
           <div style={{ textAlign: "center" }}>
             <div style={{ fontSize: 21, fontWeight: 600, letterSpacing: -0.3 }}>Atlas</div>
             <div className="mono" style={{ fontSize: 10.5, letterSpacing: 3, color: "var(--accent)", marginTop: 5 }}>ACCESO · SISTEMA DE ACTIVOS</div>

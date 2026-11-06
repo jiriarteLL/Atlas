@@ -6,13 +6,13 @@ import { apiFetch } from "../api";
 import { SEDES, fmtFechaHora } from "../ui";
 import { COLOR_CIFRADO } from "./filtros";
 
-const ROJO = "#f87171", AMBAR = "#fbbf24", VERDE = "#34d399";
+const ROJO = "var(--ll-rojo)", AMBAR = "var(--ll-ambar)", VERDE = "var(--ll-verde)";
 
 // Alertas: clave del resumen, rotulo de la tarjeta, color y condicion sobre una fila de /api/salud
 export const ALERTAS_SALUD = [
   ["sin_soporte", "Windows sin soporte", ROJO, (f) => f.soporte_estado === "sin_soporte"],
   ["vence_pronto", "Soporte vence pronto", AMBAR, (f) => f.soporte_estado === "vence_pronto"],
-  ["sin_cifrar", "Sin BitLocker", "#f472b6", (f) => f.sin_cifrar],
+  ["sin_cifrar", "Sin BitLocker", "var(--ll-rosa)", (f) => f.sin_cifrar],
   ["av_problema", "Sin CrowdStrike o con problemas", ROJO, (f) => ["falta_corporativo", "desactivado", "desactualizado"].includes(f.av_estado)],
   ["sin_parches_30d", "Sin parches +30 días", AMBAR, (f) => f.dias_sin_parches !== null && f.dias_sin_parches > 30],
   ["disco_riesgo", "Disco en riesgo", ROJO, (f) => f.disco_estado === "riesgo"],
@@ -74,7 +74,7 @@ export function BarraBateria({ porcentaje, ciclos }) {
   const c = colorBateria(porcentaje);
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }} title={ciclos != null ? ciclos + " ciclos" : ""}>
-      <span style={{ width: 60, height: 7, borderRadius: 4, background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
+      <span style={{ width: 60, height: 7, borderRadius: 4, background: "var(--ll-track)", overflow: "hidden" }}>
         <span style={{ display: "block", width: Math.max(2, Math.min(100, porcentaje)) + "%", height: "100%", background: c }} />
       </span>
       <span className="mono" style={{ color: c, fontSize: 12 }}>{porcentaje}%</span>

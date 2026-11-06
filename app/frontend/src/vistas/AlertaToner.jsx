@@ -61,8 +61,8 @@ export default function AlertaToner({ onVer }) {
         </p>
         {datos.alertas.map((a) => (
           <div key={a.id + a.consumible} style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 14px",
-            borderRadius: 12, background: "rgba(244,114,182,0.08)", border: "1px solid rgba(244,114,182,0.3)" }}>
-            <span className="mono" style={{ fontSize: 22, fontWeight: 600, color: "#f472b6", minWidth: 48, textAlign: "right" }}>
+            borderRadius: 12, background: "color-mix(in srgb, var(--ll-rosa) 8%, transparent)", border: "1px solid color-mix(in srgb, var(--ll-rosa) 30%, transparent)" }}>
+            <span className="mono" style={{ fontSize: 22, fontWeight: 600, color: "var(--ll-rosa)", minWidth: 48, textAlign: "right" }}>
               {a.porcentaje}%
             </span>
             <div style={{ minWidth: 0 }}>

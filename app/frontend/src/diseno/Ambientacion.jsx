@@ -1,6 +1,20 @@
 // Ambientacion.jsx — Panel de preferencias visuales (acento, fondo animado, brillo, sonido).
 import { Drawer, Rotulo } from "./comunes";
-import { ACENTOS, useAmbiente } from "./ambiente";
+import { ACENTOS, ACENTOS_CLAROS, TEMAS, useAmbiente } from "./ambiente";
+
+// Selector Oscuro / Claro / Blanco (menu lateral y panel de Ambientacion). Se guarda en el navegador.
+export function SelectorTema({ grande }) {
+  const amb = useAmbiente();
+  return (
+    <div className={"ll-temas" + (grande ? " grande" : "")} role="group" aria-label="Tema de colores">
+      {TEMAS.map(([k, rotulo, fondo]) => (
+        <button key={k} type="button" aria-pressed={amb.tema === k} onClick={() => amb.cambiar("tema", k)} title={"Tema " + rotulo.toLowerCase()}>
+          <i style={{ background: fondo }} />{rotulo}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 function Interruptor({ on, onClick, etiqueta }) {
   return <button className={"ll-switch" + (on ? " on" : "")} onClick={onClick} role="switch" aria-checked={on} aria-label={etiqueta}><span /></button>;
@@ -19,9 +33,14 @@ export default function Ambientacion({ abierto, onCerrar }) {
       </div>
 
       <div>
+        <Rotulo>TEMA</Rotulo>
+        <SelectorTema grande />
+      </div>
+
+      <div>
         <Rotulo>COLOR DE ACENTO</Rotulo>
         <div className="ll-acentos">
-          {Object.entries(ACENTOS).map(([nombre, [c1, c2]]) => (
+          {Object.entries(amb.claro ? ACENTOS_CLAROS : ACENTOS).map(([nombre, [c1, c2]]) => (
             <button key={nombre} title={nombre} aria-label={nombre} aria-pressed={amb.acento === nombre}
               className={amb.acento === nombre ? "activo" : ""} onClick={() => amb.cambiar("acento", nombre)}
               style={{ background: `linear-gradient(135deg, ${c1}, ${c2})`, boxShadow: amb.acento === nombre ? "0 0 22px -4px " + c1 : "none" }} />

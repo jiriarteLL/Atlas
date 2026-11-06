@@ -1,0 +1,157 @@
+/* temas.css — Temas Claro y Blanco de Atlas (el Oscuro es el de diseno.css y no cambia).
+   Se aplican con data-theme en <html>: lo pone un script de index.html antes del primer render
+   (sin parpadeo) y despues ambiente.jsx al cambiarlo desde el menu.
+   Los colores de estado se oscurecen para tener contraste AA (>= 4.5:1) sobre fondo claro y blanco.
+   El acento tambien se oscurece, pero ese lo fija ambiente.jsx (ACENTOS_CLAROS). */
+
+:root[data-theme="claro"],
+:root[data-theme="blanco"] {
+  color-scheme: light;
+  --ll-text: #111c2b;
+  --ll-text-2: #2b3a4c;
+  --ll-muted: #4b5a6c;
+  --ll-dim: #536173;
+  --ll-faint: #5e6b7b;
+  --ll-ghost: #636f80;
+  --ll-ok: #047857;
+  --ll-warn: #92400e;
+  --ll-bad: #be185d;
+  --ll-card: #ffffff;
+  --ll-card-hover: #fbfcfe;
+  --ll-line: rgba(15,30,55,0.12);
+
+  --ll-strong: #0b1220;
+  --ll-on-accent: #ffffff;
+  --ll-nav-text: #3d4a5b;
+  --ll-hover: rgba(15,30,55,0.05);
+  --ll-hover-2: rgba(15,30,55,0.09);
+  --ll-line-2: rgba(15,30,55,0.09);
+  --ll-line-3: rgba(15,30,55,0.15);
+  /* bordes de inputs y selects: >= 3:1 contra el fondo para que los filtros se distingan */
+  --ll-borde-ctrl: #8692a1;
+  --ll-ctrl-bg: #ffffff;
+  --ll-select-bg: #ffffff;
+  --ll-option-sel: #dbe7f5;
+  --ll-track: rgba(15,30,55,0.11);
+  --ll-row-line: rgba(15,30,55,0.08);
+  --ll-row-hover: rgba(15,30,55,0.035);
+  --ll-chip-bg: rgba(15,30,55,0.07);
+  --ll-scroll: rgba(15,30,55,0.2);
+  --ll-scroll-hover: rgba(15,30,55,0.35);
+  --ll-velo-bg: rgba(15,23,42,0.30);
+  --ll-modal-velo-bg: rgba(15,23,42,0.42);
+  --ll-drawer-bg: #ffffff;
+  --ll-toast-bg: #ffffff;
+  --ll-login-bg: rgba(255,255,255,0.95);
+  --ll-login-input: #ffffff;
+  --ll-sombra: rgba(15,23,42,0.22);
+  --ll-grilla: rgba(30,60,110,0.06);
+  --ll-hueco: #ffffff;
+  --ll-codigo-bg: #f1f4f8;
+  --ll-error-text: #9d174d;
+  --ll-error-bg: rgba(190,24,93,0.07);
+  --ll-error-borde: rgba(190,24,93,0.32);
+
+  --ll-rojo: #b91c1c;
+  --ll-ambar: #92400e;
+  --ll-verde: #047857;
+  --ll-rosa: #be185d;
+  --ll-azul: #1d4ed8;
+  --ll-gris: #5e6b7b;
+
+  /* compatibilidad con styles.css (secciones clasicas) */
+  --surface: #ffffff;
+  --surface-2: #fafbfc;
+  --surface-3: #eef1f4;
+  --border: rgba(15,30,55,0.14);
+  --glass-blur: none;
+  --card: #ffffff;
+  --bg-soft: rgba(15,30,55,0.04);
+  --good: var(--ll-verde);
+  --good-soft: rgba(4,120,87,0.12);
+  --warning: var(--ll-ambar);
+  --warning-soft: rgba(146,64,14,0.12);
+  --critical-soft: rgba(190,24,93,0.10);
+  --shadow-card: 0 1px 3px rgba(20,40,60,.10), 0 1px 2px rgba(20,40,60,.06);
+  --shadow-card-hover: 0 4px 12px rgba(20,40,60,.13);
+}
+
+/* Claro: fondo gris muy claro, paneles casi blancos y tarjetas blancas */
+:root[data-theme="claro"] {
+  --accent: #0e7490;   /* hasta que ambiente.jsx fije el acento elegido */
+  --accent2: #4f46e5;
+  --ll-bg: #eef1f5;
+  --ll-panel: #f7f9fb;
+  --ll-sidebar-bg: rgba(247,249,251,0.94);
+  --ll-header-bg: rgba(247,249,251,0.85);
+}
+
+/* Blanco: todo blanco, la separacion la dan los bordes grises suaves */
+:root[data-theme="blanco"] {
+  --accent: #0e7490;
+  --accent2: #4f46e5;
+  --ll-bg: #ffffff;
+  --ll-panel: #ffffff;
+  --ll-card-hover: #f8fafc;
+  --ll-line: rgba(15,30,55,0.13);
+  --ll-sidebar-bg: #ffffff;
+  --ll-header-bg: rgba(255,255,255,0.92);
+  --ll-row-hover: rgba(15,30,55,0.03);
+}
+:root[data-theme="blanco"] .ll-card { box-shadow: 0 1px 2px rgba(15,30,55,0.05); }
+
+/* ── Fondo animado: sutil sobre claro (sin manchas oscuras) ── */
+:root:is([data-theme="claro"], [data-theme="blanco"]) .ll-esfera { opacity: .45 !important; }
+:root[data-theme="blanco"] .ll-esfera { opacity: .3 !important; }
+:root:is([data-theme="claro"], [data-theme="blanco"]) .ll-glow-a,
+:root:is([data-theme="claro"], [data-theme="blanco"]) .ll-glow-b { opacity: calc(0.10 * var(--ll-brillo, .55) + 0.03); }
+:root:is([data-theme="claro"], [data-theme="blanco"]) .ll-cursor { mix-blend-mode: multiply; opacity: .35; }
+:root[data-theme="blanco"] .ll-fx-grid { display: none; }
+:root:is([data-theme="claro"], [data-theme="blanco"]) .ll-intro { background: radial-gradient(ellipse at 50% 42%, rgba(247,249,251,0.55), rgba(238,241,245,0.96)); }
+:root[data-theme="blanco"] .ll-intro { background: radial-gradient(ellipse at 50% 42%, rgba(255,255,255,0.6), rgba(255,255,255,0.97)); }
+:root:is([data-theme="claro"], [data-theme="blanco"]) .ll-login-velo { background: radial-gradient(ellipse at 50% 45%, rgba(247,249,251,0.45), rgba(238,241,245,0.92)); }
+:root[data-theme="blanco"] .ll-login-velo { background: radial-gradient(ellipse at 50% 45%, rgba(255,255,255,0.5), rgba(255,255,255,0.95)); }
+:root:is([data-theme="claro"], [data-theme="blanco"]) .ll-isotipo,
+:root:is([data-theme="claro"], [data-theme="blanco"]) .ll-intro-logo { filter: none; }
+:root:is([data-theme="claro"], [data-theme="blanco"]) .ll-nav-item.activo::before { box-shadow: none; }
+:root:is([data-theme="claro"], [data-theme="blanco"]) .ll-switch span { box-shadow: 0 1px 3px rgba(15,30,55,0.35); }
+
+/* Logo completo: blanco sobre oscuro, letras oscuras sobre claro */
+.ll-solo-claro { display: none !important; }
+:root:is([data-theme="claro"], [data-theme="blanco"]) .ll-solo-claro { display: block !important; }
+:root:is([data-theme="claro"], [data-theme="blanco"]) .ll-solo-oscuro { display: none !important; }
+
+/* ── Secciones clasicas (styles.css): fondos y bordes pensados para oscuro ── */
+:root:is([data-theme="claro"], [data-theme="blanco"]) .card,
+:root:is([data-theme="claro"], [data-theme="blanco"]) .metric { background: var(--ll-card); }
+:root:is([data-theme="claro"], [data-theme="blanco"]) .modal { background: var(--ll-panel); box-shadow: 0 30px 70px -20px var(--ll-sombra); }
+:root:is([data-theme="claro"], [data-theme="blanco"]) .modal-overlay,
+:root:is([data-theme="claro"], [data-theme="blanco"]) .sidebar-overlay { background: var(--ll-modal-velo-bg); }
+:root:is([data-theme="claro"], [data-theme="blanco"]) .btn { background: var(--ll-ctrl-bg); border-color: var(--ll-line-3); }
+:root:is([data-theme="claro"], [data-theme="blanco"]) .btn:hover { background: var(--ll-hover-2); }
+:root:is([data-theme="claro"], [data-theme="blanco"]) .btn-primary { background: linear-gradient(120deg, var(--accent2), var(--accent)); color: var(--ll-on-accent); border-color: transparent; box-shadow: none; }
+:root:is([data-theme="claro"], [data-theme="blanco"]) .btn-danger { background: transparent; border-color: color-mix(in srgb, var(--ll-bad) 40%, transparent); }
+:root:is([data-theme="claro"], [data-theme="blanco"]) input:not(.ll-input):not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+:root:is([data-theme="claro"], [data-theme="blanco"]) select:not(.ll-select),
+:root:is([data-theme="claro"], [data-theme="blanco"]) textarea { background: var(--ll-ctrl-bg); border-color: var(--ll-borde-ctrl); color: var(--ll-text); }
+:root:is([data-theme="claro"], [data-theme="blanco"]) tr.clickable:hover td { background: var(--ll-row-hover); }
+:root:is([data-theme="claro"], [data-theme="blanco"]) .metric-val { color: var(--ll-strong); text-shadow: none; }
+:root:is([data-theme="claro"], [data-theme="blanco"]) .page-title { text-shadow: none; }
+:root:is([data-theme="claro"], [data-theme="blanco"]) .card-head-gradient .card-title { color: var(--ll-on-accent); }
+:root:is([data-theme="claro"], [data-theme="blanco"]) code { background: var(--ll-codigo-bg); }
+:root:is([data-theme="claro"], [data-theme="blanco"]) pre { background: var(--ll-codigo-bg); color: var(--ll-text-2); }
+
+/* Graficos: recharts pinta el texto de la leyenda con el color de cada serie (cian, verde claro...),
+   que sobre blanco no se lee; el cuadradito de color ya identifica la serie. */
+:root:is([data-theme="claro"], [data-theme="blanco"]) .recharts-legend-item-text { color: var(--ll-text-2) !important; }
+:root:is([data-theme="claro"], [data-theme="blanco"]) .recharts-default-tooltip { box-shadow: 0 6px 18px var(--ll-sombra); }
+
+/* ── Selector de tema (menu lateral y Ambientacion) ── */
+.ll-temas { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 4px; margin: 4px 0 6px; border-radius: 11px; background: var(--ll-chip-bg); border: 1px solid var(--ll-line-2); }
+.ll-temas button { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 4px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--ll-dim); font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap; }
+.ll-temas button:hover { color: var(--ll-text); }
+.ll-temas button[aria-pressed="true"] { color: var(--ll-strong); font-weight: 600; background: var(--ll-card); border-color: color-mix(in srgb, var(--accent) 45%, transparent); box-shadow: 0 1px 3px var(--ll-sombra); }
+.ll-temas button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.ll-temas i { width: 11px; height: 11px; flex: 0 0 11px; border-radius: 50%; border: 1px solid var(--ll-borde-ctrl); }
+.ll-temas.grande { margin: 0; }
+.ll-temas.grande button { padding: 12px 6px; font-size: 13px; }

@@ -85,9 +85,9 @@ export default function Accesos({ user, avisar }) {
               <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
                 <span className="ll-chip acento">{u.rol}</span>
                 <span className="ll-chip mono">{u.username}</span>
-                <span className="ll-chip" style={{ color: activo ? "#34d399" : "#fbbf24", background: activo ? "rgba(52,211,153,0.12)" : "rgba(251,191,36,0.12)" }}>{activo ? "Activo" : "Inactivo"}</span>
+                <span className="ll-chip" style={{ color: activo ? "var(--ll-verde)" : "var(--ll-ambar)", background: `color-mix(in srgb, ${activo ? "var(--ll-verde)" : "var(--ll-ambar)"} 12%, transparent)` }}>{activo ? "Activo" : "Inactivo"}</span>
               </div>
-              <div style={{ display: "flex", gap: 8, marginTop: 16, borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: 14 }}>
+              <div style={{ display: "flex", gap: 8, marginTop: 16, borderTop: "1px solid var(--ll-line-2)", paddingTop: 14 }}>
                 <button className="ll-btn-borde" style={{ flex: 1 }} onClick={() => setModal({ tipo: "editar", datos: { ...u, activo: activo ? "1" : "0" } })}>Editar</button>
                 <button className="ll-btn-borde" onClick={() => setModal({ tipo: "clave", datos: { username: u.username, password: "", confirmar: "" } })}>Clave</button>
                 {!esSuper && u.username !== user?.username && <button className="ll-btn-peligro" style={{ padding: "8px 14px", borderRadius: 9 }} onClick={() => eliminar(u)} aria-label={"Eliminar " + u.username}>✕</button>}

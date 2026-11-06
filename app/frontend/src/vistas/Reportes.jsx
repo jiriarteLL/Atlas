@@ -5,10 +5,10 @@ import { ESTADOS, TIPO_COLOR, estadoColor } from "../diseno/comunes";
 import { diasSinReportar } from "./filtros";
 
 const TOOLTIP = {
-  contentStyle: { borderRadius: 10, border: "1px solid rgba(255,255,255,0.1)", background: "#0b1020", color: "#e6edf6", fontSize: 12 },
-  itemStyle: { color: "#e6edf6" }, labelStyle: { color: "#8a97ab" },
+  contentStyle: { borderRadius: 10, border: "1px solid var(--ll-line-3)", background: "var(--ll-panel)", color: "var(--ll-text)", fontSize: 12 },
+  itemStyle: { color: "var(--ll-text)" }, labelStyle: { color: "var(--ll-muted)" },
 };
-const EJE = { tick: { fontSize: 11, fill: "#7c8798" }, axisLine: { stroke: "rgba(255,255,255,0.08)" }, tickLine: false };
+const EJE = { tick: { fontSize: 11, fill: "var(--ll-dim)" }, axisLine: { stroke: "var(--ll-track)" }, tickLine: false };
 
 function Panel({ rotulo, valor, sub, color }) {
   return (
@@ -46,10 +46,10 @@ export default function Reportes({ assets, ir, exportar }) {
   return (
     <div>
       <div className="ll-grid-2">
-        <Panel rotulo="TASA DE ACTIVOS OPERATIVOS" valor={total ? Math.round(operativos / total * 100) + "%" : "—"} sub={`${operativos} de ${total} equipos operativos`} color="#34d399" />
-        <Panel rotulo="EQUIPOS EN MANTENIMIENTO" valor={enMant} sub="Requieren seguimiento del área TI" color="#fbbf24" />
+        <Panel rotulo="TASA DE ACTIVOS OPERATIVOS" valor={total ? Math.round(operativos / total * 100) + "%" : "—"} sub={`${operativos} de ${total} equipos operativos`} color="var(--ll-verde)" />
+        <Panel rotulo="EQUIPOS EN MANTENIMIENTO" valor={enMant} sub="Requieren seguimiento del área TI" color="var(--ll-ambar)" />
         <Panel rotulo="SEDES CON INVENTARIO" valor={dSede.filter((d) => d.value > 0).length} sub={`de ${SEDES.length} sedes`} color="var(--accent)" />
-        <Panel rotulo="LICENCIAS POR VENCER" valor="—" sub="Módulo no incluido en esta versión" color="#f472b6" />
+        <Panel rotulo="LICENCIAS POR VENCER" valor="—" sub="Módulo no incluido en esta versión" color="var(--ll-rosa)" />
       </div>
 
       <div className="ll-grid-2" style={{ marginTop: 18 }}>
@@ -57,10 +57,10 @@ export default function Reportes({ assets, ir, exportar }) {
           <G.ResponsiveContainer width="100%" height={260}>
             <G.BarChart data={dSede} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}
               onClick={(st) => { if (st && st.activeLabel) ir("activos", { sede: st.activeLabel }); }}>
-              <G.CartesianGrid vertical={false} stroke="rgba(255,255,255,0.05)" />
-              <G.XAxis dataKey="name" {...EJE} interval={0} tick={{ fontSize: 10, fill: "#7c8798" }} />
+              <G.CartesianGrid vertical={false} stroke="var(--ll-row-line)" />
+              <G.XAxis dataKey="name" {...EJE} interval={0} tick={{ fontSize: 10, fill: "var(--ll-dim)" }} />
               <G.YAxis {...EJE} axisLine={false} allowDecimals={false} />
-              <G.Tooltip cursor={{ fill: "rgba(255,255,255,0.03)" }} {...TOOLTIP} />
+              <G.Tooltip cursor={{ fill: "var(--ll-row-hover)" }} {...TOOLTIP} />
               <G.Bar dataKey="value" name="Activos" radius={[5, 5, 0, 0]} fill="var(--accent)" cursor="pointer" />
             </G.BarChart>
           </G.ResponsiveContainer>
@@ -70,10 +70,10 @@ export default function Reportes({ assets, ir, exportar }) {
             <G.PieChart>
               <G.Pie data={dTipo} dataKey="value" nameKey="name" innerRadius={58} outerRadius={96} paddingAngle={2} cursor="pointer"
                 onClick={(d) => { if (d && d.name) ir("activos", { tipo: d.name }); }}>
-                {dTipo.map((d) => <G.Cell key={d.name} fill={TIPO_COLOR[d.name] || "#7c8798"} stroke="#05070d" strokeWidth={2} />)}
+                {dTipo.map((d) => <G.Cell key={d.name} fill={TIPO_COLOR[d.name] || "#7c8798"} stroke="var(--ll-hueco)" strokeWidth={2} />)}
               </G.Pie>
               <G.Tooltip {...TOOLTIP} />
-              <G.Legend wrapperStyle={{ fontSize: 11, color: "#c4cdda" }} />
+              <G.Legend wrapperStyle={{ fontSize: 11, color: "var(--ll-text-2)" }} />
             </G.PieChart>
           </G.ResponsiveContainer>
         </Grafico>
@@ -82,10 +82,10 @@ export default function Reportes({ assets, ir, exportar }) {
             <G.PieChart>
               <G.Pie data={dEstado} dataKey="value" nameKey="name" outerRadius={96} paddingAngle={2} cursor="pointer"
                 onClick={(d) => { if (d && d.name) ir("activos", { estado: d.name }); }}>
-                {dEstado.map((d) => <G.Cell key={d.name} fill={estadoColor(d.name)} stroke="#05070d" strokeWidth={2} />)}
+                {dEstado.map((d) => <G.Cell key={d.name} fill={estadoColor(d.name)} stroke="var(--ll-hueco)" strokeWidth={2} />)}
               </G.Pie>
               <G.Tooltip {...TOOLTIP} />
-              <G.Legend wrapperStyle={{ fontSize: 11, color: "#c4cdda" }} />
+              <G.Legend wrapperStyle={{ fontSize: 11, color: "var(--ll-text-2)" }} />
             </G.PieChart>
           </G.ResponsiveContainer>
         </Grafico>
@@ -93,11 +93,11 @@ export default function Reportes({ assets, ir, exportar }) {
           <G.ResponsiveContainer width="100%" height={260}>
             <G.BarChart data={dSinReportar} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}
               onClick={() => ir("activos", { estado: "__sin_reportar__" })}>
-              <G.CartesianGrid vertical={false} stroke="rgba(255,255,255,0.05)" />
+              <G.CartesianGrid vertical={false} stroke="var(--ll-row-line)" />
               <G.XAxis dataKey="name" {...EJE} />
               <G.YAxis {...EJE} axisLine={false} allowDecimals={false} />
-              <G.Tooltip cursor={{ fill: "rgba(255,255,255,0.03)" }} {...TOOLTIP} />
-              <G.Bar dataKey="value" name="Equipos" radius={[5, 5, 0, 0]} fill="#f472b6" cursor="pointer" />
+              <G.Tooltip cursor={{ fill: "var(--ll-row-hover)" }} {...TOOLTIP} />
+              <G.Bar dataKey="value" name="Equipos" radius={[5, 5, 0, 0]} fill="var(--ll-rosa)" cursor="pointer" />
             </G.BarChart>
           </G.ResponsiveContainer>
         </Grafico>

@@ -4,7 +4,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { useAuth, tienePermiso } from "./AuthContext";
 import { API, apiFetch, http, setUsuarioActual } from "./api";
 import { useToast, Proximamente } from "./diseno/comunes";
-import Ambientacion from "./diseno/Ambientacion";
+import Ambientacion, { SelectorTema } from "./diseno/Ambientacion";
 import { recordarTotal } from "./diseno/Intro";
 import { exportarActivosExcel, exportarCSV, exportarReporte, leerCSV } from "./exportar";
 import { cumpleEstado } from "./vistas/filtros";
@@ -221,6 +221,7 @@ export default function App() {
           <input ref={archivo} type="file" accept=".csv" onChange={importar} style={{ display: "none" }} />
         </nav>
         <div className="ll-pie">
+          <SelectorTema />
           <button className="ll-nav-item" onClick={() => setAmbientacion(true)}><span className="ll-nav-ico">⚙</span>Configuración</button>
           <button className="ll-nav-item peligro" onClick={logout}><span className="ll-nav-ico">←</span>Cerrar sesión</button>
           <div className="ll-version"><span className="ll-punto-vivo" />v{__APP_VERSION__} · {user?.username}</div>
