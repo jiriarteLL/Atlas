@@ -12,6 +12,13 @@ export function tienePermiso(user, codigo) {
   return !!user && Array.isArray(user.permisos) && user.permisos.includes(codigo);
 }
 
+// Permisos por modulo ({modulo: nivel} de /auth/me). El servidor es el que controla; esto solo muestra/oculta.
+const RANGO = { ver: 1, si: 1, editar: 2, administrar: 2 };
+export function puede(user, modulo, nivel = "ver") {
+  const v = user?.modulos?.[modulo];
+  return !!v && (RANGO[v] || 0) >= (RANGO[nivel] || 1);
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [listo, setListo] = useState(false);   // false mientras se intenta recuperar la sesion

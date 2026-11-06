@@ -14,7 +14,7 @@ import re
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordBearer
@@ -88,6 +88,14 @@ class UserRole(Base):
     role_id = Column(String, ForeignKey("roles.id"), primary_key=True)
 
 
+class UserModulo(Base):
+    """Permiso de un usuario sobre un modulo de Atlas (como en Argos, pero con nivel). Sin fila = sin acceso."""
+    __tablename__ = "user_modulos"
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    modulo  = Column(String, primary_key=True)
+    nivel   = Column(String, nullable=False, default="ver")
+
+
 class RevokedToken(Base):
     __tablename__ = "revoked_tokens"
     jti     = Column(String, primary_key=True)
@@ -159,13 +167,110 @@ def permisos_de(db, user_id):
     return sorted(f[0] for f in filas)
 
 
-def asignar_rol(db, user, nombre_rol):
-    """Deja al usuario con un unico rol."""
+def asignar_rol(db, user, nombre_rol, con_modulos=True):
+    """Deja al usuario con un unico rol. Con con_modulos, el rol funciona como plantilla: le carga sus modulos."""
     rol = db.query(Role).filter(Role.nombre == nombre_rol).first()
     if not rol:
         raise HTTPException(status_code=400, detail="Rol invalido.")
     db.query(UserRole).filter(UserRole.user_id == user.id).delete()
     db.add(UserRole(user_id=user.id, role_id=rol.id))
+    if con_modulos:
+        guardar_modulos(db, user.id, plantilla(nombre_rol))
+
+
+# ---------------------------------------------------------------- permisos por modulo
+# Catalogo: (clave, rotulo, que incluye, niveles posibles de menor a mayor). Sin niveles = proximamente.
+# El control es en el servidor (require_modulo en cada endpoint); el frontend solo oculta lo que no se puede usar.
+MODULOS = [
+    ("dashboard",  "Dashboard",      "Vista general, indicadores y riesgos", ("ver",)),
+    ("activos",    "Activos",        "Todos los activos, ficha, historial, adjuntos, tickets y garantías", ("ver", "editar")),
+    ("salud",      "Notebooks y PC", "Salud y seguridad: Windows, BitLocker, antivirus, parches, discos, batería", ("ver",)),
+    ("impresoras", "Impresoras",     "Impresoras de red y USB, tóner y contadores", ("ver", "editar")),
+    ("proyectos",  "Proyectos",      "Proyectos de IT, tareas y equipo", ("ver", "editar")),
+    ("reportes",   "Reportes",       "Gráficos y exportación a Excel / CSV", ("ver",)),
+    ("tendencias", "Tendencias",     "Evolución del inventario en el tiempo", ("ver",)),
+    ("agente",     "Agente",         "Scripts e instrucciones del agente de inventario", ("ver",)),
+    ("importar",   "Importar CSV",   "Alta masiva de activos desde un CSV", ("editar",)),
+    ("accesos",    "Accesos",        "Usuarios de Atlas y sus permisos", ("administrar",)),
+    ("licencias",  "Licencias",      "Próximamente", ()),
+]
+ELIMINAR_ACTIVOS = "activos_eliminar"   # permiso aparte (nivel "si"); exige activos = editar
+RANGO = {"ver": 1, "si": 1, "editar": 2, "administrar": 2}
+NIVELES = {k: niv for k, _, _, niv in MODULOS}
+NIVELES[ELIMINAR_ACTIVOS] = ("si",)
+# Endpoints que usan varias vistas: alcanza con ver cualquiera de estos modulos.
+MODULOS_LISTA_ACTIVOS = ("activos", "dashboard", "salud", "reportes", "proyectos")   # GET /api/assets, GLPI
+MODULOS_FICHA = ("activos", "salud", "dashboard")    # ficha, historial, adjuntos y salud de un activo
+
+
+def plantilla(rol):
+    """Modulos que equivalen a cada rol de antes (los botones Solo ver / Editor / Admin de Accesos)."""
+    if rol in ("superadmin", "admin"):
+        m = {k: niv[-1] for k, _, _, niv in MODULOS if niv}
+        m[ELIMINAR_ACTIVOS] = "si"
+        return m
+    if rol == "editor":
+        return {k: niv[-1] for k, _, _, niv in MODULOS if niv and k != "accesos"}
+    return {k: "ver" for k, _, _, niv in MODULOS if "ver" in niv}
+
+
+def rol_por_modulos(m):
+    """Rotulo de rol que corresponde a un juego de modulos (se guarda para compatibilidad)."""
+    if m.get("accesos") == "administrar":
+        return "admin"
+    return "editor" if any(v == "editar" for v in m.values()) else "viewer"
+
+
+def validar_modulos(m):
+    """Normaliza {modulo: nivel}: descarta "ninguno"/vacio y rechaza modulos o niveles que no existen."""
+    if not isinstance(m, dict):
+        raise HTTPException(status_code=400, detail="Permisos invalidos.")
+    limpio = {}
+    for k, v in m.items():
+        v = (v or "").strip().lower()
+        if v in ("", "ninguno"):
+            continue
+        if k not in NIVELES or v not in NIVELES[k]:
+            raise HTTPException(status_code=400, detail="Permiso invalido: %s = %s" % (k, v))
+        limpio[k] = v
+    if ELIMINAR_ACTIVOS in limpio and limpio.get("activos") != "editar":
+        raise HTTPException(status_code=400, detail="Para eliminar activos hace falta poder editarlos.")
+    return limpio
+
+
+def guardar_modulos(db, user_id, modulos):
+    db.query(UserModulo).filter(UserModulo.user_id == user_id).delete(synchronize_session=False)
+    for k, v in modulos.items():
+        db.add(UserModulo(user_id=user_id, modulo=k, nivel=v))
+
+
+def es_protegido(db, u):
+    """superadmin y los administradores de AD_ADMINS: acceso total, nadie les puede cambiar los permisos."""
+    if u.username == config.SUPERADMIN_EMAIL or rol_de(db, u.id) == "superadmin":
+        return True
+    return u.username in config.AD_ADMINS and ad_auth.es_usuario_windows(u)
+
+
+def modulos_de(db, u):
+    if es_protegido(db, u):
+        return plantilla("admin")
+    return {f.modulo: f.nivel for f in db.query(UserModulo).filter(UserModulo.user_id == u.id).all()}
+
+
+def permisos_legacy(m):
+    """Los permisos de antes (inventario.ver, ...) calculados desde los modulos, para no romper a quien los use."""
+    p = set()
+    if any(k not in ("accesos", ELIMINAR_ACTIVOS) for k in m):
+        p.add("inventario.ver")
+    if any(m.get(k) == "editar" for k in ("activos", "impresoras", "proyectos", "importar")):
+        p.add("inventario.editar")
+    if m.get("activos") == "editar":
+        p.add("garantias.consultar")
+    if m.get(ELIMINAR_ACTIVOS) == "si":
+        p.add("activos.eliminar")
+    if m.get("accesos") == "administrar":
+        p.add("usuarios.administrar")
+    return sorted(p)
 
 
 # ---------------------------------------------------------------- passwords
@@ -238,6 +343,8 @@ class UserOut(BaseModel):
     rol: str
     email: str = ""
     permisos: List[str] = []
+    modulos: Dict[str, str] = {}      # {modulo: nivel}; lo que no esta = sin acceso
+    protegido: bool = False           # superadmin / AD_ADMINS: acceso total, no editable
     debe_cambiar_password: bool = False
 
 
@@ -254,6 +361,12 @@ class UserCreate(BaseModel):
     nombre: str
     email: str
     rol: str = "viewer"
+    modulos: Optional[Dict[str, str]] = None   # si no viene, se usa la plantilla del rol
+
+
+class PermisosIn(BaseModel):
+    modulos: Dict[str, str]
+    activar: bool = False   # "Habilitar y elegir permisos" de un usuario pendiente, en un solo paso
 
 
 class UserUpdate(BaseModel):
@@ -332,8 +445,10 @@ def _sesion_vigente(user, emitido_ms):
 
 
 def _user_out(db, u):
+    # Se arma en cada request (get_current_user): un cambio de permisos vale desde la request siguiente.
+    m = modulos_de(db, u)
     return UserOut(id=u.id, username=u.username, nombre=u.nombre or "", email=u.email or "",
-                   rol=rol_de(db, u.id), permisos=permisos_de(db, u.id),
+                   rol=rol_de(db, u.id), permisos=permisos_legacy(m), modulos=m, protegido=es_protegido(db, u),
                    debe_cambiar_password=bool(u.debe_cambiar_password))
 
 
@@ -361,9 +476,19 @@ def require_permiso(codigo):
     return dep
 
 
+def require_modulo(*modulos, nivel="ver"):
+    """Exige `nivel` (o mas) en alguno de los modulos. Ej.: require_modulo("impresoras", nivel="editar")."""
+    def dep(user: UserOut = Depends(get_current_user)) -> UserOut:
+        if not any(RANGO.get(user.modulos.get(m, ""), 0) >= RANGO[nivel] for m in modulos):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tenés acceso a este módulo.")
+        return user
+    return dep
+
+
+# Compatibilidad: los endpoints usan require_modulo; estos alias quedan para codigo viejo.
 require_lectura = require_permiso("inventario.ver")
 require_escritura = require_permiso("inventario.editar")
-require_admin = require_permiso("usuarios.administrar")
+require_admin = require_modulo("accesos", nivel="administrar")
 
 
 # ---------------------------------------------------------------- login
@@ -427,7 +552,8 @@ def _validar_windows(db, ident, password):
                  activo="1" if es_admin else "0", debe_cambiar_password=False)
         db.add(u)
         db.flush()
-        asignar_rol(db, u, "admin" if es_admin else "viewer")
+        # Pendientes: sin modulos hasta que un admin elija sus permisos en Accesos.
+        asignar_rol(db, u, "admin" if es_admin else "viewer", con_modulos=es_admin)
         db.commit()
         log_action(usuario=sam, user_id=u.id, accion="CREATE_USER", entidad="usuario", entidad_id=sam,
                    detalle={"origen": "windows", "estado": "activo" if es_admin else "pendiente"})
@@ -575,7 +701,8 @@ def perfil(user: UserOut = Depends(get_current_user)):
                              .order_by(AuditLog.timestamp.desc()).limit(8).all())]
         return {"username": u.username, "nombre": u.nombre or "", "email": u.email or "",
                 "rol": user.rol, "activo": u.activo, "creado": str(u.created or "")[:19],
-                "permisos": [PERMISOS.get(p, p) for p in user.permisos], "actividad": ultimos}
+                "permisos": [PERMISOS.get(p, p) for p in user.permisos], "actividad": ultimos,
+                "modulos": [{"modulo": r, "nivel": user.modulos[k]} for k, r, _, _ in MODULOS if k in user.modulos]}
     finally:
         db.close()
 
@@ -617,6 +744,7 @@ def crear_usuario(data: UserCreate, user: UserOut = Depends(require_admin)):
     if motivo:
         raise HTTPException(status_code=400, detail=motivo)
     email = _email(data.email)
+    modulos = validar_modulos(data.modulos) if data.modulos is not None else None
     db = SessionLocal()
     try:
         if db.query(User).filter(User.username == data.username.strip()).first():
@@ -627,7 +755,11 @@ def crear_usuario(data: UserCreate, user: UserOut = Depends(require_admin)):
                      debe_cambiar_password=True)   # password puesta por un admin: el usuario la cambia al entrar
         db.add(nuevo)
         db.flush()
-        asignar_rol(db, nuevo, data.rol)
+        if modulos is None:
+            asignar_rol(db, nuevo, data.rol)
+        else:
+            asignar_rol(db, nuevo, rol_por_modulos(modulos), con_modulos=False)
+            guardar_modulos(db, nuevo.id, modulos)
         db.commit()
     finally:
         db.close()
@@ -641,9 +773,49 @@ def listar_usuarios(user: UserOut = Depends(require_admin)):
     db = SessionLocal()
     try:
         return [{"username": u.username, "nombre": u.nombre, "email": u.email or "",
-                 "rol": rol_de(db, u.id), "activo": u.activo} for u in db.query(User).all()]
+                 "rol": rol_de(db, u.id), "activo": u.activo, "modulos": modulos_de(db, u),
+                 "protegido": es_protegido(db, u), "windows": ad_auth.es_usuario_windows(u),
+                 "ultimo_login": str(u.last_login_at or "")[:16]} for u in db.query(User).all()]
     finally:
         db.close()
+
+
+@auth_router.get("/modulos")
+def catalogo_modulos(user: UserOut = Depends(require_admin)):
+    """Catalogo para el editor de permisos de Accesos: modulos, niveles y plantillas (roles de antes)."""
+    return {"modulos": [{"clave": k, "rotulo": r, "descripcion": d, "niveles": list(niv), "disponible": bool(niv)}
+                        for k, r, d, niv in MODULOS],
+            "eliminar": ELIMINAR_ACTIVOS,
+            "plantillas": {r: plantilla(r) for r in ROLES_ASIGNABLES}}
+
+
+@auth_router.put("/usuarios/{username}/permisos")
+def editar_permisos(username: str, data: PermisosIn, user: UserOut = Depends(require_admin)):
+    nuevos = validar_modulos(data.modulos)
+    db = SessionLocal()
+    try:
+        u = db.query(User).filter(User.username == username).first()
+        if not u:
+            raise HTTPException(status_code=404, detail="Usuario no encontrado.")
+        if es_protegido(db, u):
+            raise HTTPException(status_code=400, detail="Ese usuario tiene acceso total y sus permisos no se pueden cambiar.")
+        if u.username == user.username:
+            raise HTTPException(status_code=400, detail="No podés cambiar tus propios permisos: pedíselo a otro administrador.")
+        antes = modulos_de(db, u)
+        guardar_modulos(db, u.id, nuevos)
+        asignar_rol(db, u, rol_por_modulos(nuevos), con_modulos=False)
+        activado = bool(data.activar and u.activo != "1")
+        if activado:
+            u.activo = "1"
+        db.commit()
+        out = {"username": u.username, "rol": rol_de(db, u.id), "activo": u.activo, "modulos": nuevos}
+    finally:
+        db.close()
+    cambios = {k: {"antes": antes.get(k, "ninguno"), "despues": nuevos.get(k, "ninguno")}
+               for k in sorted(set(antes) | set(nuevos)) if antes.get(k) != nuevos.get(k)}
+    log_action(usuario=user.username, accion="PERMISSIONS_CHANGE", entidad="usuario", entidad_id=username,
+               detalle={"cambios": cambios, **({"activado": True} if activado else {})})
+    return out
 
 
 def _es_superadmin(u):
@@ -661,13 +833,13 @@ def editar_usuario(username: str, data: UserUpdate, user: UserOut = Depends(requ
         if data.rol is not None:
             if data.rol not in ROLES_ASIGNABLES:
                 raise HTTPException(status_code=400, detail="Rol invalido.")
-            if _es_superadmin(u):
+            if _es_superadmin(u) or es_protegido(db, u):
                 raise HTTPException(status_code=400, detail="El rol del superadmin no se puede cambiar.")
             if u.username == user.username and data.rol != "admin":
                 raise HTTPException(status_code=400, detail="No podes quitarte a vos mismo el rol admin.")
             antes = rol_de(db, u.id)
             if antes != data.rol:
-                asignar_rol(db, u, data.rol)
+                asignar_rol(db, u, data.rol)   # el rol es una plantilla: reemplaza los modulos del usuario
                 detalle["rol"] = {"antes": antes, "despues": data.rol}
         if data.nombre is not None and data.nombre.strip():
             u.nombre = data.nombre.strip()
@@ -677,7 +849,7 @@ def editar_usuario(username: str, data: UserUpdate, user: UserOut = Depends(requ
             u.email = nuevo
         if data.activo is not None:
             nuevo = "1" if data.activo in ("1", 1, True, "true") else "0"
-            if nuevo != "1" and (u.username == user.username or _es_superadmin(u)):
+            if nuevo != "1" and (u.username == user.username or _es_superadmin(u) or es_protegido(db, u)):
                 raise HTTPException(status_code=400, detail="Ese usuario no se puede desactivar.")
             if nuevo != u.activo:
                 u.activo = nuevo

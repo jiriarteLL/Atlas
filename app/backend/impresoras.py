@@ -20,7 +20,7 @@ from sqlalchemy import func
 
 import config
 from audit import log_action
-from auth import UserOut, require_escritura, require_lectura
+from auth import UserOut, require_modulo
 from database import Asset, Historial, ImpresoraConsumible, ImpresoraDetalle, ImpresoraLectura, SessionLocal
 
 router = APIRouter(prefix="/api/impresoras", tags=["impresoras"])
@@ -176,7 +176,7 @@ def _historial(db, asset_id, usuario, cambios):
 
 # ---------------------------------------------------------------- endpoints
 @router.get("")
-def listar_impresoras(user: UserOut = Depends(require_lectura)):
+def listar_impresoras(user: UserOut = Depends(require_modulo("impresoras"))):
     db = SessionLocal()
     try:
         assets = db.query(Asset).filter(Asset.tipo == "Impresora").order_by(Asset.ubicacion, Asset.nombre).all()
@@ -186,7 +186,7 @@ def listar_impresoras(user: UserOut = Depends(require_lectura)):
 
 
 @router.get("/alertas")
-def alertas_toner(user: UserOut = Depends(require_lectura)):
+def alertas_toner(user: UserOut = Depends(require_modulo("impresoras"))):
     """Cartuchos (toner/color) por debajo del umbral (TONER_ALERTA_PCT, 10% por defecto): el aviso emergente."""
     umbral = config.TONER_ALERTA_PCT
     db = SessionLocal()
@@ -208,7 +208,7 @@ def alertas_toner(user: UserOut = Depends(require_lectura)):
 
 
 @router.get("/{asset_id}")
-def ver_impresora(asset_id: str, user: UserOut = Depends(require_lectura)):
+def ver_impresora(asset_id: str, user: UserOut = Depends(require_modulo("impresoras"))):
     db = SessionLocal()
     try:
         a = db.query(Asset).filter(Asset.id == asset_id, Asset.tipo == "Impresora").first()
@@ -232,7 +232,7 @@ def _serial_libre(db, serial, excepto=None):
 
 
 @router.post("")
-def crear_impresora(data: ImpresoraCreate, request: Request, user: UserOut = Depends(require_escritura)):
+def crear_impresora(data: ImpresoraCreate, request: Request, user: UserOut = Depends(require_modulo("impresoras", nivel="editar"))):
     datos = data.model_dump()
     db = SessionLocal()
     try:
@@ -256,7 +256,7 @@ def crear_impresora(data: ImpresoraCreate, request: Request, user: UserOut = Dep
 
 @router.put("/{asset_id}")
 def editar_impresora(asset_id: str, data: ImpresoraUpdate, request: Request,
-                     user: UserOut = Depends(require_escritura)):
+                     user: UserOut = Depends(require_modulo("impresoras", nivel="editar"))):
     datos = data.model_dump(exclude_unset=True)
     db = SessionLocal()
     try:

@@ -28,8 +28,8 @@ from sqlalchemy import func, text as _sqltext
 import config
 import contexto
 from audit import log_action
-from auth import (User, UserOut, auth_router, login_router, require_admin, require_escritura,
-                  require_lectura, require_permiso)
+from auth import (ELIMINAR_ACTIVOS, MODULOS_FICHA, MODULOS_LISTA_ACTIVOS, User, UserOut, auth_router,
+                  login_router, require_modulo)
 from database import (Adjunto, Asset, AssetGlpi, Historial, Proyecto, ProyectoActivo, ProyectoResponsable,
                       ProyectoTarea, SessionLocal, Snapshot, Ticket, init_db)
 from impresoras import borrar_datos_impresora, router as impresoras_router
@@ -233,7 +233,7 @@ def registrar_historial(db, asset_id, usuario, accion, cambios):
 
 
 @app.get("/api/assets/{asset_id}/historial")
-def get_historial(asset_id: str, user: UserOut = Depends(require_lectura)):
+def get_historial(asset_id: str, user: UserOut = Depends(require_modulo(*MODULOS_FICHA))):
     db = SessionLocal()
     items = db.query(Historial).filter(Historial.asset_id == asset_id).order_by(Historial.fecha.desc()).all()
     db.close()
@@ -242,7 +242,7 @@ def get_historial(asset_id: str, user: UserOut = Depends(require_lectura)):
 
 
 @app.get("/api/assets")
-def list_assets(user: UserOut = Depends(require_lectura)):
+def list_assets(user: UserOut = Depends(require_modulo(*MODULOS_LISTA_ACTIVOS))):
     db = SessionLocal()
     r = db.query(Asset).all()
     db.close()
@@ -250,7 +250,7 @@ def list_assets(user: UserOut = Depends(require_lectura)):
 
 
 @app.get("/api/assets/{aid}/ficha")
-def ver_ficha_asset(aid: str, request: Request, user: UserOut = Depends(require_lectura)):
+def ver_ficha_asset(aid: str, request: Request, user: UserOut = Depends(require_modulo(*MODULOS_FICHA))):
     db = SessionLocal()
     obj = db.query(Asset).filter(Asset.id == aid).first()
     db.close()
@@ -261,7 +261,7 @@ def ver_ficha_asset(aid: str, request: Request, user: UserOut = Depends(require_
 
 
 @app.post("/api/assets")
-def create_asset(a: AssetCreate, request: Request, user: UserOut = Depends(require_escritura)):
+def create_asset(a: AssetCreate, request: Request, user: UserOut = Depends(require_modulo("activos", "importar", nivel="editar"))):
     db = SessionLocal()
     obj = Asset(id=("A" + str(uuid.uuid4())[:6]).upper(), **a.model_dump(), updated=datetime.utcnow())
     db.add(obj)
@@ -273,7 +273,7 @@ def create_asset(a: AssetCreate, request: Request, user: UserOut = Depends(requi
 
 
 @app.put("/api/assets/{aid}")
-def update_asset(aid: str, a: AssetUpdate, request: Request, user: UserOut = Depends(require_escritura)):
+def update_asset(aid: str, a: AssetUpdate, request: Request, user: UserOut = Depends(require_modulo("activos", nivel="editar"))):
     db = SessionLocal()
     obj = db.query(Asset).filter(Asset.id == aid).first()
     if not obj:
@@ -293,7 +293,7 @@ def update_asset(aid: str, a: AssetUpdate, request: Request, user: UserOut = Dep
 
 
 @app.delete("/api/assets/{aid}")
-def delete_asset(aid: str, request: Request, user: UserOut = Depends(require_permiso("activos.eliminar"))):
+def delete_asset(aid: str, request: Request, user: UserOut = Depends(require_modulo(ELIMINAR_ACTIVOS, nivel="si"))):
     db = SessionLocal()
     obj = db.query(Asset).filter(Asset.id == aid).first()
     if not obj:
@@ -500,7 +500,7 @@ def _guardar_rel(db, pid, responsables, activos):
 
 
 @app.get("/api/equipo")
-def get_equipo(user: UserOut = Depends(require_lectura)):
+def get_equipo(user: UserOut = Depends(require_modulo("proyectos"))):
     db = SessionLocal()
     us = db.query(User).filter(User.activo == "1").all()
     db.close()
@@ -509,7 +509,7 @@ def get_equipo(user: UserOut = Depends(require_lectura)):
 
 
 @app.get("/api/proyectos")
-def list_proyectos(user: UserOut = Depends(require_lectura)):
+def list_proyectos(user: UserOut = Depends(require_modulo("proyectos"))):
     db = SessionLocal()
     out = [_proy_dict(db, p) for p in db.query(Proyecto).all()]
     db.close()
@@ -518,7 +518,7 @@ def list_proyectos(user: UserOut = Depends(require_lectura)):
 
 
 @app.post("/api/proyectos")
-def create_proyecto(p: ProyectoIn, request: Request, user: UserOut = Depends(require_escritura)):
+def create_proyecto(p: ProyectoIn, request: Request, user: UserOut = Depends(require_modulo("proyectos", nivel="editar"))):
     db = SessionLocal()
     pid = ("P" + str(uuid.uuid4())[:6]).upper()
     ahora = datetime.utcnow().isoformat(timespec="seconds")
@@ -542,7 +542,8 @@ def create_proyecto(p: ProyectoIn, request: Request, user: UserOut = Depends(req
 
 
 @app.put("/api/proyectos/{pid}")
-def update_proyecto(pid: str, p: ProyectoIn, request: Request, bg: BackgroundTasks, user: UserOut = Depends(require_escritura)):
+def update_proyecto(pid: str, p: ProyectoIn, request: Request, bg: BackgroundTasks,
+                    user: UserOut = Depends(require_modulo("proyectos", nivel="editar"))):
     db = SessionLocal()
     obj = db.query(Proyecto).filter(Proyecto.id == pid).first()
     if not obj:
@@ -567,7 +568,7 @@ def update_proyecto(pid: str, p: ProyectoIn, request: Request, bg: BackgroundTas
 
 
 @app.delete("/api/proyectos/{pid}")
-def delete_proyecto(pid: str, request: Request, user: UserOut = Depends(require_escritura)):
+def delete_proyecto(pid: str, request: Request, user: UserOut = Depends(require_modulo("proyectos", nivel="editar"))):
     db = SessionLocal()
     obj = db.query(Proyecto).filter(Proyecto.id == pid).first()
     if not obj:
@@ -585,7 +586,7 @@ def delete_proyecto(pid: str, request: Request, user: UserOut = Depends(require_
 
 
 @app.post("/api/proyectos/{pid}/tareas")
-def crear_tarea(pid: str, t: TareaIn, request: Request, user: UserOut = Depends(require_escritura)):
+def crear_tarea(pid: str, t: TareaIn, request: Request, user: UserOut = Depends(require_modulo("proyectos", nivel="editar"))):
     db = SessionLocal()
     if not db.query(Proyecto).filter(Proyecto.id == pid).first():
         db.close()
@@ -605,7 +606,7 @@ def crear_tarea(pid: str, t: TareaIn, request: Request, user: UserOut = Depends(
 
 
 @app.put("/api/tareas/{tid}")
-def editar_tarea(tid: str, t: TareaIn, user: UserOut = Depends(require_escritura)):
+def editar_tarea(tid: str, t: TareaIn, user: UserOut = Depends(require_modulo("proyectos", nivel="editar"))):
     db = SessionLocal()
     obj = db.query(ProyectoTarea).filter(ProyectoTarea.id == tid).first()
     if not obj:
@@ -630,7 +631,7 @@ def editar_tarea(tid: str, t: TareaIn, user: UserOut = Depends(require_escritura
 
 
 @app.delete("/api/tareas/{tid}")
-def borrar_tarea(tid: str, request: Request, user: UserOut = Depends(require_escritura)):
+def borrar_tarea(tid: str, request: Request, user: UserOut = Depends(require_modulo("proyectos", nivel="editar"))):
     db = SessionLocal()
     obj = db.query(ProyectoTarea).filter(ProyectoTarea.id == tid).first()
     if not obj:
@@ -680,7 +681,7 @@ def _lenovo_garantia(serial):
 
 
 @app.post("/api/assets/{aid}/garantia")
-def consultar_garantia(aid: str, request: Request, user: UserOut = Depends(require_permiso("garantias.consultar"))):
+def consultar_garantia(aid: str, request: Request, user: UserOut = Depends(require_modulo("activos", nivel="editar"))):
     db = SessionLocal()
     obj = db.query(Asset).filter(Asset.id == aid).first()
     if not obj:
@@ -704,7 +705,7 @@ def consultar_garantia(aid: str, request: Request, user: UserOut = Depends(requi
 
 
 @app.get("/api/garantias/vencimientos")
-def vencimientos(dias: int = 90, user: UserOut = Depends(require_lectura)):
+def vencimientos(dias: int = 90, user: UserOut = Depends(require_modulo("activos", "dashboard"))):
     hoy = date.today()
     lim = hoy + timedelta(days=dias)
     db = SessionLocal()
@@ -887,7 +888,7 @@ _GLPI_COLS = ("serial", "nombre", "fecha", "antivirus", "edr", "bateria_salud", 
 
 
 @app.get("/api/glpi/resumen")
-def glpi_resumen(user: UserOut = Depends(require_lectura)):
+def glpi_resumen(user: UserOut = Depends(require_modulo(*MODULOS_LISTA_ACTIVOS))):
     db = SessionLocal()
     rows = db.query(AssetGlpi).all()
     db.close()
@@ -929,7 +930,7 @@ async def sync_glpi(request: Request, x_sync_key: str = Header(default="")):
 
 # ================================================================ tickets
 @app.get("/api/tickets")
-def list_tickets(user: UserOut = Depends(require_lectura)):
+def list_tickets(user: UserOut = Depends(require_modulo("activos"))):
     db = SessionLocal()
     r = db.query(Ticket).all()
     db.close()
@@ -937,7 +938,7 @@ def list_tickets(user: UserOut = Depends(require_lectura)):
 
 
 @app.post("/api/tickets")
-def create_ticket(t: TicketIn, user: UserOut = Depends(require_escritura)):
+def create_ticket(t: TicketIn, user: UserOut = Depends(require_modulo("activos", nivel="editar"))):
     db = SessionLocal()
     obj = Ticket(id="T-" + str(uuid.uuid4())[:6].upper(), fecha=str(date.today()), **t.model_dump())
     db.add(obj)
@@ -949,7 +950,7 @@ def create_ticket(t: TicketIn, user: UserOut = Depends(require_escritura)):
 
 
 @app.put("/api/tickets/{tid}")
-def update_ticket(tid: str, t: TicketIn, user: UserOut = Depends(require_escritura)):
+def update_ticket(tid: str, t: TicketIn, user: UserOut = Depends(require_modulo("activos", nivel="editar"))):
     db = SessionLocal()
     obj = db.query(Ticket).filter(Ticket.id == tid).first()
     if not obj:
@@ -978,7 +979,7 @@ TIPOS_ADJ = {".pdf": "application/pdf", ".jpg": "image/jpeg", ".jpeg": "image/jp
 
 
 @app.get("/api/assets/{asset_id}/adjuntos")
-def listar_adjuntos(asset_id: str, user: UserOut = Depends(require_lectura)):
+def listar_adjuntos(asset_id: str, user: UserOut = Depends(require_modulo(*MODULOS_FICHA))):
     db = SessionLocal()
     items = (db.query(Adjunto).filter(Adjunto.asset_id == asset_id, Adjunto.activo == "1")
              .order_by(Adjunto.fecha.desc()).all())
@@ -989,7 +990,7 @@ def listar_adjuntos(asset_id: str, user: UserOut = Depends(require_lectura)):
 
 @app.post("/api/assets/{asset_id}/adjuntos")
 async def subir_adjunto(asset_id: str, file: UploadFile = File(...), descripcion: str = Form(""),
-                        user: UserOut = Depends(require_escritura)):
+                        user: UserOut = Depends(require_modulo("activos", nivel="editar"))):
     ext = os.path.splitext(file.filename or "")[1].lower()
     if ext not in TIPOS_ADJ:
         raise HTTPException(400, "Extension no permitida: %s" % ext)
@@ -1010,7 +1011,7 @@ async def subir_adjunto(asset_id: str, file: UploadFile = File(...), descripcion
 
 
 @app.get("/api/adjuntos/{adj_id}/descargar")
-def descargar_adjunto(adj_id: str, user: UserOut = Depends(require_lectura)):
+def descargar_adjunto(adj_id: str, user: UserOut = Depends(require_modulo(*MODULOS_FICHA))):
     db = SessionLocal()
     a = db.query(Adjunto).filter(Adjunto.id == adj_id, Adjunto.activo == "1").first()
     contenido = a.contenido if a else None
@@ -1024,7 +1025,7 @@ def descargar_adjunto(adj_id: str, user: UserOut = Depends(require_lectura)):
 
 
 @app.delete("/api/adjuntos/{adj_id}")
-def borrar_adjunto(adj_id: str, user: UserOut = Depends(require_escritura)):
+def borrar_adjunto(adj_id: str, user: UserOut = Depends(require_modulo("activos", nivel="editar"))):
     db = SessionLocal()
     a = db.query(Adjunto).filter(Adjunto.id == adj_id).first()
     if not a:
@@ -1079,7 +1080,7 @@ def _loop_snapshots():
 
 
 @app.get("/api/tendencias")
-def get_tendencias(metrica: str = "", user: UserOut = Depends(require_lectura)):
+def get_tendencias(metrica: str = "", user: UserOut = Depends(require_modulo("tendencias"))):
     db = SessionLocal()
     q = db.query(Snapshot)
     if metrica:
@@ -1090,7 +1091,7 @@ def get_tendencias(metrica: str = "", user: UserOut = Depends(require_lectura)):
 
 
 @app.get("/api/tendencias/metricas")
-def get_metricas_disponibles(user: UserOut = Depends(require_lectura)):
+def get_metricas_disponibles(user: UserOut = Depends(require_modulo("tendencias"))):
     db = SessionLocal()
     items = db.query(Snapshot.metrica).distinct().all()
     db.close()
@@ -1098,7 +1099,7 @@ def get_metricas_disponibles(user: UserOut = Depends(require_lectura)):
 
 
 @app.post("/api/tendencias/snapshot")
-def forzar_snapshot(request: Request, user: UserOut = Depends(require_admin)):
+def forzar_snapshot(request: Request, user: UserOut = Depends(require_modulo("accesos", nivel="administrar"))):
     db = SessionLocal()
     n = tomar_snapshot(db)
     db.close()

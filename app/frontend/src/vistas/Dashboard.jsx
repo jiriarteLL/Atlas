@@ -53,7 +53,7 @@ function RiesgosSeguridad({ ir }) {
   );
 }
 
-export default function Dashboard({ assets, ir, verFicha }) {
+export default function Dashboard({ assets, ir, verFicha, puedeVer = () => true }) {
   const [nbFiltro, setNbFiltro] = useState("total");
   const total = assets.length;
   const enUso = assets.filter((a) => a.estado === "Activo").length;
@@ -104,7 +104,7 @@ export default function Dashboard({ assets, ir, verFicha }) {
         <Tarjeta valor="—" rotulo="LICENCIAS ASIGNADAS" sub="Ver nómina →" subColor={acento} barra="var(--accent2)" demora=".35s" onClick={() => ir("usuarios")} />
       </div>
 
-      <RiesgosSeguridad ir={ir} />
+      {puedeVer("salud") && <RiesgosSeguridad ir={ir} />}
 
       <div className="ll-grid-dash">
         <div className="ll-card" style={{ padding: "24px 26px 20px" }}>

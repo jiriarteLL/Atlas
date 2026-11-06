@@ -18,7 +18,7 @@ from datetime import date, datetime, timedelta
 from fastapi import APIRouter, Depends
 
 import config
-from auth import UserOut, require_lectura
+from auth import MODULOS_FICHA, UserOut, require_modulo
 from ciclo_vida import build_de, soporte
 from database import Asset, AssetSalud, SessionLocal
 
@@ -231,7 +231,7 @@ def resumir(filas):
 
 
 @router.get("")
-def listar_salud(user: UserOut = Depends(require_lectura)):
+def listar_salud(user: UserOut = Depends(require_modulo("salud"))):
     db = SessionLocal()
     try:
         return _filas(db)
@@ -240,7 +240,7 @@ def listar_salud(user: UserOut = Depends(require_lectura)):
 
 
 @router.get("/resumen")
-def resumen_salud(user: UserOut = Depends(require_lectura)):
+def resumen_salud(user: UserOut = Depends(require_modulo("salud", "dashboard"))):
     db = SessionLocal()
     try:
         return resumir(_filas(db))
@@ -249,7 +249,7 @@ def resumen_salud(user: UserOut = Depends(require_lectura)):
 
 
 @router.get("/{asset_id}")
-def salud_de_activo(asset_id: str, user: UserOut = Depends(require_lectura)):
+def salud_de_activo(asset_id: str, user: UserOut = Depends(require_modulo(*MODULOS_FICHA))):
     """Para la ficha del activo (cualquier tipo): null si no es un equipo con datos."""
     db = SessionLocal()
     try:

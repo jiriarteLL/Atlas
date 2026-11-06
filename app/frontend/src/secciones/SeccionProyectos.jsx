@@ -11,7 +11,7 @@ export const ESTADOS_TAREA = ["Pendiente","En proceso","Realizado"];
 export const colorEstadoProy = {"Planificado":"#4D7E9E","En curso":"#00AEAE","Pausado":"#c98500","Finalizado":"#6E7A90","Cancelado":"#d03b3b"};
 export const estadoProyClass = {"Planificado":"badge-blue","En curso":"badge-green","Pausado":"badge-yellow","Finalizado":"badge-gray","Cancelado":"badge-red"};
 
-export function SeccionProyectos({ assets }) {
+export function SeccionProyectos({ assets, puedeEditar = true }) {
   const emptyProy = {nombre:"",descripcion:"",tipo:"",estado:"Planificado",prioridad:"Media",sede:"",
                      fecha_inicio:"",fecha_fin_est:"",avance:0,link_sharepoint:"",comentarios:"",link_ticket:"",recursos:"",
                      responsables:[],activos:[]};
@@ -165,7 +165,7 @@ export function SeccionProyectos({ assets }) {
           ))}
         </div>
         <button className="btn" onClick={exportar}>Exportar Excel</button>
-        <button className="btn btn-primary" onClick={abrirNuevo}><Plus size={13} strokeWidth={2}/>Nuevo proyecto</button>
+        {puedeEditar && <button className="btn btn-primary" onClick={abrirNuevo}><Plus size={13} strokeWidth={2}/>Nuevo proyecto</button>}
       </div>
 
       {editando && (
@@ -336,12 +336,12 @@ export function SeccionProyectos({ assets }) {
                         style={{marginLeft:"auto",width:21,height:21,borderRadius:"50%",background:"var(--accent-hover)",color:"#fff",
                         fontSize:9,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center"}}>
                         {(nombresEquipo[t.responsable]||t.responsable).split(" ").map(x=>x[0]).slice(0,2).join("").toUpperCase()}</span>}
-                      {col!=="En proceso"&&<button className="btn" title="Mover a En proceso" style={{padding:"1px 6px",fontSize:10}} onClick={()=>moverTarea(t,"En proceso")}>→</button>}
-                      <button className="btn" style={{padding:"1px 6px",fontSize:10,color:"#d03b3b",borderColor:"#d03b3b"}} onClick={()=>borrarTarea(t)}>x</button>
+                      {puedeEditar&&col!=="En proceso"&&<button className="btn" title="Mover a En proceso" style={{padding:"1px 6px",fontSize:10}} onClick={()=>moverTarea(t,"En proceso")}>→</button>}
+                      {puedeEditar && <button className="btn" style={{padding:"1px 6px",fontSize:10,color:"#d03b3b",borderColor:"#d03b3b"}} onClick={()=>borrarTarea(t)}>x</button>}
                     </div>
                   </div>
                 ))}
-                {col==="Pendiente" && (
+                {puedeEditar && col==="Pendiente" && (
                   <div style={{marginTop:8}}>
                     <input placeholder="+ Nueva tarea" value={nuevaTarea.titulo} onChange={e=>setNuevaTarea({...nuevaTarea,titulo:e.target.value})}
                       onKeyDown={e=>{ if(e.key==="Enter") agregarTarea(p.id); }} style={{width:"100%",fontSize:12}}/>
@@ -381,8 +381,8 @@ export function SeccionProyectos({ assets }) {
                 {urlSegura(p.link_ticket) && <a href={urlSegura(p.link_ticket)} target="_blank" rel="noreferrer" className="btn" style={{padding:"4px 8px",fontSize:12,textDecoration:"none",marginRight:6}}>Ticket</a>}
                 {urlSegura(p.link_sharepoint) && <a href={urlSegura(p.link_sharepoint)} target="_blank" rel="noreferrer" className="btn" style={{padding:"4px 8px",fontSize:12,textDecoration:"none"}}>SP</a>}
                 <button className="btn" style={{padding:"4px 8px",fontSize:12,marginLeft:6}} onClick={()=>setExpandido(expandido===p.id?null:p.id)}>Tareas{p.tiene_tareas?" ("+p.tareas_hechas+"/"+p.tareas_total+")":""}</button>
-                <button className="btn" style={{padding:"4px 8px",fontSize:12,marginLeft:6}} onClick={()=>abrirEditar(p)}>Editar</button>
-                <button className="btn" style={{padding:"4px 8px",fontSize:12,marginLeft:6,color:"#d03b3b",borderColor:"#d03b3b"}} onClick={()=>eliminar(p)}>Quitar</button>
+                {puedeEditar && <button className="btn" style={{padding:"4px 8px",fontSize:12,marginLeft:6}} onClick={()=>abrirEditar(p)}>Editar</button>}
+                {puedeEditar && <button className="btn" style={{padding:"4px 8px",fontSize:12,marginLeft:6,color:"#d03b3b",borderColor:"#d03b3b"}} onClick={()=>eliminar(p)}>Quitar</button>}
               </td>
             </tr>
           ))}
@@ -393,15 +393,15 @@ export function SeccionProyectos({ assets }) {
                 {(p.tareas||[]).length===0 && <div style={{fontSize:12,color:"var(--text-muted)",marginBottom:10}}>Sin tareas cargadas. El avance se carga a mano.</div>}
                 {(p.tareas||[]).map(t=>(
                   <div key={t.id} style={{display:"flex",alignItems:"center",gap:10,padding:"6px 0",borderBottom:"1px solid var(--border)"}}>
-                    <input type="checkbox" checked={t.completada} onChange={()=>toggleTarea(t)} style={{cursor:"pointer"}}/>
+                    <input type="checkbox" checked={t.completada} disabled={!puedeEditar} onChange={()=>toggleTarea(t)} style={{cursor:puedeEditar?"pointer":"default"}}/>
                     <span style={{flex:1,fontSize:13,textDecoration:t.completada?"line-through":"none",opacity:t.completada?0.55:1}}>{t.titulo}</span>
                     {t.responsable&&<span style={{fontSize:11,color:"var(--text-muted)"}}>{nombresEquipo[t.responsable]||t.responsable}</span>}
                     {t.fecha_limite&&<span style={{fontSize:11,color:"var(--text-muted)"}}>{t.fecha_limite}</span>}
                     {t.notas&&<span style={{fontSize:11,color:"var(--text-muted)",fontStyle:"italic"}}>{t.notas.substring(0,40)}</span>}
-                    <button className="btn" style={{padding:"2px 7px",fontSize:11,color:"#d03b3b",borderColor:"#d03b3b"}} onClick={()=>borrarTarea(t)}>x</button>
+                    {puedeEditar && <button className="btn" style={{padding:"2px 7px",fontSize:11,color:"#d03b3b",borderColor:"#d03b3b"}} onClick={()=>borrarTarea(t)}>x</button>}
                   </div>
                 ))}
-                <div style={{display:"flex",gap:8,marginTop:12,flexWrap:"wrap"}}>
+                {puedeEditar && <div style={{display:"flex",gap:8,marginTop:12,flexWrap:"wrap"}}>
                   <input placeholder="Nueva tarea..." value={nuevaTarea.titulo} onChange={e=>setNuevaTarea({...nuevaTarea,titulo:e.target.value})}
                     onKeyDown={e=>{ if(e.key==="Enter") agregarTarea(p.id); }} style={{flex:2,minWidth:200,fontSize:13}}/>
                   <select value={nuevaTarea.responsable} onChange={e=>setNuevaTarea({...nuevaTarea,responsable:e.target.value})} style={{fontSize:13}}>
@@ -411,7 +411,7 @@ export function SeccionProyectos({ assets }) {
                   <input type="date" value={nuevaTarea.fecha_limite} onChange={e=>setNuevaTarea({...nuevaTarea,fecha_limite:e.target.value})} style={{fontSize:13}}/>
                   <input placeholder="Notas" value={nuevaTarea.notas} onChange={e=>setNuevaTarea({...nuevaTarea,notas:e.target.value})} style={{flex:1,minWidth:120,fontSize:13}}/>
                   <button className="btn btn-primary" style={{fontSize:12.5}} onClick={()=>agregarTarea(p.id)}>Agregar</button>
-                </div>
+                </div>}
               </td>
             </tr>
           ))}

@@ -1,7 +1,7 @@
 // App.jsx — Esqueleto de la app con el diseño v2: menu lateral, encabezado y vistas.
 // Ruteo por hash (#seccion?tipo=..&sede=..&estado=..) para que atras/adelante y los links funcionen.
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useAuth, tienePermiso } from "./AuthContext";
+import { useAuth, puede } from "./AuthContext";
 import { API, apiFetch, http, setUsuarioActual } from "./api";
 import { useToast, Proximamente } from "./diseno/comunes";
 import Ambientacion, { SelectorTema } from "./diseno/Ambientacion";
@@ -32,6 +32,12 @@ const SECCIONES = {
 const FILTROS_VACIOS = { q: "", tipo: "", estado: "", sede: "" };
 // Subsecciones de Activos (pestañas). Para sumar otro tipo con vista propia, agregarlo aca y en el render.
 const VISTAS_ACTIVOS = [["todos", "Todos los activos"], ["salud", "Notebooks y PC"], ["impresoras", "Impresoras"]];
+// Modulo de permisos que habilita cada seccion y subseccion (ver backend/auth.py MODULOS). Sin entrada = siempre.
+const MODULO_DE_VISTA = { todos: "activos", salud: "salud", impresoras: "impresoras" };
+const MODULO_DE_SECCION = { dashboard: "dashboard", proyectos: "proyectos", reportes: "reportes", tendencias: "tendencias",
+  agente: "agente", accesos: "accesos" };
+// Para cargar /api/assets alcanza con ver alguno de estos (igual que MODULOS_LISTA_ACTIVOS del servidor)
+const MODULOS_LISTA_ACTIVOS = ["activos", "dashboard", "salud", "reportes", "proyectos"];
 const vistaValida = (v) => (VISTAS_ACTIVOS.some(([k]) => k === v) ? v : "todos");
 
 function leerHash() {
@@ -43,9 +49,17 @@ function leerHash() {
 
 export default function App() {
   const { user, logout } = useAuth();
-  const esAdmin = tienePermiso(user, "usuarios.administrar");
-  const puedeEditar = tienePermiso(user, "inventario.editar");
-  const puedeEliminar = tienePermiso(user, "activos.eliminar");
+  const esAdmin = puede(user, "accesos", "administrar");
+  const puedeEditar = puede(user, "activos", "editar");
+  const puedeEliminar = puede(user, "activos_eliminar", "si");
+  const puedeVer = useCallback((m) => puede(user, m), [user]);
+  const vistasActivos = VISTAS_ACTIVOS.filter(([k]) => puedeVer(MODULO_DE_VISTA[k]));
+  const veAssets = MODULOS_LISTA_ACTIVOS.some(puedeVer);
+  // sec + vista (solo Activos; sin vista = cualquiera de sus subsecciones)
+  const permitida = useCallback((sec, v) => {
+    if (sec === "activos") return v ? puedeVer(MODULO_DE_VISTA[v]) : VISTAS_ACTIVOS.some(([k]) => puedeVer(MODULO_DE_VISTA[k]));
+    return !MODULO_DE_SECCION[sec] || puede(user, MODULO_DE_SECCION[sec], sec === "accesos" ? "administrar" : "ver");
+  }, [user, puedeVer]);
   const [Toast, avisar] = useToast();
 
   const [tab, setTab] = useState(() => leerHash().tab);
@@ -64,6 +78,7 @@ export default function App() {
   useEffect(() => { setUsuarioActual(user?.username); }, [user]);
 
   const cargar = useCallback(async () => {
+    if (!veAssets) { setCargando(false); return; }   // ningun modulo usa la lista: no se pide (seria un 403)
     setCargando(true);
     try {
       const a = await http.get(`${API}/assets`);
@@ -71,9 +86,10 @@ export default function App() {
       recordarTotal(a.length);
     } catch (e) { console.error(e); }
     setCargando(false);
-  }, []);
+  }, [veAssets]);
 
   const cargarGlpi = useCallback(async () => {
+    if (!veAssets) return;
     try {
       const r = await apiFetch(API + "/glpi/resumen");
       if (!r.ok) return;
@@ -82,7 +98,7 @@ export default function App() {
       (Array.isArray(lista) ? lista : []).forEach((x) => { m[(x.serial || "").trim().toUpperCase()] = x; });
       setGlpiMap(m);
     } catch { /* GLPI no disponible: la ficha se muestra sin esos datos */ }
-  }, []);
+  }, [veAssets]);
 
   useEffect(() => { cargar(); cargarGlpi(); }, [cargar, cargarGlpi]);
 
@@ -107,12 +123,22 @@ export default function App() {
     else window.history.pushState(null, "", "#" + destino);
   }, [tab, vista, filtros]);
 
-  const ir = useCallback((sec, f, v) => {
+  // Sin useCallback: depende de los permisos del usuario (lo memoiza el compilador de React)
+  const ir = (sec, f, v) => {
+    // "Activos" sin vista abre la primera permitida; con vista, tiene que estar permitida esa
+    if (!permitida(sec, sec === "activos" && v ? vistaValida(v) : undefined)) { avisar("No tenés acceso a ese módulo"); return; }
     setTab(sec);
     setFicha(null);
     if (sec === "activos") { setFiltros({ ...FILTROS_VACIOS, ...(f || {}) }); setVista(vistaValida(v)); }
     if (window.innerWidth <= 760) setMenu(false);
-  }, []);
+  };
+
+  // Si el inicio (Dashboard) no esta permitido, se arranca en la primera seccion que si
+  useEffect(() => {
+    if (tab !== "dashboard" || permitida("dashboard")) return;
+    const primera = ["activos", "proyectos", "reportes", "tendencias", "agente", "perfil"].find((x) => permitida(x));
+    if (primera) setTab(primera);
+  }, [tab, permitida]);
 
   const filtrados = useMemo(() => {
     const q = filtros.q.trim().toLowerCase();
@@ -170,11 +196,14 @@ export default function App() {
   const exportarGrafico = async (t, d, id) => { try { await exportarReporte(t, d, id); } catch (e) { alert("Error al exportar: " + e.message); } };
 
   const principal = [
-    ["dashboard", "▦", "Dashboard"], ["activos", "▭", "Activos", assets.length], ["licencias", "⬡", "Licencias"],
+    ["dashboard", "▦", "Dashboard"], ["activos", "▭", "Activos", puedeVer("activos") ? assets.length : undefined], ["licencias", "⬡", "Licencias"],
     ["proyectos", "◧", "Proyectos"], ["reportes", "◫", "Reportes"], ["tendencias", "◭", "Tendencias"],
     ["usuarios", "⚇", "Usuarios"], ["perfil", "◉", "Mi perfil"],
-  ];
+  ].filter(([k]) => permitida(k));
   const [titulo, sub] = SECCIONES[tab];
+  // Vista de Activos efectiva: si la del hash no esta permitida, la primera que si
+  const vistaEf = vistasActivos.some(([k]) => k === vista) ? vista : (vistasActivos[0] || [""])[0];
+  const sinAcceso = tab === "activos" ? !vistaEf : !permitida(tab);
 
   return (
     <>
@@ -199,8 +228,8 @@ export default function App() {
                   {badge !== undefined && <span className="ll-nav-badge">{badge}</span>}
                 </a>
                 {k === "activos" && <div className="ll-nav-sub" aria-label="Subsecciones de Activos">
-                  {VISTAS_ACTIVOS.map(([v, lv]) => {
-                    const act = tab === "activos" && vista === v;
+                  {vistasActivos.map(([v, lv]) => {
+                    const act = tab === "activos" && vistaEf === v;
                     return <a key={v} href={"#activos" + (v === "todos" ? "" : "?vista=" + v)}
                       className={"ll-nav-subitem" + (act ? " activo" : "")} aria-current={act ? "page" : undefined}
                       onClick={(e) => { if (e.ctrlKey || e.metaKey || e.shiftKey || e.button === 1) return; e.preventDefault(); ir("activos", {}, v); }}>
@@ -211,11 +240,12 @@ export default function App() {
               </Fragment>
             ))}
           </div>
-          <div className="ll-nav-sec" style={{ marginTop: 22 }}>HERRAMIENTAS</div>
+          {(puedeVer("agente") || puede(user, "importar", "editar") || puedeVer("reportes") || esAdmin) &&
+            <div className="ll-nav-sec" style={{ marginTop: 22 }}>HERRAMIENTAS</div>}
           <div className="ll-nav-lista">
-            <button className={"ll-nav-item" + (tab === "agente" ? " activo" : "")} onClick={() => ir("agente")}><span className="ll-nav-ico">◈</span>Agente</button>
-            {puedeEditar && <button className="ll-nav-item" onClick={() => archivo.current.click()}><span className="ll-nav-ico">⭱</span>Importar CSV</button>}
-            <button className="ll-nav-item" onClick={() => { exportarCSV(assets); avisar("Exportando " + assets.length + " activos a CSV…"); }}><span className="ll-nav-ico">⭳</span>Exportar CSV</button>
+            {puedeVer("agente") && <button className={"ll-nav-item" + (tab === "agente" ? " activo" : "")} onClick={() => ir("agente")}><span className="ll-nav-ico">◈</span>Agente</button>}
+            {puede(user, "importar", "editar") && <button className="ll-nav-item" onClick={() => archivo.current.click()}><span className="ll-nav-ico">⭱</span>Importar CSV</button>}
+            {puedeVer("reportes") && <button className="ll-nav-item" onClick={() => { exportarCSV(assets); avisar("Exportando " + assets.length + " activos a CSV…"); }}><span className="ll-nav-ico">⭳</span>Exportar CSV</button>}
             {esAdmin && <button className={"ll-nav-item" + (tab === "accesos" ? " activo" : "")} onClick={() => ir("accesos")}><span className="ll-nav-ico">◇</span>Accesos</button>}
           </div>
           <input ref={archivo} type="file" accept=".csv" onChange={importar} style={{ display: "none" }} />
@@ -232,8 +262,8 @@ export default function App() {
         <header className="ll-header">
           <div style={{ display: "flex", alignItems: "center", gap: 16, minWidth: 0 }}>
             <button className="ll-icono-btn" title="Menú" aria-label={menu ? "Ocultar menú" : "Mostrar menú"} onClick={() => setMenu((m) => !m)}>{menu ? "⟨" : "⟩"}</button>
-            {tab === "activos" && vista !== "todos"
-              ? <h1 className="ll-titulo"><a href="#activos" className="ll-miga" onClick={(e) => { e.preventDefault(); setVista("todos"); }}>Activos</a> <span>/ {VISTAS_ACTIVOS.find(([k]) => k === vista)[1]}</span></h1>
+            {tab === "activos" && vistaEf && vistaEf !== "todos"
+              ? <h1 className="ll-titulo">{puedeVer("activos") ? <a href="#activos" className="ll-miga" onClick={(e) => { e.preventDefault(); setVista("todos"); }}>Activos</a> : "Activos"} <span>/ {VISTAS_ACTIVOS.find(([k]) => k === vistaEf)[1]}</span></h1>
               : <h1 className="ll-titulo">{titulo} <span>— {sub}</span></h1>}
           </div>
           <button className="ll-btn-acento" onClick={() => { cargar(); cargarGlpi(); }}>
@@ -242,32 +272,36 @@ export default function App() {
         </header>
 
         <div className="ll-contenido">
-          {cargando && !assets.length ? <div className="ll-vacio">Cargando datos…</div> : <>
-            {tab === "dashboard" && <Dashboard assets={assets} ir={ir} verFicha={verFicha} />}
-            {tab === "activos" && <nav className="ll-pestanas" aria-label="Subsecciones de Activos">
-              {VISTAS_ACTIVOS.map(([k, l]) => <button key={k} className={"ll-pestana" + (vista === k ? " activa" : "")}
-                aria-current={vista === k ? "page" : undefined} onClick={() => setVista(k)}>{l}</button>)}
+          {sinAcceso ? <div className="ll-card ll-sin-acceso" role="alert">
+            <div style={{ fontSize: 30, marginBottom: 10 }}>⊘</div>
+            <div style={{ fontSize: 17, fontWeight: 600 }}>No tenés acceso a este módulo</div>
+            <div className="tenue" style={{ fontSize: 13, marginTop: 8 }}>Si lo necesitás, pedíselo a un administrador de Atlas (Herramientas → Accesos).</div>
+          </div> : cargando && !assets.length ? <div className="ll-vacio">Cargando datos…</div> : <>
+            {tab === "dashboard" && <Dashboard assets={assets} ir={ir} verFicha={verFicha} puedeVer={puedeVer} />}
+            {tab === "activos" && vistasActivos.length > 1 && <nav className="ll-pestanas" aria-label="Subsecciones de Activos">
+              {vistasActivos.map(([k, l]) => <button key={k} className={"ll-pestana" + (vistaEf === k ? " activa" : "")}
+                aria-current={vistaEf === k ? "page" : undefined} onClick={() => setVista(k)}>{l}</button>)}
             </nav>}
-            {tab === "activos" && vista === "salud" && <Salud assets={assets} verFicha={verFicha} />}
-            {tab === "activos" && vista === "impresoras" && <Impresoras puedeEditar={puedeEditar} avisar={avisar} />}
-            {tab === "activos" && vista === "todos" && <Activos filtrados={filtrados} filtros={filtros} setFiltros={setFiltros} orden={orden} setOrden={setOrden}
+            {tab === "activos" && vistaEf === "salud" && <Salud assets={assets} verFicha={verFicha} />}
+            {tab === "activos" && vistaEf === "impresoras" && <Impresoras puedeEditar={puede(user, "impresoras", "editar")} avisar={avisar} />}
+            {tab === "activos" && vistaEf === "todos" && <Activos filtrados={filtrados} filtros={filtros} setFiltros={setFiltros} orden={orden} setOrden={setOrden}
               verFicha={verFicha} editar={(a) => setEdicion(a)} eliminar={eliminarActivo} nuevo={() => setEdicion({})}
               exportar={exportarExcel} puedeEditar={puedeEditar} puedeEliminar={puedeEliminar} esAdmin={esAdmin} />}
             {tab === "licencias" && <Proximamente titulo="Licencias" columnas={["PRODUCTO", "CLAVE", "ASIGNADO A", "SEDE", "VENCE", "ESTADO", "ACCIONES"]}
               texto="El control de licencias (Claude, Office, antivirus) está diseñado pero quedó fuera del alcance de la v2.0.0. Se habilita en una versión posterior." />}
             {tab === "usuarios" && <Proximamente titulo="Usuarios"
               texto="La nómina de empleados (con sede, rol y licencias asignadas) está diseñada pero quedó fuera del alcance de la v2.0.0. Los accesos a la aplicación se administran en Herramientas → Accesos." />}
-            {tab === "proyectos" && <div className="ll-seccion-clasica"><SeccionProyectos assets={assets} user={user} /></div>}
+            {tab === "proyectos" && <div className="ll-seccion-clasica"><SeccionProyectos assets={assets} user={user} puedeEditar={puede(user, "proyectos", "editar")} /></div>}
             {tab === "reportes" && <Reportes assets={assets} ir={ir} exportar={exportarGrafico} />}
             {tab === "tendencias" && <div className="ll-seccion-clasica"><SeccionTendencias /></div>}
             {tab === "perfil" && <div className="ll-seccion-clasica"><SeccionPerfil user={user} /></div>}
             {tab === "agente" && <Agente />}
-            {tab === "accesos" && esAdmin && <Accesos user={user} avisar={avisar} />}
+            {tab === "accesos" && <Accesos user={user} avisar={avisar} />}
           </>}
         </div>
       </main>
 
-      <AlertaToner onVer={() => ir("activos", {}, "impresoras")} />
+      {puedeVer("impresoras") && <AlertaToner onVer={() => ir("activos", {}, "impresoras")} />}
       {ficha && <FichaActivo key={ficha.id} activo={ficha} glpiMap={glpiMap} user={user} onCerrar={() => setFicha(null)}
         onEditar={(a) => setEdicion(a)} onEliminar={eliminarActivo} consultarGarantia={consultarGarantia}
         puedeEditar={puedeEditar} puedeEliminar={puedeEliminar} />}

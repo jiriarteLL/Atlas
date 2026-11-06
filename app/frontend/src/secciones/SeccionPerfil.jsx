@@ -108,16 +108,18 @@ export function SeccionPerfil() {
       {tab==="permisos" && (
         <div>
           <div style={{fontSize:13,color:"var(--text-muted)",marginBottom:14}}>
-            Tu rol <b style={{color:"var(--accent-hover)"}}>{rolLabel}</b> habilita las siguientes acciones:
+            Tu perfil <b style={{color:"var(--accent-hover)"}}>{rolLabel}</b> te da acceso a estos módulos (los asigna un administrador en Accesos):
           </div>
           <div style={{display:"grid",gap:8,maxWidth:480}}>
-            {(p.permisos||[]).map(x=>(
-              <div key={x} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 13px",
+            {(p.modulos||[]).map(x=>(
+              <div key={x.modulo} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 13px",
                 background:"var(--surface-2)",border:"1px solid var(--border)",borderRadius:7,fontSize:13}}>
                 <span style={{color:"var(--accent-hover)",fontWeight:700}}>&#10003;</span>
-                <span style={{color:"var(--text-secondary)"}}>{x}</span>
+                <span style={{color:"var(--text-secondary)",flex:1}}>{x.modulo}</span>
+                <span style={{color:"var(--text-muted)",fontSize:12}}>{({ver:"ver",editar:"editar",administrar:"administrar"})[x.nivel]||x.nivel}</span>
               </div>
             ))}
+            {!(p.modulos||[]).length && <div style={{fontSize:13,color:"var(--text-muted)"}}>Todavía no tenés módulos asignados.</div>}
           </div>
         </div>
       )}
