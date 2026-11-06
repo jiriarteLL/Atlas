@@ -1,11 +1,11 @@
-<?xml version="1.0" encoding="UTF-8"?>
+﻿<?xml version="1.0" encoding="UTF-8"?>
 <!-- MSI del agente de Atlas (inventario LLyA). Instala atlas_agent.ps1, escribe atlas.ini con el servidor y la
      clave, y registra la tarea "Atlas Inventario" (SYSTEM, cada 2 h de 8 a 22 + al iniciar sesion). Desinstala limpio.
      Sirve para equipos fuera del dominio; los del dominio lo reciben por la GPO de inicio, como hoy.
      Compilar:  candle -arch x64 AtlasAgent.wxs  &&  light -sval AtlasAgent.wixobj -o AtlasAgent.msi
      Instalar:  msiexec /i AtlasAgent.msi /qn SERVER="https://atlas.llyasoc.com" SYNCKEY="xxxx" -->
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
-  <Product Id="*" Name="Atlas Agent" Language="3082" Version="5.1.1"
+  <Product Id="*" Name="Atlas Agent" Language="3082" Version="5.2.0"
            Manufacturer="Lisicki, Litvin y Abelovich" UpgradeCode="7C1E4B52-3A9D-4F0E-9B6A-2D8C5E1F7A40">
     <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Platform="x64"
              Description="Agente de inventario de Atlas (LLyA)"/>

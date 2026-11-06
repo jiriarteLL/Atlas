@@ -1,4 +1,4 @@
-# Atlas - Agente de inventario LLyA v5.1
+﻿# Atlas - Agente de inventario LLyA v5.1
 # Une el agente de produccion v4.3 (GLPI Agent + respaldo clasico, tarea SYSTEM) con el agente enriquecido de
 # la v2 (IP publica, MAC, gateway, OU de AD, ultimo reinicio y login). Reporta a Atlas (/api/sync y /api/sync-glpi).
 #
@@ -25,7 +25,7 @@ param(
     [switch]$ForzarLegacy  # no usa GLPI Agent aunque el equipo este en el piloto
 )
 
-$VERSION = "5.1.1"
+$VERSION = "5.2.0"
 $TASK    = "Atlas Inventario"
 $SELF    = $PSCommandPath
 $LOCALDIR = Join-Path $env:ProgramFiles "LLyA\Atlas Agent"
@@ -104,6 +104,76 @@ function Get-Modelo($cs) {
         if ($ver.Length -ge 3 -and $ver -match '[A-Za-z]' -and $ver -notmatch $generico -and $ver -ne $modelo) { return $ver }
     } catch {}
     return $modelo
+}
+
+# Salud y seguridad (fase A): version exacta de Windows, antivirus/EDR, parches, discos y bateria.
+# Cada bloque es independiente: si uno falla (permisos, clase WMI inexistente) el resto se manda igual.
+function Get-Salud($os) {
+    $s = [ordered]@{ so = $null; antivirus = @(); parches = $null; discos = @(); bateria = $null }
+
+    # Windows: edicion, version comercial (23H2...), build y UBR (revision de parches del build)
+    try {
+        $cv = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' -ErrorAction Stop
+        $ed = if ($os.Caption -match '(Enterprise|Education|Pro|Home|Datacenter|Standard)') { $Matches[1] } else { "" }
+        $s.so = [ordered]@{ edicion = $ed; display_version = "$(if ($cv.DisplayVersion) { $cv.DisplayVersion } else { $cv.ReleaseId })"
+                            build = [int]$cv.CurrentBuildNumber; ubr = [int]$cv.UBR }
+    } catch {}
+
+    # Antivirus/EDR. En estaciones de trabajo: Centro de seguridad (productState: 2.o byte = activo, 3.o = definiciones al dia).
+    # En servidores (no tienen SecurityCenter2): Defender por Get-MpComputerStatus + servicio de CrowdStrike.
+    try {
+        if ((Get-WmiObject Win32_OperatingSystem).ProductType -eq 1) {
+            $s.antivirus = @(Get-CimInstance -Namespace root/SecurityCenter2 -ClassName AntiVirusProduct -ErrorAction Stop | ForEach-Object {
+                $h = '{0:X6}' -f [int]$_.productState
+                [ordered]@{ nombre = Clean($_.displayName); activo = ($h.Substring(2, 2) -in '10', '11'); actualizado = ($h.Substring(4, 2) -eq '00') }
+            })
+        } else {
+            $av = @()
+            try {
+                $mp = Get-MpComputerStatus -ErrorAction Stop
+                $av += [ordered]@{ nombre = "Microsoft Defender"; activo = [bool]$mp.AntivirusEnabled; actualizado = ($mp.AntivirusSignatureAge -le 7) }
+            } catch {}
+            $cs = Get-Service CSFalconService -ErrorAction SilentlyContinue
+            if ($cs) { $av += [ordered]@{ nombre = "CrowdStrike Falcon"; activo = ($cs.Status -eq 'Running'); actualizado = $true } }
+            $s.antivirus = $av
+        }
+    } catch {}
+
+    # Parches: ultimo instalado y cuantos en los ultimos 90 dias (Win32_QuickFixEngineering)
+    try {
+        $fechas = @(Get-HotFix -ErrorAction Stop | Where-Object { $_.InstalledOn } | ForEach-Object { [datetime]$_.InstalledOn })
+        if ($fechas.Count) {
+            $ult = ($fechas | Measure-Object -Maximum).Maximum
+            $s.parches = [ordered]@{ ultimo = $ult.ToString('yyyy-MM-dd'); cantidad_90d = @($fechas | Where-Object { $_ -ge (Get-Date).AddDays(-90) }).Count }
+        }
+    } catch {}
+
+    # Discos: salud y, si el controlador lo informa, desgaste / temperatura / errores de lectura
+    try {
+        $s.discos = @(Get-PhysicalDisk -ErrorAction Stop | Where-Object { $_.BusType -notin 'USB', 'SD', 'MMC' } | ForEach-Object {
+            $r = $null; try { $r = $_ | Get-StorageReliabilityCounter -ErrorAction Stop } catch {}
+            [ordered]@{
+                nombre = Clean($_.FriendlyName); tipo = "$($_.MediaType)"; salud = "$($_.HealthStatus)"
+                desgaste = $(if ($r -and $null -ne $r.Wear) { [int]$r.Wear } else { $null })
+                temperatura = $(if ($r -and $r.Temperature) { [int]$r.Temperature } else { $null })
+                errores_lectura = $(if ($r -and $null -ne $r.ReadErrorsUncorrected) { [int]$r.ReadErrorsUncorrected } else { $null })
+                tamano_gb = [int][math]::Round($_.Size / 1GB)
+            }
+        })
+    } catch {}
+
+    # Bateria: capacidad de carga completa / de diseno (root\wmi). Equipos de escritorio y servidores: null.
+    try {
+        $dis = Get-CimInstance -Namespace root\wmi -ClassName BatteryStaticData -ErrorAction Stop | Select-Object -First 1
+        $full = Get-CimInstance -Namespace root\wmi -ClassName BatteryFullChargedCapacity -ErrorAction Stop | Select-Object -First 1
+        if ($dis -and $full -and $dis.DesignedCapacity -gt 0) {
+            $cic = $null; try { $cic = (Get-CimInstance -Namespace root\wmi -ClassName BatteryCycleCount -ErrorAction Stop | Select-Object -First 1).CycleCount } catch {}
+            $s.bateria = [ordered]@{ salud = [int][math]::Min(100, [math]::Round($full.FullChargedCapacity * 100 / $dis.DesignedCapacity))
+                                     ciclos = $(if ($cic) { [int]$cic } else { $null })
+                                     diseno_mwh = [int]$dis.DesignedCapacity; actual_mwh = [int]$full.FullChargedCapacity }
+        }
+    } catch {}
+    return $s
 }
 
 function Get-Inventario {
@@ -232,6 +302,7 @@ function Get-Inventario {
         monitores = "$monitores"; impresoras = "$impresoras"; software = @($software); cifrado = "$cifrado"; tpm = "$tpm"
         ip_publica = "$ipPublica"; mac = "$(Clean($mac))"; gateway = "$gw"; ou_ad = "$(Clean($ou))"
         ultimo_reinicio = "$ultReinicio"; ultimo_login = "$ultLogin"
+        salud = (Get-Salud $os)
     }
 }
 
@@ -386,7 +457,9 @@ Set-Red
 if ($Probar) {
     $body = Get-Inventario
     $body.software = "($(@($body.software).Count) programas)"
+    $salud = $body.salud; $body.Remove('salud')
     $body.GetEnumerator() | ForEach-Object { "{0,-16} {1}" -f $_.Key, $_.Value }
+    "salud:"; $salud | ConvertTo-Json -Depth 5
     return
 }
 if (-not $Server -or -not $SyncKey) {
@@ -398,7 +471,7 @@ Set-Tarea (Sync-CopiaLocal)
 $codigo = 0
 try {
     $body  = Get-Inventario
-    $bytes = [Text.Encoding]::UTF8.GetBytes(($body | ConvertTo-Json -Depth 4 -Compress))
+    $bytes = [Text.Encoding]::UTF8.GetBytes(($body | ConvertTo-Json -Depth 6 -Compress))
     Send-Post "/api/sync" $bytes @{ "Content-Type" = "application/json; charset=utf-8" } | Out-Null
     Say ("OK - Sincronizado en Atlas: {0} ({1}, {2}) -> {3}" -f $body.nombre, $body.tipo, $body.ubicacion, $Server) Green
 } catch {
