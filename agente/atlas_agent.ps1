@@ -189,6 +189,36 @@ function Get-Salud($os) {
     return $s
 }
 
+# Monitores (fase B): uno por pantalla conectada, con lo que guarda el EDID del monitor.
+# fabricante = codigo PnP de 3 letras (Atlas lo traduce: SAM -> Samsung); interno = pantalla de la notebook.
+function Get-Monitores {
+    $txt = { param($a) Clean((($a | Where-Object { $_ -ne 0 } | ForEach-Object { [char]$_ }) -join "")) }
+    $tam = @{}; $con = @{}
+    try { Get-WmiObject WmiMonitorBasicDisplayParams -Namespace root\wmi -ErrorAction Stop | ForEach-Object {
+        if ($_.MaxHorizontalImageSize -gt 0 -and $_.MaxVerticalImageSize -gt 0) {
+            $tam[$_.InstanceName] = [math]::Round([math]::Sqrt([math]::Pow($_.MaxHorizontalImageSize, 2) + [math]::Pow($_.MaxVerticalImageSize, 2)) / 2.54, 1) } } } catch {}
+    try { Get-WmiObject WmiMonitorConnectionParams -Namespace root\wmi -ErrorAction Stop | ForEach-Object {
+        $con[$_.InstanceName] = [int64]$_.VideoOutputTechnology } } catch {}
+    # D3DKMDT_VIDEO_OUTPUT_TECHNOLOGY: 11/13 = pantalla embebida, 16 = indirecta (dock USB / DisplayLink)
+    # (claves como texto: VideoOutputTechnology llega como entero de otro tamano y ContainsKey(5) fallaria)
+    $nombresCon = @{ "0" = "VGA"; "4" = "DVI"; "5" = "HDMI"; "10" = "DisplayPort"; "11" = "Interna"; "12" = "UDI"; "13" = "Interna"
+                     "15" = "Miracast"; "16" = "Dock USB"; "2147483648" = "Interna" }
+    try {
+        return @(Get-WmiObject WmiMonitorID -Namespace root\wmi -ErrorAction Stop | ForEach-Object {
+            $c = $con[$_.InstanceName]
+            [ordered]@{
+                fabricante = (& $txt $_.ManufacturerName); modelo = (& $txt $_.UserFriendlyName)
+                codigo_producto = (& $txt $_.ProductCodeID); serie = (& $txt $_.SerialNumberID)
+                anio = $(if ($_.YearOfManufacture -gt 1990) { [int]$_.YearOfManufacture } else { $null })
+                semana = $(if ($_.WeekOfManufacture -in 1..53) { [int]$_.WeekOfManufacture } else { $null })
+                pulgadas = $tam[$_.InstanceName]
+                conexion = $(if ($null -ne $c -and $nombresCon.ContainsKey("$c")) { $nombresCon["$c"] } elseif ($null -ne $c) { "Otra" } else { "" })
+                interno = ($c -eq 2147483648 -or $c -eq 11 -or $c -eq 13)
+            }
+        })
+    } catch { return @() }
+}
+
 function Get-Inventario {
     $serial  = (Get-WmiObject Win32_BIOS).SerialNumber
     $cpu     = (Get-WmiObject Win32_Processor | Select-Object -First 1).Name.Trim()
@@ -260,6 +290,7 @@ function Get-Inventario {
             $mod = ($_.UserFriendlyName | Where-Object {$_ -ne 0} | ForEach-Object {[char]$_}) -join ""
             Clean("$man $mod") }) -join "|"
     } catch {}
+    $monDetalle = Get-Monitores
 
     # Software instalado (lista estructurada, sin duplicados)
     $software = @()
@@ -316,6 +347,7 @@ function Get-Inventario {
         ip_publica = "$ipPublica"; mac = "$(Clean($mac))"; gateway = "$gw"; ou_ad = "$(Clean($ou))"
         ultimo_reinicio = "$ultReinicio"; ultimo_login = "$ultLogin"
         salud = (Get-Salud $os)
+        monitores_detalle = @($monDetalle)
     }
 }
 
@@ -472,8 +504,10 @@ if ($Probar) {
     $body = Get-Inventario
     $body.software = "($(@($body.software).Count) programas)"
     $salud = $body.salud; $body.Remove('salud')
+    $mons = $body.monitores_detalle; $body.Remove('monitores_detalle')
     $body.GetEnumerator() | ForEach-Object { "{0,-16} {1}" -f $_.Key, $_.Value }
     "salud:"; $salud | ConvertTo-Json -Depth 5
+    "monitores_detalle:"; ConvertTo-Json -InputObject @($mons) -Depth 4
     return
 }
 if (-not $Server -or -not $SyncKey) {
