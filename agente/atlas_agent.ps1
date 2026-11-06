@@ -25,7 +25,7 @@ param(
     [switch]$ForzarLegacy  # no usa GLPI Agent aunque el equipo este en el piloto
 )
 
-$VERSION = "5.2.1"
+$VERSION = "5.3.0"
 $TASK    = "Atlas Inventario"
 $SELF    = $PSCommandPath
 $LOCALDIR = Join-Path $env:ProgramFiles "LLyA\Atlas Agent"
