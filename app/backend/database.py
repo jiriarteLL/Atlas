@@ -2,7 +2,7 @@
 """Motor de base y modelos de negocio. El motor sale de DATABASE_URL (PostgreSQL en los compose)."""
 import uuid
 from datetime import datetime
-from sqlalchemy import create_engine, event, Column, String, DateTime, Text, Integer, LargeBinary
+from sqlalchemy import create_engine, event, Boolean, Column, String, DateTime, ForeignKey, Text, Integer, LargeBinary
 from sqlalchemy.orm import declarative_base, deferred, sessionmaker
 import config
 
@@ -203,6 +203,55 @@ class ProyectoActivo(Base):
     id          = Column(String, primary_key=True)
     proyecto_id = Column(String, default="", index=True)
     asset_id    = Column(String, default="")
+
+
+# ---------------------------------------------------------------- impresoras
+# La impresora sigue siendo un Asset tipo "Impresora" (historial, adjuntos, QR y dashboard se reusan);
+# estas tablas guardan lo propio de una impresora. Las credenciales de administracion NO se guardan en Atlas:
+# credencial_ref es solo una referencia de texto (p. ej. "KeePassXC - clave comun de impresoras").
+class ImpresoraDetalle(Base):
+    __tablename__ = "impresora_detalle"
+    asset_id       = Column(String, ForeignKey("assets.id", ondelete="CASCADE"), primary_key=True)
+    conexion       = Column(String, default="red")          # red | usb
+    uso            = Column(String, default="compartida")   # compartida | personal
+    piso           = Column(String, default="")
+    mac            = Column(String, default="")
+    hostname       = Column(String, default="")
+    nombre_cola    = Column(String, default="", index=True)  # nombre con que la instalan las PCs
+    color          = Column(Boolean, default=False)
+    duplex         = Column(Boolean, default=False)
+    escaner        = Column(Boolean, default=False)
+    toner_modelo   = Column(String, default="")
+    tenencia       = Column(String, default="")             # propia | alquilada | tercerizada | ""
+    proveedor      = Column(String, default="")
+    nro_inventario = Column(String, default="")
+    credencial_ref = Column(String, default="")
+    notas          = Column(Text, default="")
+    actualizado    = Column(DateTime, default=datetime.utcnow)
+
+
+class ImpresoraLectura(Base):
+    """Serie temporal del contador (la llena el relevamiento SNMP, paso 2)."""
+    __tablename__ = "impresora_lectura"
+    id             = Column(String, primary_key=True, default=_uuid)
+    asset_id       = Column(String, ForeignKey("assets.id", ondelete="CASCADE"), nullable=False, index=True)
+    fecha          = Column(DateTime, default=datetime.utcnow, index=True)
+    contador_total = Column(Integer, nullable=True)
+    estado         = Column(String, default="")
+    error          = Column(String, default="")
+
+
+class ImpresoraConsumible(Base):
+    """Ultimo nivel conocido de cada consumible (la llena el relevamiento SNMP, paso 2)."""
+    __tablename__ = "impresora_consumible"
+    asset_id    = Column(String, ForeignKey("assets.id", ondelete="CASCADE"), primary_key=True)
+    indice      = Column(Integer, primary_key=True)
+    descripcion = Column(String, default="")
+    tipo        = Column(String, default="")
+    nivel       = Column(Integer, nullable=True)
+    maximo      = Column(Integer, nullable=True)
+    porcentaje  = Column(Integer, nullable=True)
+    actualizado = Column(DateTime, default=datetime.utcnow)
 
 
 def init_db():

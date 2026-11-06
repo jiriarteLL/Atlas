@@ -32,6 +32,7 @@ from auth import (User, UserOut, auth_router, login_router, require_admin, requi
                   require_lectura, require_permiso)
 from database import (Adjunto, Asset, AssetGlpi, Historial, Proyecto, ProyectoActivo, ProyectoResponsable,
                       ProyectoTarea, SessionLocal, Snapshot, Ticket, init_db)
+from impresoras import borrar_datos_impresora, router as impresoras_router
 from mailer import notificar_proyecto_finalizado
 from metricas import metricas_texto, registrar_request
 from ratelimit import limiter
@@ -55,6 +56,7 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.include_router(auth_router)
 app.include_router(login_router)
+app.include_router(impresoras_router)
 if config.CORS_ORIGINS:
     app.add_middleware(CORSMiddleware, allow_origins=config.CORS_ORIGINS, allow_methods=["*"], allow_headers=["*"],
                        allow_credentials=True)
@@ -287,6 +289,7 @@ def delete_asset(aid: str, request: Request, user: UserOut = Depends(require_per
         db.close()
         raise HTTPException(404)
     nombre = obj.nombre
+    borrar_datos_impresora(db, aid)
     db.delete(obj)
     db.commit()
     db.close()

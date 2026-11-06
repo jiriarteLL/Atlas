@@ -64,7 +64,7 @@ export default function Dashboard({ assets, ir, verFicha }) {
           </div>
           <button onClick={() => ir("activos", { tipo: "Notebook" })} style={{ marginTop: 8, border: "none", background: "none", padding: 0, fontSize: 12.5, color: "var(--accent)", cursor: "pointer" }}>Ver inventario →</button>
         </Tarjeta>
-        <Tarjeta valor={cuenta("Impresora")} rotulo="IMPRESORAS" sub="Ver inventario →" subColor={acento} barra="#22c55e" demora=".25s" onClick={() => ir("activos", { tipo: "Impresora" })} />
+        <Tarjeta valor={cuenta("Impresora")} rotulo="IMPRESORAS" sub="Ver impresoras →" subColor={acento} barra="#22c55e" demora=".25s" onClick={() => ir("activos", null, "impresoras")} />
         <Tarjeta valor={cuenta("Servidor")} rotulo="SERVIDORES" sub="Ver inventario →" subColor={acento} barra="#ec4899" demora=".3s" onClick={() => ir("activos", { tipo: "Servidor" })} />
         <Tarjeta valor="—" rotulo="LICENCIAS ASIGNADAS" sub="Ver nómina →" subColor={acento} barra="var(--accent2)" demora=".35s" onClick={() => ir("usuarios")} />
       </div>

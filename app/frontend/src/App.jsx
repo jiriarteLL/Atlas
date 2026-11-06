@@ -10,6 +10,7 @@ import { exportarActivosExcel, exportarCSV, exportarReporte, leerCSV } from "./e
 import { cumpleEstado } from "./vistas/filtros";
 import Dashboard from "./vistas/Dashboard";
 import Activos from "./vistas/Activos";
+import Impresoras from "./vistas/Impresoras";
 import FichaActivo from "./vistas/FichaActivo";
 import ModalActivo from "./vistas/ModalActivo";
 import Reportes from "./vistas/Reportes";
@@ -27,11 +28,15 @@ const SECCIONES = {
   agente: ["Agente", "Scripts de sincronización"], accesos: ["Accesos", "Usuarios de la aplicación"],
 };
 const FILTROS_VACIOS = { q: "", tipo: "", estado: "", sede: "" };
+// Subsecciones de Activos (pestañas). Para sumar otro tipo con vista propia, agregarlo aca y en el render.
+const VISTAS_ACTIVOS = [["todos", "Todos los activos"], ["impresoras", "Impresoras"]];
+const vistaValida = (v) => (VISTAS_ACTIVOS.some(([k]) => k === v) ? v : "todos");
 
 function leerHash() {
   const [sec, query] = (window.location.hash || "").replace("#", "").split("?");
   const p = new URLSearchParams(query || "");
-  return { tab: SECCIONES[sec] ? sec : "dashboard", filtros: { ...FILTROS_VACIOS, tipo: p.get("tipo") || "", sede: p.get("sede") || "", estado: p.get("estado") || "" } };
+  return { tab: SECCIONES[sec] ? sec : "dashboard", vista: vistaValida(p.get("vista")),
+    filtros: { ...FILTROS_VACIOS, tipo: p.get("tipo") || "", sede: p.get("sede") || "", estado: p.get("estado") || "" } };
 }
 
 export default function App() {
@@ -42,6 +47,7 @@ export default function App() {
   const [Toast, avisar] = useToast();
 
   const [tab, setTab] = useState(() => leerHash().tab);
+  const [vista, setVista] = useState(() => leerHash().vista);
   const [filtros, setFiltros] = useState(() => leerHash().filtros);
   const [orden, setOrden] = useState({ col: null, asc: true });
   const [assets, setAssets] = useState([]);
@@ -80,7 +86,7 @@ export default function App() {
 
   // Hash -> estado (atras/adelante del navegador)
   useEffect(() => {
-    const aplicar = () => { const h = leerHash(); setTab(h.tab); setFiltros((f) => ({ ...h.filtros, q: h.tab === "activos" ? f.q : "" })); setFicha(null); };
+    const aplicar = () => { const h = leerHash(); setTab(h.tab); setVista(h.vista); setFiltros((f) => ({ ...h.filtros, q: h.tab === "activos" ? f.q : "" })); setFicha(null); };
     window.addEventListener("popstate", aplicar);
     return () => window.removeEventListener("popstate", aplicar);
   }, []);
@@ -89,19 +95,20 @@ export default function App() {
     let destino = tab;
     if (tab === "activos") {
       const p = new URLSearchParams();
-      ["tipo", "sede", "estado"].forEach((k) => { if (filtros[k]) p.set(k, filtros[k]); });
+      if (vista !== "todos") p.set("vista", vista);
+      else ["tipo", "sede", "estado"].forEach((k) => { if (filtros[k]) p.set(k, filtros[k]); });
       if (p.toString()) destino += "?" + p.toString();
     }
     const actual = (window.location.hash || "").replace("#", "");
     if (actual === destino) return;
     if (!actual) window.history.replaceState(null, "", "#" + destino);
     else window.history.pushState(null, "", "#" + destino);
-  }, [tab, filtros]);
+  }, [tab, vista, filtros]);
 
-  const ir = useCallback((sec, f) => {
+  const ir = useCallback((sec, f, v) => {
     setTab(sec);
     setFicha(null);
-    if (sec === "activos") setFiltros({ ...FILTROS_VACIOS, ...(f || {}) });
+    if (sec === "activos") { setFiltros({ ...FILTROS_VACIOS, ...(f || {}) }); setVista(vistaValida(v)); }
     if (window.innerWidth <= 760) setMenu(false);
   }, []);
 
@@ -209,7 +216,9 @@ export default function App() {
         <header className="ll-header">
           <div style={{ display: "flex", alignItems: "center", gap: 16, minWidth: 0 }}>
             <button className="ll-icono-btn" title="Menú" aria-label={menu ? "Ocultar menú" : "Mostrar menú"} onClick={() => setMenu((m) => !m)}>{menu ? "⟨" : "⟩"}</button>
-            <h1 className="ll-titulo">{titulo} <span>— {sub}</span></h1>
+            {tab === "activos" && vista !== "todos"
+              ? <h1 className="ll-titulo"><a href="#activos" className="ll-miga" onClick={(e) => { e.preventDefault(); setVista("todos"); }}>Activos</a> <span>/ {VISTAS_ACTIVOS.find(([k]) => k === vista)[1]}</span></h1>
+              : <h1 className="ll-titulo">{titulo} <span>— {sub}</span></h1>}
           </div>
           <button className="ll-btn-acento" onClick={() => { cargar(); cargarGlpi(); }}>
             <span style={{ display: "inline-flex", animation: cargando ? "ll-spin 1s linear infinite" : "none" }}>↻</span> Actualizar
@@ -219,7 +228,12 @@ export default function App() {
         <div className="ll-contenido">
           {cargando && !assets.length ? <div className="ll-vacio">Cargando datos…</div> : <>
             {tab === "dashboard" && <Dashboard assets={assets} ir={ir} verFicha={verFicha} />}
-            {tab === "activos" && <Activos filtrados={filtrados} filtros={filtros} setFiltros={setFiltros} orden={orden} setOrden={setOrden}
+            {tab === "activos" && <nav className="ll-pestanas" aria-label="Subsecciones de Activos">
+              {VISTAS_ACTIVOS.map(([k, l]) => <button key={k} className={"ll-pestana" + (vista === k ? " activa" : "")}
+                aria-current={vista === k ? "page" : undefined} onClick={() => setVista(k)}>{l}</button>)}
+            </nav>}
+            {tab === "activos" && vista === "impresoras" && <Impresoras puedeEditar={puedeEditar} avisar={avisar} />}
+            {tab === "activos" && vista === "todos" && <Activos filtrados={filtrados} filtros={filtros} setFiltros={setFiltros} orden={orden} setOrden={setOrden}
               verFicha={verFicha} editar={(a) => setEdicion(a)} eliminar={eliminarActivo} nuevo={() => setEdicion({})}
               exportar={exportarExcel} puedeEditar={puedeEditar} puedeEliminar={puedeEliminar} esAdmin={esAdmin} />}
             {tab === "licencias" && <Proximamente titulo="Licencias" columnas={["PRODUCTO", "CLAVE", "ASIGNADO A", "SEDE", "VENCE", "ESTADO", "ACCIONES"]}
