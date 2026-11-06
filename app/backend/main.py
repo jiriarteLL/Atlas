@@ -36,6 +36,7 @@ from impresoras import borrar_datos_impresora, router as impresoras_router
 from impresoras_relevamiento import router as relevamiento_router
 from salud import borrar_datos_salud, guardar_salud, limitar_salud, router as salud_router
 from telefonia import router as telefonia_router
+from monitores import borrar_datos_monitor, limitar_monitores, procesar_monitores, router as monitores_router
 from mailer import notificar_proyecto_finalizado
 from metricas import metricas_texto, registrar_request
 from ratelimit import limiter
@@ -63,6 +64,7 @@ app.include_router(relevamiento_router)   # antes que /api/impresoras/{id}
 app.include_router(impresoras_router)
 app.include_router(salud_router)
 app.include_router(telefonia_router)
+app.include_router(monitores_router)
 if config.CORS_ORIGINS:
     app.add_middleware(CORSMiddleware, allow_origins=config.CORS_ORIGINS, allow_methods=["*"], allow_headers=["*"],
                        allow_credentials=True)
@@ -211,11 +213,18 @@ class AssetSync(AssetIn):
     software: Optional[Union[str, list]] = ""
     # Salud y seguridad (agente de Atlas): se guarda aparte en asset_salud, ver salud.py
     salud: Optional[dict] = None
+    # Monitores con el detalle del EDID (agente de Atlas): ver monitores.py
+    monitores_detalle: Optional[list] = None
 
     @field_validator("salud", mode="after")
     @classmethod
     def _salud(cls, v):
         return limitar_salud(v)
+
+    @field_validator("monitores_detalle", mode="before")
+    @classmethod
+    def _monitores(cls, v):
+        return limitar_monitores(v)
 
 
 class TicketIn(BaseModel):
@@ -304,6 +313,7 @@ def delete_asset(aid: str, request: Request, user: UserOut = Depends(require_mod
     nombre = obj.nombre
     borrar_datos_impresora(db, aid)
     borrar_datos_salud(db, aid)
+    borrar_datos_monitor(db, aid)
     db.delete(obj)
     db.commit()
     db.close()
@@ -365,13 +375,13 @@ def _aplicar_sync(a: AssetSync):
             if nom:
                 regs.append("%s|||%s|||%s" % (nom, ver, fec))
         a.software = "~~~".join(regs)
-    salud = a.salud
+    salud, monitores = a.salud, a.monitores_detalle
     db = SessionLocal()
     obj = db.query(Asset).filter(Asset.serial == a.serial).first()
     if obj:
         for campo in ("garantia", "comentarios", "estado"):
             setattr(a, campo, getattr(obj, campo) or "")
-        datos = a.model_dump(exclude={"salud"})
+        datos = a.model_dump(exclude={"salud", "monitores_detalle"})
         cambios = {}
         sw_ant = obj.software
         for k, v in datos.items():
@@ -391,12 +401,15 @@ def _aplicar_sync(a: AssetSync):
         if "software" in datos:
             _log_sw(db, obj.id, sw_ant, datos.get("software"))
     else:
-        obj = Asset(id=("A" + str(uuid.uuid4())[:6]).upper(), **a.model_dump(exclude={"salud"}), updated=datetime.utcnow())
+        obj = Asset(id=("A" + str(uuid.uuid4())[:6]).upper(), **a.model_dump(exclude={"salud", "monitores_detalle"}),
+                    updated=datetime.utcnow())
         db.add(obj)
         db.flush()
         registrar_historial(db, obj.id, "agente-automatico", "sincronizacion", {"alta": ("", a.nombre or a.serial)})
     if salud:
         guardar_salud(db, obj.id, salud)
+    if monitores is not None and obj.tipo != "Monitor":
+        procesar_monitores(db, obj, monitores)
     db.commit()
     db.close()
 

@@ -6,10 +6,11 @@ import { QR, fmtFechaHora } from "../ui";
 import { Drawer, Ficha, Rotulo, estadoColor } from "../diseno/comunes";
 import { AdjuntosActivo } from "../secciones/AdjuntosActivo";
 import { HistorialActivo } from "../secciones/HistorialActivo";
+import { HistorialPcs, MonitoresConectados } from "../secciones/MonitoresActivo";
 import { COLOR_CIFRADO, glpiDe } from "./filtros";
 import { BarraBateria, EstadoAntivirus, InsigniaSoporte, fmtFecha, textoWindows } from "./Salud";
 
-export default function FichaActivo({ activo, glpiMap, user, onCerrar, onEditar, onEliminar, consultarGarantia, puedeEditar, puedeEliminar }) {
+export default function FichaActivo({ activo, glpiMap, user, onCerrar, onEditar, onEliminar, consultarGarantia, puedeEditar, puedeEliminar, abrirActivo }) {
   const [verQR, setVerQR] = useState(false);
   const [consultando, setConsultando] = useState(false);
   const [verSoft, setVerSoft] = useState(false);
@@ -130,6 +131,8 @@ export default function FichaActivo({ activo, glpiMap, user, onCerrar, onEditar,
           ["BIOS", gl.bios], ["Último arranque", gl.ultimo_arranque], ["Relevado", (gl.fecha || "").replace("T", " ")],
         ]} />
       </div>}
+
+      {a.tipo === "Monitor" ? <HistorialPcs assetId={a.id} abrir={abrirActivo} /> : <MonitoresConectados assetId={a.id} abrir={abrirActivo} />}
 
       {impresoras.length > 0 && <div>
         <Rotulo>IMPRESORAS ({impresoras.length})</Rotulo>

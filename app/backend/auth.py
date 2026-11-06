@@ -183,7 +183,7 @@ def asignar_rol(db, user, nombre_rol, con_modulos=True):
 # El control es en el servidor (require_modulo en cada endpoint); el frontend solo oculta lo que no se puede usar.
 MODULOS = [
     ("dashboard",  "Dashboard",      "Vista general, indicadores y riesgos", ("ver",)),
-    ("activos",    "Activos",        "Todos los activos, ficha, historial, adjuntos, tickets y garantías", ("ver", "editar")),
+    ("activos",    "Activos",        "Todos los activos y monitores, ficha, historial, adjuntos, tickets y garantías", ("ver", "editar")),
     ("salud",      "Notebooks y PC", "Salud y seguridad: Windows, BitLocker, antivirus, parches, discos, batería", ("ver",)),
     ("impresoras", "Impresoras",     "Impresoras de red y USB, tóner y contadores", ("ver", "editar")),
     ("telefonia",  "Telefonía",      "Internos de 3CX y teléfonos IP / WiFi", ("ver", "editar")),

@@ -2,7 +2,7 @@
 """Motor de base y modelos de negocio. El motor sale de DATABASE_URL (PostgreSQL en los compose)."""
 import uuid
 from datetime import datetime
-from sqlalchemy import create_engine, event, Boolean, Column, Date, String, DateTime, ForeignKey, Text, Integer, LargeBinary
+from sqlalchemy import create_engine, event, Boolean, Column, Date, String, DateTime, Float, ForeignKey, Text, Integer, LargeBinary
 from sqlalchemy.orm import declarative_base, deferred, sessionmaker
 import config
 
@@ -315,6 +315,43 @@ class TelefonoSinInterno(Base):
     ip       = Column(String, default="")
     hostname = Column(String, default="")
     visto    = Column(DateTime, default=datetime.utcnow)
+
+
+# ---------------------------------------------------------------- monitores (fase B, ver monitores.py)
+# Un monitor externo con serie es un Asset tipo "Monitor"; su detalle del EDID va en monitor_detalle y las PCs
+# donde estuvo conectado en monitor_conexion (desde/hasta). pc_monitores guarda la ultima lista que mando el
+# agente de cada PC (incluye la pantalla de la notebook y los monitores sin serie, que no son activos).
+class MonitorDetalle(Base):
+    __tablename__ = "monitor_detalle"
+    asset_id        = Column(String, ForeignKey("assets.id", ondelete="CASCADE"), primary_key=True)
+    clave           = Column(String, default="", index=True)   # FABRICANTE|CODIGO|SERIE
+    fabricante      = Column(String, default="")               # codigo PnP de 3 letras (SAM, DEL, ...)
+    codigo_producto = Column(String, default="")
+    pulgadas        = Column(Float, nullable=True)
+    anio            = Column(Integer, nullable=True)
+    semana          = Column(Integer, nullable=True)
+    conexion        = Column(String, default="")               # HDMI | DisplayPort | VGA | DVI | Dock USB | ...
+    pc_id           = Column(String, nullable=True, index=True)  # PC donde se lo vio por ultima vez
+    visto           = Column(DateTime, nullable=True)
+    actualizado     = Column(DateTime, default=datetime.utcnow)
+
+
+class MonitorConexion(Base):
+    __tablename__ = "monitor_conexion"
+    id         = Column(String, primary_key=True, default=_uuid)
+    monitor_id = Column(String, ForeignKey("assets.id", ondelete="CASCADE"), nullable=False, index=True)
+    pc_id      = Column(String, default="")     # sin FK: el historial queda aunque se borre la PC
+    pc_nombre  = Column(String, default="")
+    desde      = Column(DateTime, default=datetime.utcnow)
+    hasta      = Column(DateTime, nullable=True)
+    conexion   = Column(String, default="")
+
+
+class PcMonitores(Base):
+    __tablename__ = "pc_monitores"
+    asset_id    = Column(String, ForeignKey("assets.id", ondelete="CASCADE"), primary_key=True)
+    detalle     = Column(Text, default="")      # JSON: lista normalizada que mando el agente
+    actualizado = Column(DateTime, default=datetime.utcnow)
 
 
 def init_db():

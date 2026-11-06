@@ -13,6 +13,7 @@ import Activos from "./vistas/Activos";
 import Impresoras from "./vistas/Impresoras";
 import Salud from "./vistas/Salud";
 import Telefonia from "./vistas/Telefonia";
+import Monitores from "./vistas/Monitores";
 import AlertaToner from "./vistas/AlertaToner";
 import FichaActivo from "./vistas/FichaActivo";
 import ModalActivo from "./vistas/ModalActivo";
@@ -32,9 +33,9 @@ const SECCIONES = {
 };
 const FILTROS_VACIOS = { q: "", tipo: "", estado: "", sede: "" };
 // Subsecciones de Activos (pestañas). Para sumar otro tipo con vista propia, agregarlo aca y en el render.
-const VISTAS_ACTIVOS = [["todos", "Todos los activos"], ["salud", "Notebooks y PC"], ["impresoras", "Impresoras"]];
+const VISTAS_ACTIVOS = [["todos", "Todos los activos"], ["salud", "Notebooks y PC"], ["monitores", "Monitores"], ["impresoras", "Impresoras"]];
 // Modulo de permisos que habilita cada seccion y subseccion (ver backend/auth.py MODULOS). Sin entrada = siempre.
-const MODULO_DE_VISTA = { todos: "activos", salud: "salud", impresoras: "impresoras" };
+const MODULO_DE_VISTA = { todos: "activos", salud: "salud", monitores: "activos", impresoras: "impresoras" };
 const MODULO_DE_SECCION = { dashboard: "dashboard", telefonia: "telefonia", proyectos: "proyectos", reportes: "reportes", tendencias: "tendencias",
   agente: "agente", accesos: "accesos" };
 // Para cargar /api/assets alcanza con ver alguno de estos (igual que MODULOS_LISTA_ACTIVOS del servidor)
@@ -284,6 +285,7 @@ export default function App() {
                 aria-current={vistaEf === k ? "page" : undefined} onClick={() => setVista(k)}>{l}</button>)}
             </nav>}
             {tab === "activos" && vistaEf === "salud" && <Salud assets={assets} verFicha={verFicha} />}
+            {tab === "activos" && vistaEf === "monitores" && <Monitores assets={assets} verFicha={verFicha} />}
             {tab === "activos" && vistaEf === "impresoras" && <Impresoras puedeEditar={puede(user, "impresoras", "editar")} avisar={avisar} />}
             {tab === "activos" && vistaEf === "todos" && <Activos filtrados={filtrados} filtros={filtros} setFiltros={setFiltros} orden={orden} setOrden={setOrden}
               verFicha={verFicha} editar={(a) => setEdicion(a)} eliminar={eliminarActivo} nuevo={() => setEdicion({})}
@@ -306,7 +308,7 @@ export default function App() {
       {puedeVer("impresoras") && <AlertaToner onVer={() => ir("activos", {}, "impresoras")} />}
       {ficha && <FichaActivo key={ficha.id} activo={ficha} glpiMap={glpiMap} user={user} onCerrar={() => setFicha(null)}
         onEditar={(a) => setEdicion(a)} onEliminar={eliminarActivo} consultarGarantia={consultarGarantia}
-        puedeEditar={puedeEditar} puedeEliminar={puedeEliminar} />}
+        puedeEditar={puedeEditar} puedeEliminar={puedeEliminar} abrirActivo={(id) => { const x = assets.find((y) => y.id === id); if (x) verFicha(x); }} />}
       {edicion && <ModalActivo inicial={edicion} onGuardar={guardarActivo} onCerrar={() => setEdicion(null)} />}
       <Ambientacion abierto={ambientacion} onCerrar={() => setAmbientacion(false)} />
       {Toast}
