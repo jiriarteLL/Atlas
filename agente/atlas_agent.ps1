@@ -25,7 +25,7 @@ param(
     [switch]$ForzarLegacy  # no usa GLPI Agent aunque el equipo este en el piloto
 )
 
-$VERSION = "5.1.0"
+$VERSION = "5.1.1"
 $TASK    = "Atlas Inventario"
 $SELF    = $PSCommandPath
 $LOCALDIR = Join-Path $env:ProgramFiles "LLyA\Atlas Agent"
@@ -66,6 +66,10 @@ function Set-Red {
 
 function GetSede($nombre) {
     $n = $nombre.ToUpper()
+    # Servidores: LLCOR..., LLROS..., LLTIG... (el resto, incluidos LLBA y LLAZ, queda en CABA)
+    if ($n -match '^LLCOR')                                          { return "Corrientes" }
+    if ($n -match '^LLROS')                                          { return "Rosario" }
+    if ($n -match '^LLTIG')                                          { return "Tigre" }
     if ($n -match '^(RESG|RSG)')                                     { return "Resguarda" }
     if ($n -match '^CBA')                                            { return "Cordoba" }
     if ($n -match '^NQN')                                            { return "Neuquen" }
@@ -150,10 +154,18 @@ function Get-Inventario {
         # Filtro en el propio log (no entre los ultimos N eventos): en un equipo con mucho acceso de red los 4624
         # recientes son casi todos tipo 3. 2 = consola, 10 = escritorio remoto, 11 = credenciales en cache.
         # Se descartan las cuentas internas de Windows que tambien inician sesion tipo 2 (DWM-n, UMFD-n).
-        $xp = "*[System[EventID=4624] and EventData[Data[@Name='LogonType']='2' or Data[@Name='LogonType']='10' or Data[@Name='LogonType']='11']]"
-        $ev = Get-WinEvent -LogName Security -FilterXPath $xp -MaxEvents 30 -ErrorAction Stop |
-              Where-Object { $_.Properties[5].Value -notmatch '^(DWM|UMFD)-\d+$' } | Select-Object -First 1
-        if ($ev) { $ultLogin = $ev.TimeCreated.ToString("yyyy-MM-dd HH:mm") }
+        # Solo los ultimos 30 dias y con tope de 15 s: en un controlador de dominio el log de Seguridad pesa gigas
+        # y recorrerlo trababa el agente por mas de 20 minutos. Si no termina, el dato queda vacio.
+        $job = Start-Job -ScriptBlock {
+            $xp = "*[System[EventID=4624 and TimeCreated[timediff(@SystemTime) <= 2592000000]] and " +
+                  "EventData[Data[@Name='LogonType']='2' or Data[@Name='LogonType']='10' or Data[@Name='LogonType']='11']]"
+            $ev = Get-WinEvent -LogName Security -FilterXPath $xp -MaxEvents 30 -ErrorAction Stop |
+                  Where-Object { $_.Properties[5].Value -notmatch '^(DWM|UMFD)-\d+$' } | Select-Object -First 1
+            if ($ev) { $ev.TimeCreated.ToString("yyyy-MM-dd HH:mm") }
+        }
+        if (Wait-Job $job -Timeout 15) { $ultLogin = "$(Receive-Job $job -ErrorAction SilentlyContinue)".Trim() }
+        else { Write-Log "Ultimo login: el log de Seguridad tardo mas de 15 s, se omite" }
+        Remove-Job $job -Force -ErrorAction SilentlyContinue
     } catch {}
 
     # Impresoras y monitores
@@ -342,7 +354,12 @@ function Set-Tarea($ruta) {
         $a   = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-ExecutionPolicy Bypass -NonInteractive -WindowStyle Hidden -File `"$ruta`""
         $tr  = New-ScheduledTaskTrigger -Daily -At 08:00 -RandomDelay (New-TimeSpan -Minutes 15)
         $rep = New-ScheduledTaskTrigger -Once -At 08:00 -RepetitionInterval (New-TimeSpan -Hours 2) -RepetitionDuration (New-TimeSpan -Hours 14)
-        $tr.Repetition = $rep.Repetition
+        if ($tr.PSObject.Properties["Repetition"]) { $tr.Repetition = $rep.Repetition }
+        else {
+            # Windows Server 2012 R2 / 8.1: el disparador diario no trae Repetition. Se usa uno unico que se repite
+            # cada 2 horas durante 10 anios (el equivalente que acepta esa version; corre tambien de noche).
+            $tr = New-ScheduledTaskTrigger -Once -At 08:00 -RandomDelay (New-TimeSpan -Minutes 15) -RepetitionInterval (New-TimeSpan -Hours 2) -RepetitionDuration (New-TimeSpan -Days 3650)
+        }
         $tl  = New-ScheduledTaskTrigger -AtLogOn; $tl.Delay = "PT2M"
         $p   = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
         $s   = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 30) -MultipleInstances IgnoreNew

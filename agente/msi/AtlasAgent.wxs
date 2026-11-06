@@ -5,7 +5,7 @@
      Compilar:  candle -arch x64 AtlasAgent.wxs  &&  light -sval AtlasAgent.wixobj -o AtlasAgent.msi
      Instalar:  msiexec /i AtlasAgent.msi /qn SERVER="https://atlas.llyasoc.com" SYNCKEY="xxxx" -->
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
-  <Product Id="*" Name="Atlas Agent" Language="3082" Version="5.1.0"
+  <Product Id="*" Name="Atlas Agent" Language="3082" Version="5.1.1"
            Manufacturer="Lisicki, Litvin y Abelovich" UpgradeCode="7C1E4B52-3A9D-4F0E-9B6A-2D8C5E1F7A40">
     <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Platform="x64"
              Description="Agente de inventario de Atlas (LLyA)"/>
