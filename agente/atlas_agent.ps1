@@ -25,7 +25,7 @@ param(
     [switch]$ForzarLegacy  # no usa GLPI Agent aunque el equipo este en el piloto
 )
 
-$VERSION = "5.3.0"
+$VERSION = "5.4.0"
 $TASK    = "Atlas Inventario"
 $SELF    = $PSCommandPath
 $LOCALDIR = Join-Path $env:ProgramFiles "LLyA\Atlas Agent"
@@ -186,7 +186,81 @@ function Get-Salud($os) {
             }
         }
     } catch {}
+
+    # Volumenes con letra (fase D): para la alerta de disco lleno en PCs y servidores
+    try {
+        $s.volumenes = @(Get-WmiObject Win32_LogicalDisk -Filter "DriveType=3" -ErrorAction Stop | Where-Object { $_.Size -gt 0 } | ForEach-Object {
+            [ordered]@{ letra = "$($_.DeviceID)"; etiqueta = Clean($_.VolumeName); fs = "$($_.FileSystem)"
+                        tamano_gb = [math]::Round($_.Size / 1GB, 1); libre_gb = [math]::Round($_.FreeSpace / 1GB, 1)
+                        libre_pct = [math]::Round($_.FreeSpace * 100 / $_.Size, 1) }
+        })
+    } catch {}
     return $s
+}
+
+# Servidores (fase D): roles, uptime, reinicio pendiente, servicios automaticos detenidos, SQL, IIS, Hyper-V y si es
+# controlador de dominio. Solo si no es una estacion de trabajo (ProductType 1). Corre en un job con tope de 90 s:
+# Get-WindowsFeature y Get-Website pueden tardar en servidores cargados y no tienen que trabar el inventario.
+function Get-Servidor {
+    try { if ((Get-WmiObject Win32_OperatingSystem -ErrorAction Stop).ProductType -eq 1) { return $null } } catch { return $null }
+    $job = Start-Job -ScriptBlock {
+        $t = { param($v, $l) $x = ("$v" -replace '[\x00-\x1F]', '').Trim(); if ($x.Length -gt $l) { $x.Substring(0, $l) } else { $x } }
+        $r = [ordered]@{ roles = @(); uptime_dias = $null; reinicio_pendiente = $false; reinicio_motivos = @()
+                         servicios_detenidos = @(); sql = @(); iis = @(); controlador_dominio = $false; hyperv_vms = $null }
+        try { $o = Get-WmiObject Win32_OperatingSystem -ErrorAction Stop
+              $r.uptime_dias = [math]::Round(((Get-Date) - $o.ConvertToDateTime($o.LastBootUpTime)).TotalDays, 1) } catch {}
+        try { $r.controlador_dominio = ((Get-WmiObject Win32_ComputerSystem -ErrorAction Stop).DomainRole -ge 4) } catch {}
+        # Roles instalados con sus servicios de rol de primer nivel (Get-WindowsFeature existe tambien en 2012 R2)
+        try {
+            Import-Module ServerManager -ErrorAction Stop
+            $f = @(Get-WindowsFeature -ErrorAction Stop | Where-Object { $_.Installed })
+            $r.roles = @($f | Where-Object { $_.FeatureType -eq 'Role' } | ForEach-Object { $rol = $_
+                [ordered]@{ nombre = (& $t $rol.DisplayName 80)
+                            servicios = @($f | Where-Object { $_.FeatureType -eq 'Role Service' -and $_.Parent -eq $rol.Name } |
+                                          Select-Object -First 15 | ForEach-Object { & $t $_.DisplayName 80 }) } })
+        } catch {}
+        # Reinicio pendiente (las tres marcas estandar de Windows)
+        if (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending') { $r.reinicio_motivos += "Componentes de Windows" }
+        if (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired') { $r.reinicio_motivos += "Windows Update" }
+        try { if ((Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager' -Name PendingFileRenameOperations -ErrorAction Stop).PendingFileRenameOperations) { $r.reinicio_motivos += "Archivos pendientes" } } catch {}
+        $r.reinicio_pendiente = ($r.reinicio_motivos.Count -gt 0)
+        # Servicios automaticos detenidos. Se excluyen los que Windows deja detenidos a proposito (inicio por
+        # disparador o actualizadores que arrancan, hacen su tarea y se detienen).
+        $normales = 'gupdate|gupdatem|sppsvc|RemoteRegistry|edgeupdate|edgeupdatem|MapsBroker|wuauserv|TrustedInstaller|' +
+                    'ShellHWDetection|tiledatamodelsvc|CDPSvc|BITS|wbiosrvc|Dnscache|DoSvc|UsoSvc|WbioSrvc|sedsvc|' +
+                    'GoogleUpdater.*|MozillaMaintenance|AdobeARMservice|clr_optimization.*|stisvc|WSearch|' +
+                    'OneSyncSvc.*|CDPUserSvc.*|WpnUserService.*|cbdhsvc.*|IaasVmProvider|RtkAudioUniversalService|SysMain'
+        try {
+            $r.servicios_detenidos = @(Get-WmiObject Win32_Service -Filter "StartMode='Auto' AND State<>'Running'" -ErrorAction Stop |
+                Where-Object { $_.Name -notmatch "^($normales)$" -and
+                               -not (Test-Path ("HKLM:\SYSTEM\CurrentControlSet\Services\" + $_.Name + "\TriggerInfo")) } |
+                Select-Object -First 25 | ForEach-Object { [ordered]@{ nombre = (& $t $_.Name 80); display = (& $t $_.DisplayName 120) } })
+        } catch {}
+        # SQL Server: una instancia por servicio MSSQLSERVER / MSSQL$<instancia>
+        try { $r.sql = @(Get-Service -Name 'MSSQLSERVER', 'MSSQL$*' -ErrorAction SilentlyContinue | ForEach-Object {
+                [ordered]@{ instancia = $(if ($_.Name -eq 'MSSQLSERVER') { 'MSSQLSERVER' } else { ($_.Name -split '\$', 2)[1] }); estado = "$($_.Status)" } }) } catch {}
+        # IIS: sitios con sus bindings (solo si esta el servicio W3SVC)
+        if (Get-Service W3SVC -ErrorAction SilentlyContinue) {
+            try { Import-Module WebAdministration -ErrorAction Stop
+                  $r.iis = @(Get-Website -ErrorAction Stop | Select-Object -First 30 | ForEach-Object {
+                      [ordered]@{ nombre = (& $t $_.Name 80); estado = "$($_.State)"
+                                  bindings = @($_.Bindings.Collection | Select-Object -First 10 | ForEach-Object { & $t ("$($_.protocol) $($_.bindingInformation)") 120 }) } }) } catch {}
+        }
+        # Host Hyper-V: sus maquinas virtuales
+        if (Get-Command Get-VM -ErrorAction SilentlyContinue) {
+            try { $r.hyperv_vms = @(Get-VM -ErrorAction Stop | Select-Object -First 100 | ForEach-Object {
+                      [ordered]@{ nombre = (& $t $_.Name 80); estado = "$($_.State)"; cpu = [int]$_.ProcessorCount
+                                  ram_gb = [math]::Round(([math]::Max([double]$_.MemoryAssigned, [double]$_.MemoryStartup)) / 1GB, 1) } }) } catch {}
+        }
+        $r | ConvertTo-Json -Depth 5 -Compress
+    }
+    $res = $null
+    try {
+        if (Wait-Job $job -Timeout 90) { $j = "$(Receive-Job $job -ErrorAction SilentlyContinue)"; if ($j) { $res = $j | ConvertFrom-Json } }
+        else { Write-Log "Datos de servidor: tardaron mas de 90 s, se omiten" }
+    } catch {}
+    Remove-Job $job -Force -ErrorAction SilentlyContinue
+    return $res
 }
 
 # Monitores (fase B): uno por pantalla conectada, con lo que guarda el EDID del monitor.
@@ -348,6 +422,7 @@ function Get-Inventario {
         ultimo_reinicio = "$ultReinicio"; ultimo_login = "$ultLogin"
         salud = (Get-Salud $os)
         monitores_detalle = @($monDetalle)
+        servidor = (Get-Servidor)
     }
 }
 
@@ -505,9 +580,11 @@ if ($Probar) {
     $body.software = "($(@($body.software).Count) programas)"
     $salud = $body.salud; $body.Remove('salud')
     $mons = $body.monitores_detalle; $body.Remove('monitores_detalle')
+    $srv = $body.servidor; $body.Remove('servidor')
     $body.GetEnumerator() | ForEach-Object { "{0,-16} {1}" -f $_.Key, $_.Value }
     "salud:"; $salud | ConvertTo-Json -Depth 5
     "monitores_detalle:"; ConvertTo-Json -InputObject @($mons) -Depth 4
+    "servidor:"; if ($srv) { $srv | ConvertTo-Json -Depth 6 } else { "(estacion de trabajo: no aplica)" }
     return
 }
 if (-not $Server -or -not $SyncKey) {
