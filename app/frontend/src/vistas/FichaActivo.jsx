@@ -2,17 +2,21 @@
 // relevamiento GLPI, garantia (Lenovo automatica o carga manual), QR, software, licencias (diseño), adjuntos e historial.
 import { useEffect, useState } from "react";
 import { apiFetch } from "../api";
-import { QR, fmtFechaHora } from "../ui";
-import { Drawer, Ficha, Rotulo, estadoColor } from "../diseno/comunes";
+import { fmtFechaHora } from "../ui";
+import { Drawer, Ficha, Rotulo, estadoCiclo, estadoColor } from "../diseno/comunes";
 import { AdjuntosActivo } from "../secciones/AdjuntosActivo";
 import { GarantiaActivo } from "../secciones/GarantiaActivo";
 import { HistorialActivo } from "../secciones/HistorialActivo";
 import { HistorialPcs, MonitoresConectados } from "../secciones/MonitoresActivo";
+import { CicloActivo } from "../secciones/CicloActivo";
+import { Etiqueta, Impresion, QrImg, imprimir, urlActivo, useUrlPublica } from "../secciones/Etiquetas";
 import { COLOR_CIFRADO, glpiDe } from "./filtros";
 import { BarraBateria, EstadoAntivirus, InsigniaSoporte, fmtFecha, textoWindows } from "./Salud";
 
-export default function FichaActivo({ activo, glpiMap, user, onCerrar, onEditar, onEliminar, onGarantia, puedeEditar, puedeEliminar, abrirActivo }) {
+export default function FichaActivo({ activo, glpiMap, user, onCerrar, onEditar, onEliminar, onGarantia, puedeEditar, puedeEliminar, abrirActivo,
+  avisar, onCambio, abrirActa }) {
   const [verQR, setVerQR] = useState(false);
+  const base = useUrlPublica();
   const [verSoft, setVerSoft] = useState(false);
   const [salud, setSalud] = useState(null);
   const id = activo?.id;
@@ -25,7 +29,7 @@ export default function FichaActivo({ activo, glpiMap, user, onCerrar, onEditar,
   if (!activo) return null;
   const a = activo;
   const gl = glpiDe(glpiMap, a);
-  const ec = estadoColor(a.estado);
+  const ec = estadoColor(estadoCiclo(a));
   const impresoras = (a.impresoras || "").split("|").filter((s) => s.trim());
   const software = (a.software || "").split("~~~").filter((s) => s.trim()).map((s) => s.split("|||"));
 
@@ -41,15 +45,19 @@ export default function FichaActivo({ activo, glpiMap, user, onCerrar, onEditar,
 
       <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "12px 16px", borderRadius: 12, background: "color-mix(in srgb, var(--accent) 8%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 26%, transparent)" }}>
         <span style={{ width: 8, height: 8, borderRadius: "50%", background: ec, boxShadow: "0 0 10px " + ec }} />
-        <span style={{ fontSize: 13.5, fontWeight: 600, color: ec }}>{a.estado}</span>
+        <span style={{ fontSize: 13.5, fontWeight: 600, color: ec }}>{estadoCiclo(a)}</span>
         <span style={{ flex: 1 }} />
         <span className="mono" style={{ fontSize: 11.5, color: "var(--ll-dim)" }}>SYNC {fmtFechaHora(a.updated)}</span>
       </div>
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         <button className="ll-btn-borde" onClick={() => setVerQR((v) => !v)}>{verQR ? "Ocultar QR" : "Ver QR"}</button>
+        <button className="ll-btn-borde" onClick={imprimir}>Imprimir etiqueta</button>
       </div>
-      {verQR && <div style={{ display: "flex", justifyContent: "center" }}><div style={{ padding: 10, background: "#fff", borderRadius: 12 }}><QR value={a.serial || String(a.id)} size={130} /></div></div>}
+      {verQR && <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+        <div style={{ padding: 10, background: "#fff", borderRadius: 12 }}><QrImg texto={urlActivo(base, a.id)} px={150} /></div>
+        <span className="tenue" style={{ fontSize: 11.5 }}>Abre esta ficha en Atlas</span></div>}
+      <Impresion><div className="etq-hoja f62"><Etiqueta a={a} base={base} /></div></Impresion>
 
       <div>
         <Rotulo>FICHA TÉCNICA</Rotulo>
@@ -77,6 +85,7 @@ export default function FichaActivo({ activo, glpiMap, user, onCerrar, onEditar,
       </div>
 
       <GarantiaActivo assetId={a.id} puedeEditar={puedeEditar} onCambio={(fin) => onGarantia && onGarantia(a.id, fin)} />
+      <CicloActivo assetId={a.id} puedeEditar={puedeEditar} avisar={avisar} onCambio={onCambio} abrirActa={abrirActa} />
 
       <div>
         <Rotulo>SEGURIDAD</Rotulo>

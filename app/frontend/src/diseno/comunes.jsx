@@ -1,13 +1,23 @@
 // comunes.jsx — Piezas chicas del diseño v2 reutilizadas por las vistas.
 import { useCallback, useEffect, useRef, useState } from "react";
 
-export const ESTADOS = ["Activo", "Mantenimiento", "Libre", "Stock", "Robado", "Dado de baja"];
+// Estados de ciclo de vida (fase F) primero; despues los de antes, que siguen siendo validos.
+export const ESTADOS = ["En stock", "Asignado", "Prestado", "En reparación", "Para baja", "Dado de baja", "Activo", "Mantenimiento", "Libre", "Stock", "Robado"];
+// Igual que backend/ciclo_activos.estado_ciclo: "Activo" = Asignado si tiene usuario, si no En stock.
+export function estadoCiclo(a) {
+  const e = (a.estado || "").trim();
+  if (["En stock", "Asignado", "Prestado", "En reparación", "Para baja", "Dado de baja"].includes(e)) return e;
+  if (e === "Stock" || e === "Libre") return "En stock";
+  if (e === "Mantenimiento") return "En reparación";
+  if (e === "Activo" || !e) return (a.usuario || "").trim() ? "Asignado" : "En stock";
+  return e;
+}
 export const TIPO_COLOR = { Notebook: "#3b82f6", Impresora: "#22c55e", Servidor: "#ec4899", Monitor: "#a78bfa", Switch: "#fbbf24", UPS: "#f97316", CPU: "#22d3ee" };
 
 export function estadoColor(e) {
-  if (e === "Activo" || e === "Activa") return "var(--ll-verde)";
-  if (e === "Mantenimiento" || e === "Por vencer" || e === "Inactivo") return "var(--ll-ambar)";
-  if (e === "Libre" || e === "Stock") return "var(--ll-azul)";
+  if (e === "Activo" || e === "Activa" || e === "Asignado") return "var(--ll-verde)";
+  if (e === "Mantenimiento" || e === "Por vencer" || e === "Inactivo" || e === "En reparación" || e === "Prestado") return "var(--ll-ambar)";
+  if (e === "Libre" || e === "Stock" || e === "En stock") return "var(--ll-azul)";
   if (e === "Dado de baja") return "var(--ll-gris)";
   return "var(--ll-rosa)";
 }

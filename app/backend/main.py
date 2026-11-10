@@ -37,6 +37,9 @@ from telefonia import router as telefonia_router
 from monitores import borrar_datos_monitor, limitar_monitores, procesar_monitores, router as monitores_router
 import garantias
 from garantias import borrar_datos_garantia, router as garantias_router
+from ciclo_activos import borrar_datos_ciclo, router as ciclo_router
+from actas import router as actas_router
+from auditoria import router as auditoria_router
 from mailer import notificar_proyecto_finalizado
 from metricas import metricas_texto, registrar_request
 from ratelimit import limiter
@@ -69,6 +72,9 @@ app.include_router(salud_router)
 app.include_router(telefonia_router)
 app.include_router(monitores_router)
 app.include_router(garantias_router)
+app.include_router(ciclo_router)
+app.include_router(actas_router)
+app.include_router(auditoria_router)
 if config.CORS_ORIGINS:
     app.add_middleware(CORSMiddleware, allow_origins=config.CORS_ORIGINS, allow_methods=["*"], allow_headers=["*"],
                        allow_credentials=True)
@@ -86,7 +92,7 @@ async def cabeceras_seguridad(request: Request, call_next):
     resp.headers.setdefault("X-Content-Type-Options", "nosniff")
     resp.headers.setdefault("X-Frame-Options", "DENY")
     resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
-    resp.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    resp.headers.setdefault("Permissions-Policy", "camera=(self), microphone=(), geolocation=()")
     resp.headers.setdefault("Content-Security-Policy", _CSP)
     if request.url.scheme == "https":
         resp.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
@@ -148,7 +154,9 @@ def metrics(x_maestro_api_key: str = Header(default="")):
     return Response(content=cuerpo, media_type=tipo)
 # ================================================================ activos
 TIPOS_OK = ("Notebook", "Monitor", "Impresora", "Servidor", "Switch", "UPS", "CPU")
-ESTADOS_OK = ("Activo", "Mantenimiento", "Dado de baja", "Libre", "Stock", "Robado")
+# Los primeros son los de antes; los de ciclo de vida (fase F, ver ciclo_activos.py) van al final.
+ESTADOS_OK = ("Activo", "Mantenimiento", "Dado de baja", "Libre", "Stock", "Robado",
+              "En stock", "Asignado", "Prestado", "En reparación", "Para baja")
 
 
 def _limpiar(v):
@@ -321,6 +329,7 @@ def delete_asset(aid: str, request: Request, user: UserOut = Depends(require_mod
     borrar_datos_salud(db, aid)
     borrar_datos_monitor(db, aid)
     borrar_datos_garantia(db, aid)
+    borrar_datos_ciclo(db, aid)
     db.delete(obj)
     db.commit()
     db.close()

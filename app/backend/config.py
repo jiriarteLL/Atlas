@@ -119,3 +119,20 @@ SNAPSHOT_DIAS = int(os.getenv("SNAPSHOT_DIAS", "7"))
 GARANTIA_REFRESCO_DIAS = int(os.getenv("GARANTIA_REFRESCO_DIAS", "30"))
 GARANTIA_PAUSA_S = float(os.getenv("GARANTIA_PAUSA_S", "2"))
 GARANTIA_MAX_POR_CORRIDA = int(os.getenv("GARANTIA_MAX_POR_CORRIDA", "300"))
+
+# ---- Fase F: ciclo de vida, actas, etiquetas QR y auditoria fisica
+# URL con la que se abre Atlas desde el celular al escanear una etiqueta (el QR apunta a #activos?activo=<id>).
+# Vacio = la direccion con la que se entro a Atlas (en la VM: ATLAS_URL_PUBLICA=https://<ip o nombre>:8743 en el .env)
+ATLAS_URL_PUBLICA = os.getenv("ATLAS_URL_PUBLICA", "").rstrip("/")
+# Vida util por tipo de equipo en meses ("Tipo=meses" separados por coma): define la renovacion sugerida
+VIDA_UTIL_MESES = {k.strip(): int(v) for k, v in (x.split("=", 1) for x in _lista("VIDA_UTIL_MESES") if "=" in x)} or {
+    "Notebook": 48, "CPU": 60, "Monitor": 72, "Impresora": 60, "Servidor": 60}
+# Actas de entrega / devolucion / prestamo
+ACTA_EMPRESA = os.getenv("ACTA_EMPRESA", "Lisicki, Litvin y Abelovich")
+ACTA_CLAUSULA = os.getenv("ACTA_CLAUSULA", (
+    "El/la receptor/a declara recibir los equipos detallados en buen estado de funcionamiento y se compromete a "
+    "usarlos exclusivamente para tareas laborales, cuidarlos, no instalar software no autorizado ni prestarlos a "
+    "terceros, y devolverlos con sus accesorios al finalizar la relacion laboral o cuando la empresa lo solicite. "
+    "Cualquier rotura, perdida o robo debe informarse de inmediato a Soporte Tecnico."))
+ACTA_ACCESORIOS = _lista("ACTA_ACCESORIOS") or ["Cargador", "Mouse", "Teclado", "Mochila / funda", "Auriculares",
+                                                "Dock / adaptador", "Cable de red"]

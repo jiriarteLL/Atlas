@@ -22,7 +22,7 @@ export function ordenar(lista, orden) {
 }
 
 export default function Activos({ filtrados, filtros, setFiltros, orden, setOrden, verFicha, editar, eliminar, nuevo,
-  exportar, puedeEditar, puedeEliminar, esAdmin }) {
+  exportar, puedeEditar, puedeEliminar, esAdmin, etiquetas }) {
   // La pagina vuelve a 1 cuando cambian los filtros (queda asociada a la combinacion de filtros).
   const clave = JSON.stringify(filtros);
   const [pag, setPag] = useState({ clave, n: 1 });
@@ -55,6 +55,7 @@ export default function Activos({ filtrados, filtros, setFiltros, orden, setOrde
         </select>
         <span className="ll-contador">{lista.length} activos</span>
         <div style={{ flex: 1 }} />
+        {etiquetas && <button className="ll-btn-borde" onClick={() => etiquetas(lista)} title="Etiquetas con QR de los activos filtrados">Etiquetas QR</button>}
         <button className="ll-btn-borde" onClick={() => exportar(lista)}>Exportar Excel</button>
         {puedeEditar && <button className="ll-btn-primario" onClick={nuevo}>＋ Nuevo activo</button>}
       </div>

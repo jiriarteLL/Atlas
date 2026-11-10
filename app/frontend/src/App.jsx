@@ -21,6 +21,9 @@ import ModalActivo from "./vistas/ModalActivo";
 import Reportes from "./vistas/Reportes";
 import Accesos from "./vistas/Accesos";
 import Agente from "./vistas/Agente";
+import Actas from "./vistas/Actas";
+import Auditoria from "./vistas/Auditoria";
+import { HojaEtiquetas } from "./secciones/Etiquetas";
 import { SeccionTendencias } from "./secciones/SeccionTendencias";
 import { SeccionProyectos } from "./secciones/SeccionProyectos";
 import { SeccionPerfil } from "./secciones/SeccionPerfil";
@@ -31,6 +34,7 @@ const SECCIONES = {
   reportes: ["Reportes", "Análisis"], tendencias: ["Tendencias", "Evolución en el tiempo"],
   usuarios: ["Usuarios", "Nómina"], perfil: ["Mi perfil", "Cuenta, permisos y seguridad"],
   agente: ["Agente", "Scripts de sincronización"], accesos: ["Accesos", "Usuarios de la aplicación"],
+  actas: ["Actas", "Entrega, devolución y préstamo de equipos"], auditoria: ["Auditoría física", "Relevamiento por sede con el celular"],
 };
 const FILTROS_VACIOS = { q: "", tipo: "", estado: "", sede: "" };
 // Subsecciones de Activos (pestañas). Para sumar otro tipo con vista propia, agregarlo aca y en el render.
@@ -38,7 +42,7 @@ const VISTAS_ACTIVOS = [["todos", "Todos los activos"], ["salud", "Notebooks y P
 // Modulo de permisos que habilita cada seccion y subseccion (ver backend/auth.py MODULOS). Sin entrada = siempre.
 const MODULO_DE_VISTA = { todos: "activos", salud: "salud", monitores: "activos", impresoras: "impresoras", garantias: "activos" };
 const MODULO_DE_SECCION = { dashboard: "dashboard", telefonia: "telefonia", proyectos: "proyectos", reportes: "reportes", tendencias: "tendencias",
-  agente: "agente", accesos: "accesos" };
+  agente: "agente", accesos: "accesos", actas: "activos", auditoria: "auditoria" };
 // Para cargar /api/assets alcanza con ver alguno de estos (igual que MODULOS_LISTA_ACTIVOS del servidor)
 const MODULOS_LISTA_ACTIVOS = ["activos", "dashboard", "salud", "reportes", "proyectos"];
 const vistaValida = (v) => (VISTAS_ACTIVOS.some(([k]) => k === v) ? v : "todos");
@@ -46,7 +50,7 @@ const vistaValida = (v) => (VISTAS_ACTIVOS.some(([k]) => k === v) ? v : "todos")
 function leerHash() {
   const [sec, query] = (window.location.hash || "").replace("#", "").split("?");
   const p = new URLSearchParams(query || "");
-  return { tab: SECCIONES[sec] ? sec : "dashboard", vista: vistaValida(p.get("vista")),
+  return { tab: SECCIONES[sec] ? sec : "dashboard", vista: vistaValida(p.get("vista")), activo: p.get("activo") || "",
     filtros: { ...FILTROS_VACIOS, tipo: p.get("tipo") || "", sede: p.get("sede") || "", estado: p.get("estado") || "" } };
 }
 
@@ -74,6 +78,9 @@ export default function App() {
   const [glpiMap, setGlpiMap] = useState({});
   const [ficha, setFicha] = useState(null);
   const [edicion, setEdicion] = useState(null);      // activo a editar, o {} para alta
+  const [etiquetas, setEtiquetas] = useState(null);  // lista de activos para la hoja de etiquetas QR
+  const [actaAbrir, setActaAbrir] = useState("");     // acta a abrir desde un movimiento de la ficha
+  const [activoHash, setActivoHash] = useState(() => leerHash().activo);   // #activos?activo=<id> (QR de la etiqueta)
   const [ambientacion, setAmbientacion] = useState(false);
   const [menu, setMenu] = useState(() => window.innerWidth > 760);
   const archivo = useRef(null);
@@ -105,9 +112,17 @@ export default function App() {
 
   useEffect(() => { cargar(); cargarGlpi(); }, [cargar, cargarGlpi]);
 
+  // El QR de una etiqueta abre la ficha: cuando llega la lista de activos se abre la del hash (una sola vez)
+  useEffect(() => {
+    if (!activoHash || !assets.length) return;
+    const a = assets.find((x) => x.id === activoHash);
+    setActivoHash("");
+    if (a) { setFicha(a); apiFetch(API + "/assets/" + a.id + "/ficha").catch(() => {}); }
+  }, [activoHash, assets]);
+
   // Hash -> estado (atras/adelante del navegador)
   useEffect(() => {
-    const aplicar = () => { const h = leerHash(); setTab(h.tab); setVista(h.vista); setFiltros((f) => ({ ...h.filtros, q: h.tab === "activos" ? f.q : "" })); setFicha(null); };
+    const aplicar = () => { const h = leerHash(); setTab(h.tab); setVista(h.vista); setFiltros((f) => ({ ...h.filtros, q: h.tab === "activos" ? f.q : "" })); setFicha(null); if (h.activo) setActivoHash(h.activo); };
     window.addEventListener("popstate", aplicar);
     return () => window.removeEventListener("popstate", aplicar);
   }, []);
@@ -139,7 +154,7 @@ export default function App() {
   // Si el inicio (Dashboard) no esta permitido, se arranca en la primera seccion que si
   useEffect(() => {
     if (tab !== "dashboard" || permitida("dashboard")) return;
-    const primera = ["activos", "telefonia", "proyectos", "reportes", "tendencias", "agente", "perfil"].find((x) => permitida(x));
+    const primera = ["activos", "telefonia", "proyectos", "reportes", "tendencias", "actas", "auditoria", "agente", "perfil"].find((x) => permitida(x));
     if (primera) setTab(primera);
   }, [tab, permitida]);
 
@@ -155,6 +170,15 @@ export default function App() {
   function verFicha(a) {
     setFicha(a);
     apiFetch(API + "/assets/" + a.id + "/ficha").catch(() => {});   // registra la consulta en auditoria
+  }
+
+  // Despues de un movimiento de ciclo de vida: lista y ficha con el estado / usuario / sede nuevos
+  async function refrescarFicha() {
+    try {
+      const lista = await http.get(`${API}/assets`);
+      setAssets(lista);
+      setFicha((f) => (f ? lista.find((x) => x.id === f.id) || f : f));
+    } catch { /* se ve al recargar */ }
   }
 
   async function guardarActivo(a) {
@@ -239,9 +263,11 @@ export default function App() {
               </Fragment>
             ))}
           </div>
-          {(puedeVer("agente") || puede(user, "importar", "editar") || puedeVer("reportes") || esAdmin) &&
+          {(puedeVer("agente") || puede(user, "importar", "editar") || puedeVer("reportes") || puedeVer("activos") || puedeVer("auditoria") || esAdmin) &&
             <div className="ll-nav-sec" style={{ marginTop: 22 }}>HERRAMIENTAS</div>}
           <div className="ll-nav-lista">
+            {puedeVer("activos") && <button className={"ll-nav-item" + (tab === "actas" ? " activo" : "")} onClick={() => { setActaAbrir(""); ir("actas"); }}><span className="ll-nav-ico">✎</span>Actas</button>}
+            {puedeVer("auditoria") && <button className={"ll-nav-item" + (tab === "auditoria" ? " activo" : "")} onClick={() => ir("auditoria")}><span className="ll-nav-ico">⌖</span>Auditoría física</button>}
             {puedeVer("agente") && <button className={"ll-nav-item" + (tab === "agente" ? " activo" : "")} onClick={() => ir("agente")}><span className="ll-nav-ico">◈</span>Agente</button>}
             {puede(user, "importar", "editar") && <button className="ll-nav-item" onClick={() => archivo.current.click()}><span className="ll-nav-ico">⭱</span>Importar CSV</button>}
             {puedeVer("reportes") && <button className="ll-nav-item" onClick={() => { exportarCSV(assets); avisar("Exportando " + assets.length + " activos a CSV…"); }}><span className="ll-nav-ico">⭳</span>Exportar CSV</button>}
@@ -287,7 +313,7 @@ export default function App() {
         {tab === "activos" && vistaEf === "impresoras" && <Impresoras puedeEditar={puede(user, "impresoras", "editar")} avisar={avisar} />}
             {tab === "activos" && vistaEf === "todos" && <Activos filtrados={filtrados} filtros={filtros} setFiltros={setFiltros} orden={orden} setOrden={setOrden}
               verFicha={verFicha} editar={(a) => setEdicion(a)} eliminar={eliminarActivo} nuevo={() => setEdicion({})}
-              exportar={exportarExcel} puedeEditar={puedeEditar} puedeEliminar={puedeEliminar} esAdmin={esAdmin} />}
+              exportar={exportarExcel} puedeEditar={puedeEditar} puedeEliminar={puedeEliminar} esAdmin={esAdmin} etiquetas={setEtiquetas} />}
             {tab === "telefonia" && <Telefonia puedeEditar={puede(user, "telefonia", "editar")} avisar={avisar} />}
             {tab === "licencias" && <Proximamente titulo="Licencias" columnas={["PRODUCTO", "CLAVE", "ASIGNADO A", "SEDE", "VENCE", "ESTADO", "ACCIONES"]}
               texto="El control de licencias (Claude, Office, antivirus) está diseñado pero quedó fuera del alcance de la v2.0.0. Se habilita en una versión posterior." />}
@@ -299,6 +325,8 @@ export default function App() {
             {tab === "perfil" && <div className="ll-seccion-clasica"><SeccionPerfil user={user} /></div>}
             {tab === "agente" && <Agente />}
             {tab === "accesos" && <Accesos user={user} avisar={avisar} />}
+            {tab === "actas" && <Actas key={actaAbrir || "lista"} assets={assets} puedeEditar={puedeEditar} avisar={avisar} onCambio={cargar} abrirId={actaAbrir} />}
+            {tab === "auditoria" && <Auditoria puedeEditar={puede(user, "auditoria", "editar")} avisar={avisar} onCambio={cargar} />}
           </>}
         </div>
       </main>
@@ -306,7 +334,9 @@ export default function App() {
       {puedeVer("impresoras") && <AlertaToner onVer={() => ir("activos", {}, "impresoras")} />}
       {ficha && <FichaActivo key={ficha.id} activo={ficha} glpiMap={glpiMap} user={user} onCerrar={() => setFicha(null)}
         onEditar={(a) => setEdicion(a)} onEliminar={eliminarActivo} onGarantia={garantiaCambiada}
-        puedeEditar={puedeEditar} puedeEliminar={puedeEliminar} abrirActivo={(id) => { const x = assets.find((y) => y.id === id); if (x) verFicha(x); }} />}
+        puedeEditar={puedeEditar} puedeEliminar={puedeEliminar} abrirActivo={(id) => { const x = assets.find((y) => y.id === id); if (x) verFicha(x); }}
+        avisar={avisar} onCambio={refrescarFicha} abrirActa={(id) => { setActaAbrir(id); ir("actas"); }} />}
+      {etiquetas && <HojaEtiquetas activos={etiquetas} onCerrar={() => setEtiquetas(null)} />}
       {edicion && <ModalActivo inicial={edicion} onGuardar={guardarActivo} onCerrar={() => setEdicion(null)} />}
       <Ambientacion abierto={ambientacion} onCerrar={() => setAmbientacion(false)} />
       {Toast}
