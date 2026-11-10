@@ -14,6 +14,7 @@ import Impresoras from "./vistas/Impresoras";
 import Salud from "./vistas/Salud";
 import Telefonia from "./vistas/Telefonia";
 import Monitores from "./vistas/Monitores";
+import Garantias from "./vistas/Garantias";
 import AlertaToner from "./vistas/AlertaToner";
 import FichaActivo from "./vistas/FichaActivo";
 import ModalActivo from "./vistas/ModalActivo";
@@ -33,9 +34,9 @@ const SECCIONES = {
 };
 const FILTROS_VACIOS = { q: "", tipo: "", estado: "", sede: "" };
 // Subsecciones de Activos (pestañas). Para sumar otro tipo con vista propia, agregarlo aca y en el render.
-const VISTAS_ACTIVOS = [["todos", "Todos los activos"], ["salud", "Notebooks y PC"], ["monitores", "Monitores"], ["impresoras", "Impresoras"]];
+const VISTAS_ACTIVOS = [["todos", "Todos los activos"], ["salud", "Notebooks y PC"], ["monitores", "Monitores"], ["impresoras", "Impresoras"], ["garantias", "Garantías"]];
 // Modulo de permisos que habilita cada seccion y subseccion (ver backend/auth.py MODULOS). Sin entrada = siempre.
-const MODULO_DE_VISTA = { todos: "activos", salud: "salud", monitores: "activos", impresoras: "impresoras" };
+const MODULO_DE_VISTA = { todos: "activos", salud: "salud", monitores: "activos", impresoras: "impresoras", garantias: "activos" };
 const MODULO_DE_SECCION = { dashboard: "dashboard", telefonia: "telefonia", proyectos: "proyectos", reportes: "reportes", tendencias: "tendencias",
   agente: "agente", accesos: "accesos" };
 // Para cargar /api/assets alcanza con ver alguno de estos (igual que MODULOS_LISTA_ACTIVOS del servidor)
@@ -171,15 +172,11 @@ export default function App() {
     catch (e) { alert("Error: " + e.message); }
   }
 
-  async function consultarGarantia(a) {
-    try {
-      const r = await http.post(API + "/assets/" + a.id + "/garantia", {});
-      if (r && r.garantia) {
-        avisar("Garantía: " + r.garantia + " (" + r.estado + ")");
-        await cargar();
-        setFicha((f) => (f && f.id === a.id ? { ...f, garantia: r.garantia } : f));
-      } else alert(r && r.detail ? r.detail : "No se pudo obtener la garantía.");
-    } catch (e) { alert("Error: " + e.message); }
+  // La seccion Garantia de la ficha consulta/carga por su cuenta; aca solo se refrescan la lista y la ficha abierta
+  async function garantiaCambiada(id, fin) {
+    if (fin !== undefined) avisar(fin ? "Garantía hasta " + fin : "Garantía actualizada");
+    await cargar();
+    setFicha((f) => (f && f.id === id && fin !== undefined ? { ...f, garantia: fin || "" } : f));
   }
 
   async function importar(e) {
@@ -286,7 +283,8 @@ export default function App() {
             </nav>}
             {tab === "activos" && vistaEf === "salud" && <Salud assets={assets} verFicha={verFicha} />}
             {tab === "activos" && vistaEf === "monitores" && <Monitores assets={assets} verFicha={verFicha} />}
-            {tab === "activos" && vistaEf === "impresoras" && <Impresoras puedeEditar={puede(user, "impresoras", "editar")} avisar={avisar} />}
+            {tab === "activos" && vistaEf === "garantias" && <Garantias assets={assets} verFicha={verFicha} puedeEditar={puedeEditar} avisar={avisar} />}
+        {tab === "activos" && vistaEf === "impresoras" && <Impresoras puedeEditar={puede(user, "impresoras", "editar")} avisar={avisar} />}
             {tab === "activos" && vistaEf === "todos" && <Activos filtrados={filtrados} filtros={filtros} setFiltros={setFiltros} orden={orden} setOrden={setOrden}
               verFicha={verFicha} editar={(a) => setEdicion(a)} eliminar={eliminarActivo} nuevo={() => setEdicion({})}
               exportar={exportarExcel} puedeEditar={puedeEditar} puedeEliminar={puedeEliminar} esAdmin={esAdmin} />}
@@ -307,7 +305,7 @@ export default function App() {
 
       {puedeVer("impresoras") && <AlertaToner onVer={() => ir("activos", {}, "impresoras")} />}
       {ficha && <FichaActivo key={ficha.id} activo={ficha} glpiMap={glpiMap} user={user} onCerrar={() => setFicha(null)}
-        onEditar={(a) => setEdicion(a)} onEliminar={eliminarActivo} consultarGarantia={consultarGarantia}
+        onEditar={(a) => setEdicion(a)} onEliminar={eliminarActivo} onGarantia={garantiaCambiada}
         puedeEditar={puedeEditar} puedeEliminar={puedeEliminar} abrirActivo={(id) => { const x = assets.find((y) => y.id === id); if (x) verFicha(x); }} />}
       {edicion && <ModalActivo inicial={edicion} onGuardar={guardarActivo} onCerrar={() => setEdicion(null)} />}
       <Ambientacion abierto={ambientacion} onCerrar={() => setAmbientacion(false)} />

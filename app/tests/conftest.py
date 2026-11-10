@@ -32,6 +32,7 @@ os.environ.update({
     "FRONTEND_DIST": os.path.join(_TMP, "dist"),
     "AGENTE_DIR": os.path.join(_TMP, "agente"),
     "SNAPSHOT_DIAS": "0",
+    "GARANTIA_REFRESCO_DIAS": "0",   # sin hilo de fondo que consulte a Lenovo
     "COOKIES_SEGURAS": "0",   # el TestClient va por http: con Secure no mandaria la cookie
     "LOG_FORMAT": "json",
 })

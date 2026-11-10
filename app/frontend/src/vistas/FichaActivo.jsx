@@ -1,18 +1,18 @@
 // FichaActivo.jsx — Panel lateral con la ficha completa del activo: datos tecnicos, seguridad,
-// relevamiento GLPI, garantia Lenovo, QR, software, licencias (diseño), adjuntos e historial.
+// relevamiento GLPI, garantia (Lenovo automatica o carga manual), QR, software, licencias (diseño), adjuntos e historial.
 import { useEffect, useState } from "react";
 import { apiFetch } from "../api";
 import { QR, fmtFechaHora } from "../ui";
 import { Drawer, Ficha, Rotulo, estadoColor } from "../diseno/comunes";
 import { AdjuntosActivo } from "../secciones/AdjuntosActivo";
+import { GarantiaActivo } from "../secciones/GarantiaActivo";
 import { HistorialActivo } from "../secciones/HistorialActivo";
 import { HistorialPcs, MonitoresConectados } from "../secciones/MonitoresActivo";
 import { COLOR_CIFRADO, glpiDe } from "./filtros";
 import { BarraBateria, EstadoAntivirus, InsigniaSoporte, fmtFecha, textoWindows } from "./Salud";
 
-export default function FichaActivo({ activo, glpiMap, user, onCerrar, onEditar, onEliminar, consultarGarantia, puedeEditar, puedeEliminar, abrirActivo }) {
+export default function FichaActivo({ activo, glpiMap, user, onCerrar, onEditar, onEliminar, onGarantia, puedeEditar, puedeEliminar, abrirActivo }) {
   const [verQR, setVerQR] = useState(false);
-  const [consultando, setConsultando] = useState(false);
   const [verSoft, setVerSoft] = useState(false);
   const [salud, setSalud] = useState(null);
   const id = activo?.id;
@@ -28,12 +28,6 @@ export default function FichaActivo({ activo, glpiMap, user, onCerrar, onEditar,
   const ec = estadoColor(a.estado);
   const impresoras = (a.impresoras || "").split("|").filter((s) => s.trim());
   const software = (a.software || "").split("~~~").filter((s) => s.trim()).map((s) => s.split("|||"));
-  const esLenovo = (a.marca || "").toUpperCase().includes("LENOVO");
-
-  async function garantia() {
-    setConsultando(true);
-    try { await consultarGarantia(a); } finally { setConsultando(false); }
-  }
 
   return (
     <Drawer abierto onCerrar={onCerrar} ancho>
@@ -54,7 +48,6 @@ export default function FichaActivo({ activo, glpiMap, user, onCerrar, onEditar,
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         <button className="ll-btn-borde" onClick={() => setVerQR((v) => !v)}>{verQR ? "Ocultar QR" : "Ver QR"}</button>
-        {esLenovo && <button className="ll-btn-borde" disabled={consultando} onClick={garantia}>{consultando ? "Consultando…" : "Consultar garantía a Lenovo"}</button>}
       </div>
       {verQR && <div style={{ display: "flex", justifyContent: "center" }}><div style={{ padding: 10, background: "#fff", borderRadius: 12 }}><QR value={a.serial || String(a.id)} size={130} /></div></div>}
 
@@ -82,6 +75,8 @@ export default function FichaActivo({ activo, glpiMap, user, onCerrar, onEditar,
           ["Comentarios", a.comentarios], ["Últ. sync", fmtFechaHora(a.updated)],
         ]} />
       </div>
+
+      <GarantiaActivo assetId={a.id} puedeEditar={puedeEditar} onCambio={(fin) => onGarantia && onGarantia(a.id, fin)} />
 
       <div>
         <Rotulo>SEGURIDAD</Rotulo>

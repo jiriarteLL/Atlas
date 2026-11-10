@@ -6,6 +6,7 @@ from datetime import date, timedelta
 
 import pytest
 
+import garantias
 import main
 from conftest import SYNC_KEY, bearer, crear_usuario_db, login
 
@@ -111,35 +112,41 @@ def test_alta_de_activo_incompleta_422(client, token, falta):
 
 
 # ---------------------------------------------------------------- garantias (RF-08)
+HTML_LENOVO = ('<script>var d = {"UpmaWarranties":[{"Start":"2096-07-01","End":"2099-06-30",'
+               '"Name":"3 YR Onsite","DeliveryType":"on_site"}],"x":1}</script>')
+
+
 def _activo(client, token, **extra):
     return client.post("/api/assets", headers=bearer(token), json=dict(ACTIVO, **extra)).json()["id"]
 
 
 def test_garantia_lenovo_ok(client, token, monkeypatch):
-    monkeypatch.setattr(main, "_lenovo_garantia", lambda serial: ("2027-06-30", "Vigente", None))
+    monkeypatch.setattr(garantias, "_descargar", lambda serie: HTML_LENOVO)
     aid = _activo(client, token)
     r = client.post("/api/assets/%s/garantia" % aid, headers=bearer(token))
-    assert r.status_code == 200 and r.json() == {"garantia": "2027-06-30", "estado": "Vigente", "anterior": ""}
+    assert r.status_code == 200, r.text
+    j = r.json()
+    assert (j["garantia"], j["estado"], j["anterior"]) == ("2099-06-30", "Vigente", "") and j["cobertura"] == "3 YR Onsite"
     ficha = client.get("/api/assets/%s/ficha" % aid, headers=bearer(token)).json()
-    assert ficha["garantia"] == "2027-06-30"
+    assert ficha["garantia"] == "2099-06-30"
 
 
 def test_garantia_marca_no_lenovo_400(client, token, monkeypatch):
-    monkeypatch.setattr(main, "_lenovo_garantia", lambda serial: pytest.fail("no deberia consultar el portal"))
+    monkeypatch.setattr(garantias, "_descargar", lambda serie: pytest.fail("no deberia consultar el portal"))
     aid = _activo(client, token, marca="HP", serial="HPX12345")
     r = client.post("/api/assets/%s/garantia" % aid, headers=bearer(token))
     assert r.status_code == 400 and "Lenovo" in r.json()["detail"]
 
 
 def test_garantia_error_del_portal_422(client, token, monkeypatch):
-    monkeypatch.setattr(main, "_lenovo_garantia", lambda serial: (None, None, "Lenovo no devolvio datos para ese serial"))
+    monkeypatch.setattr(garantias, "_descargar", lambda serie: "<html>sin datos</html>")
     aid = _activo(client, token)
     r = client.post("/api/assets/%s/garantia" % aid, headers=bearer(token))
     assert r.status_code == 422 and "Lenovo" in r.json()["detail"]
 
 
 def test_garantia_serial_invalido_no_consulta_el_portal():
-    assert main._lenovo_garantia("../../etc")[2] is not None
+    assert garantias.consultar_lenovo("../../etc")[1] == "Serie vacía o inválida"
 
 
 def test_garantia_requiere_permiso(client, token):

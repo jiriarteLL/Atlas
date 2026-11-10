@@ -112,3 +112,10 @@ SMTP_DOMINIO = os.getenv("SMTP_DOMINIO", "")
 
 # Tendencias: snapshot automatico cada N dias (0 = desactivado)
 SNAPSHOT_DIAS = int(os.getenv("SNAPSHOT_DIAS", "7"))
+
+# Garantias (garantias.py): actualizacion automatica desde la pagina publica de soporte de Lenovo, dentro de la app.
+# Se vuelve a consultar lo que tenga mas de GARANTIA_REFRESCO_DIAS (0 = sin actualizacion automatica; el boton
+# "Actualizar desde Lenovo" sigue andando), con una pausa entre consultas y un tope por corrida (cada 6 horas).
+GARANTIA_REFRESCO_DIAS = int(os.getenv("GARANTIA_REFRESCO_DIAS", "30"))
+GARANTIA_PAUSA_S = float(os.getenv("GARANTIA_PAUSA_S", "2"))
+GARANTIA_MAX_POR_CORRIDA = int(os.getenv("GARANTIA_MAX_POR_CORRIDA", "300"))

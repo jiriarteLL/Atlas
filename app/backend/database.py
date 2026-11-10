@@ -355,6 +355,44 @@ class PcMonitores(Base):
     actualizado = Column(DateTime, default=datetime.utcnow)
 
 
+# ---------------------------------------------------------------- garantias (fase C, ver garantias.py)
+class AssetGarantia(Base):
+    """Garantia de un activo. fuente "lenovo" = la consulta automatica; "manual" = cargada a mano o por CSV (HP y
+    otros): la consulta automatica NO la pisa. Asset.garantia (texto AAAA-MM-DD) se mantiene igual a `fin`."""
+    __tablename__ = "asset_garantia"
+    asset_id   = Column(String, ForeignKey("assets.id", ondelete="CASCADE"), primary_key=True)
+    fuente     = Column(String, default="")       # lenovo | manual
+    inicio     = Column(Date, nullable=True)
+    fin        = Column(Date, nullable=True)
+    estado     = Column(String, default="")       # vigente | vencida | "" (sin dato)
+    cobertura  = Column(String, default="")       # la de fin mas lejano ("3 YR Onsite...")
+    entrega    = Column(String, default="")       # on_site | depot | carry_in ...
+    origen     = Column(String, default="")       # Factory Warranty / extension
+    coberturas = Column(Text, default="")         # JSON: lista normalizada (fabrica + extensiones)
+    proveedor  = Column(String, default="")
+    contrato   = Column(String, default="")
+    notas      = Column(Text, default="")
+    consultado = Column(DateTime, nullable=True)  # ultima consulta a Lenovo (exitosa o no)
+    error      = Column(String, default="")       # ultimo error de consulta; "" si salio bien
+    actualizado = Column(DateTime, default=datetime.utcnow)
+
+
+class GarantiaCorrida(Base):
+    """Fila unica (id=1) con el estado de la actualizacion automatica. Hace de lock entre procesos: Atlas-HTTP y
+    Atlas-HTTPS corren la misma app, y solo corre quien toma `corriendo_hasta` (un UPDATE condicional)."""
+    __tablename__ = "garantia_corrida"
+    id              = Column(Integer, primary_key=True)
+    corriendo_hasta = Column(DateTime, nullable=True)   # lease: vencido = libre
+    duenio          = Column(String, default="")
+    pedida          = Column(Boolean, default=False)    # alguien apreto "Actualizar desde Lenovo"
+    inicio          = Column(DateTime, nullable=True)   # ultima corrida
+    fin             = Column(DateTime, nullable=True)
+    pendientes      = Column(Integer, default=0)
+    ok              = Column(Integer, default=0)
+    errores         = Column(Integer, default=0)
+    mensaje         = Column(String, default="")
+
+
 def init_db():
     """Lleva la base a la ultima migracion de Alembic (idempotente; corre en cada arranque).
 

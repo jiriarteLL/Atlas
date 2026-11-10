@@ -6,15 +6,13 @@ import logging
 import mimetypes
 import os
 import re
-import ssl as _ssl
 import threading
 import time
 import unicodedata
-import urllib.request as _ureq
 from urllib.parse import quote
 import uuid
 from contextlib import asynccontextmanager
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from typing import Literal, Optional, Union
 
 from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
@@ -37,6 +35,8 @@ from impresoras_relevamiento import router as relevamiento_router
 from salud import borrar_datos_salud, guardar_salud, limitar_salud, router as salud_router
 from telefonia import router as telefonia_router
 from monitores import borrar_datos_monitor, limitar_monitores, procesar_monitores, router as monitores_router
+import garantias
+from garantias import borrar_datos_garantia, router as garantias_router
 from mailer import notificar_proyecto_finalizado
 from metricas import metricas_texto, registrar_request
 from ratelimit import limiter
@@ -50,6 +50,9 @@ async def lifespan(app):
     init_db()
     if config.SNAPSHOT_DIAS > 0:
         threading.Thread(target=_loop_snapshots, daemon=True).start()
+    if config.GARANTIA_REFRESCO_DIAS > 0:
+        # Corre en los dos procesos (HTTP y HTTPS); el lease de garantia_corrida hace que consulte uno solo
+        threading.Thread(target=garantias.loop, daemon=True).start()
     log.info("app.start", extra={"event": "app.start"})
     yield
 
@@ -65,6 +68,7 @@ app.include_router(impresoras_router)
 app.include_router(salud_router)
 app.include_router(telefonia_router)
 app.include_router(monitores_router)
+app.include_router(garantias_router)
 if config.CORS_ORIGINS:
     app.add_middleware(CORSMiddleware, allow_origins=config.CORS_ORIGINS, allow_methods=["*"], allow_headers=["*"],
                        allow_credentials=True)
@@ -296,6 +300,8 @@ def update_asset(aid: str, a: AssetUpdate, request: Request, user: UserOut = Dep
         setattr(obj, k, v)
     obj.updated = datetime.utcnow()
     registrar_historial(db, aid, user.username, "edicion", cambios)
+    if "garantia" in cambios:
+        _garantia_editada_en_ficha(db, obj, user.username)
     db.commit()
     db.refresh(obj)
     db.close()
@@ -314,6 +320,7 @@ def delete_asset(aid: str, request: Request, user: UserOut = Depends(require_mod
     borrar_datos_impresora(db, aid)
     borrar_datos_salud(db, aid)
     borrar_datos_monitor(db, aid)
+    borrar_datos_garantia(db, aid)
     db.delete(obj)
     db.commit()
     db.close()
@@ -662,82 +669,48 @@ def borrar_tarea(tid: str, request: Request, user: UserOut = Depends(require_mod
     return res
 
 
-# ================================================================ garantias
-_CTX = _ssl.create_default_context()
-_HDR_LNV = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml"}
-
-
-def _lenovo_garantia(serial):
-    """Devuelve (fecha_fin, estado, error). Scraping del portal publico de Lenovo."""
-    s = str(serial or "").strip().upper()
-    if s in ("", "-", "N/A") or not re.fullmatch(r"[A-Z0-9-]{3,40}", s):
-        return None, None, "Serial vacio o invalido"
-    url = "https://pcsupport.lenovo.com/ar/es/products/%s/warranty" % s
-    try:
-        # Endpoint sincronico: corre en el threadpool, no bloquea el event loop; 10 s acota cuanto ocupa un hilo.
-        with _ureq.urlopen(_ureq.Request(url, headers=_HDR_LNV), timeout=10, context=_CTX) as r:
-            html = r.read().decode("utf-8", "ignore")
-    except Exception as e:
-        return None, None, "No se pudo consultar (%s)" % type(e).__name__
-    fin, activa = None, False
-    m = re.search(r'"BaseUpmaWarranties"\s*:\s*(\[.*?\])', html)
-    if m:
-        try:
-            for w in _json.loads(m.group(1)):
-                e = w.get("End")
-                if e and (fin is None or e > fin):
-                    fin, activa = e, (w.get("StatusV2") == "Active")
-        except ValueError:
-            pass
-    if not fin:
-        return None, None, "Lenovo no devolvio datos para ese serial"
-    return fin, ("Vigente" if activa else "Vencida"), None
+# ================================================================ garantias (detalle en garantias.py)
+def _garantia_editada_en_ficha(db, obj, usuario):
+    """La fecha de garantia cambiada a mano en la ficha pasa a ser una garantia manual (la consulta automatica no
+    la pisa); vaciarla quita la carga manual."""
+    from database import AssetGarantia
+    nueva = garantias._fecha(obj.garantia)
+    g = db.get(AssetGarantia, obj.id)
+    if nueva:
+        datos = {"inicio": g.inicio if g else None, "fin": nueva, "cobertura": g.cobertura if g else "",
+                 "proveedor": g.proveedor if g else "", "contrato": g.contrato if g else "", "notas": g.notas if g else ""}
+        garantias.guardar_manual(db, obj, datos, usuario)
+    elif g is not None:
+        db.delete(g)
 
 
 @app.post("/api/assets/{aid}/garantia")
 def consultar_garantia(aid: str, request: Request, user: UserOut = Depends(require_modulo("activos", nivel="editar"))):
+    """Boton "Consultar ahora" de la ficha (Lenovo). Endpoint sincronico: corre en el threadpool."""
     db = SessionLocal()
-    obj = db.query(Asset).filter(Asset.id == aid).first()
-    if not obj:
+    try:
+        obj = db.query(Asset).filter(Asset.id == aid).first()
+        if not obj:
+            raise HTTPException(404)
+        if not garantias.es_lenovo(obj):
+            raise HTTPException(400, detail="Solo disponible para equipos Lenovo (marca: %s)" % (obj.marca or "sin marca"))
+        from database import AssetGarantia
+        g = db.get(AssetGarantia, aid)
+        if g is not None and g.fuente == "manual":
+            raise HTTPException(409, detail="Tiene una garantía cargada a mano: quitala para volver a consultar a Lenovo")
+        anterior = obj.garantia or ""
+        datos, err = garantias.consultar_lenovo(obj.serial)
+        garantias.guardar_lenovo(db, obj, datos, err)
+        db.commit()
+        if err:
+            raise HTTPException(422, detail="Lenovo no devolvió datos para esa serie" if err == "formato" else err)
+        out = garantias.armar(obj, db.get(AssetGarantia, aid))
+    finally:
         db.close()
-        raise HTTPException(404)
-    if "LENOVO" not in (obj.marca or "").upper():
-        db.close()
-        raise HTTPException(400, detail="Solo disponible para equipos Lenovo (marca: %s)" % (obj.marca or "sin marca"))
-    fin, estado, err = _lenovo_garantia(obj.serial)
-    if err:
-        db.close()
-        raise HTTPException(422, detail=err)
-    anterior = obj.garantia or ""
-    obj.garantia = fin
-    obj.updated = datetime.utcnow()
-    db.commit()
-    db.close()
     log_action(user.username, "consulta_garantia", "asset", aid,
-               {"anterior": anterior, "nueva": fin, "estado": estado}, ip=_ip(request))
-    return {"garantia": fin, "estado": estado, "anterior": anterior}
-
-
-@app.get("/api/garantias/vencimientos")
-def vencimientos(dias: int = 90, user: UserOut = Depends(require_modulo("activos", "dashboard"))):
-    hoy = date.today()
-    lim = hoy + timedelta(days=dias)
-    db = SessionLocal()
-    out = []
-    for a in db.query(Asset).filter(Asset.garantia != "").all():
-        try:
-            y, m, d = map(int, str(a.garantia).split("-")[:3])
-            f = date(y, m, d)
-        except ValueError:
-            continue
-        if hoy <= f <= lim:
-            out.append({"id": a.id, "nombre": a.nombre or "", "serial": a.serial or "",
-                        "usuario": a.usuario or "", "sede": a.ubicacion or "",
-                        "modelo": a.modelo or "", "garantia": a.garantia, "dias": (f - hoy).days})
-    db.close()
-    out.sort(key=lambda x: x["dias"])
-    return out
+               {"anterior": anterior, "nueva": out["fin"], "estado": out["estado"]}, ip=_ip(request))
+    return {"garantia": out["fin"], "estado": "Vigente" if out["estado"] == "vigente" else "Vencida",
+            "anterior": anterior, "cobertura": out["cobertura"], "detalle": out}
 
 
 # ================================================================ GLPI Agent

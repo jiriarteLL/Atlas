@@ -58,7 +58,15 @@ export default function Dashboard({ assets, ir, verFicha, puedeVer = () => true 
   const total = assets.length;
   const enUso = assets.filter((a) => a.estado === "Activo").length;
   const enMant = assets.filter((a) => a.estado === "Mantenimiento").length;
-  const garVencen = assets.filter((a) => { const d = diasGarantia(a); return d !== null && d >= 0 && d <= 90; }).length;
+  const garLocal = assets.filter((a) => { const d = diasGarantia(a); return d !== null && d >= 0 && d <= 90; }).length;
+  const [gar, setGar] = useState(null);   // /api/garantias/resumen (si no carga, se cuenta con la fecha de los activos)
+  useEffect(() => {
+    let vivo = true;
+    apiFetch("/api/garantias/resumen").then((x) => (x.ok ? x.json() : null)).then((d) => { if (vivo) setGar(d); }).catch(() => {});
+    return () => { vivo = false; };
+  }, []);
+  const garVencen = gar ? gar.vencen_90 : garLocal;
+  const garSub = gar ? `Próximos 3 meses · ${gar.vencidas} vencidas · ${gar.sin_dato} sin dato` : "Próximos 3 meses";
   const nb = assets.filter((a) => a.tipo === "Notebook" || a.tipo === "CPU");
   const nbValor = nbFiltro === "asignadas" ? nb.filter((a) => (a.usuario || "").trim()).length
     : nbFiltro === "sinasignar" ? nb.filter((a) => !(a.usuario || "").trim()).length : nb.length;
@@ -87,8 +95,8 @@ export default function Dashboard({ assets, ir, verFicha, puedeVer = () => true 
         <Tarjeta valor={enMant} rotulo="EN MANTENIMIENTO" sub={enMant ? "Requieren atención" : "Sin urgencias"} subColor={enMant ? "var(--ll-warn)" : undefined} barra="var(--ll-ambar)" demora=".05s"
           onClick={() => ir("activos", { estado: "Mantenimiento" })} />
         <Tarjeta valor="—" rotulo="LICENCIAS CLAUDE" sub="Módulo no incluido" barra="var(--accent2)" demora=".1s" onClick={() => ir("licencias")} />
-        <Tarjeta valor={garVencen} rotulo="GARANTÍAS POR VENCER" sub="Próximos 3 meses" barra="var(--ll-rosa)" demora=".15s"
-          onClick={() => ir("activos", { estado: "__gar_vencen__" })} />
+        <Tarjeta valor={garVencen} rotulo="GARANTÍAS POR VENCER" sub={garSub} barra="var(--ll-rosa)" demora=".15s"
+          onClick={() => ir("activos", null, "garantias")} />
         <Tarjeta valor={nbValor} rotulo="NOTEBOOKS / CPU" barra="#3b82f6" demora=".2s">
           <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
             {[["total", "Total"], ["asignadas", "Asignadas"], ["sinasignar", "Sin asignar"]].map(([k, l]) => (
