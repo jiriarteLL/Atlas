@@ -37,7 +37,7 @@ from telefonia import router as telefonia_router
 from monitores import borrar_datos_monitor, limitar_monitores, procesar_monitores, router as monitores_router
 import garantias
 from garantias import borrar_datos_garantia, router as garantias_router
-from ciclo_activos import borrar_datos_ciclo, router as ciclo_router
+from ciclo_activos import borrar_datos_ciclo, router as ciclo_router, usuario_fijado
 from actas import router as actas_router
 from auditoria import router as auditoria_router
 from mailer import notificar_proyecto_finalizado
@@ -397,6 +397,8 @@ def _aplicar_sync(a: AssetSync):
     if obj:
         for campo in ("garantia", "comentarios", "estado"):
             setattr(a, campo, getattr(obj, campo) or "")
+        if usuario_fijado(db, obj.id):   # entregado por acta / asignado a mano: manda sobre el agente
+            a.usuario = obj.usuario or ""
         datos = a.model_dump(exclude={"salud", "monitores_detalle"})
         cambios = {}
         sw_ant = obj.software

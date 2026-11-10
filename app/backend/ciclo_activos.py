@@ -87,6 +87,16 @@ def estado_ciclo(a):
     return e   # "Robado" u otro que se cargo a mano
 
 
+def usuario_fijado(db, asset_id):
+    """True si el usuario del equipo lo decidio una persona: el ultimo movimiento de asignacion/prestamo/devolucion
+    es una asignacion o un prestamo (por acta o cargado a mano). Mientras tanto el agente no cambia el usuario;
+    quien inicio sesion en la PC sigue viendose en usuario_alt y en el ultimo login. Una devolucion lo libera."""
+    m = (db.query(AssetMovimiento).filter(AssetMovimiento.asset_id == asset_id,
+                                          AssetMovimiento.tipo.in_(("asignacion", "prestamo", "devolucion")))
+         .order_by(AssetMovimiento.fecha.desc()).first())
+    return bool(m and m.tipo in ("asignacion", "prestamo"))
+
+
 def aplicar_movimiento(db, a, tipo, hecho_por, a_usuario=None, sede=None, motivo="", acta_id="", fecha=None):
     """Registra el movimiento y deja el activo en el estado / persona / sede que corresponde (con Historial)."""
     if tipo not in MOVIMIENTOS:

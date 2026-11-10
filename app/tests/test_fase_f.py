@@ -71,6 +71,18 @@ def test_el_agente_no_pisa_un_estado_puesto_a_mano(client, token):
     assert a["estado"] == "En reparación"
 
 
+def test_entregado_por_acta_o_asignado_el_agente_no_cambia_el_usuario(client, token):
+    _sync(client, usuario="quien.inicio.sesion")
+    aid = _activo(client, token)["id"]
+    assert _mov(client, token, aid, tipo="asignacion", a_usuario="Eva Muestra").status_code == 200
+    _sync(client, usuario="otro.usuario")
+    assert _activo(client, token)["usuario"] == "Eva Muestra"
+    # una devolucion libera el equipo: el agente vuelve a informar quien lo usa
+    assert _mov(client, token, aid, tipo="devolucion").status_code == 200
+    _sync(client, usuario="otro.usuario")
+    assert _activo(client, token)["usuario"] == "otro.usuario"
+
+
 def test_vida_util_y_para_renovar(client, token):
     _sync(client)
     aid = _activo(client, token)["id"]
