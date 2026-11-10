@@ -47,6 +47,16 @@ def test_parsea_upma_fin_inicio_estado_por_fecha():
     assert "Description" not in str(d) and "piezas" not in str(d)
 
 
+def test_cobertura_con_codigo_de_lenovo_usa_el_nombre_legible():
+    # caso real (PF1AD0HG): misma cobertura con codigo "UKN" y con nombre; y otra solo con codigo (PF4APVCZ: "VEO")
+    html = ('{"UpmaWarranties":[{"Start":"2024-11-24","End":"%s","Name":"UKN","DeliveryType":"on_site","Duration":36},'
+            '{"Start":"2024-11-24","End":"%s","Name":"3 YR On-site, 9X5 Upgrade","DeliveryType":"on_site","Duration":36}]}'
+            % (FIN.isoformat(), FIN.isoformat()))
+    assert garantias.parsear_lenovo(html)["cobertura"] == "3 YR On-site, 9X5 Upgrade"
+    solo_codigo = '{"UpmaWarranties":[{"Start":"2024-01-01","End":"%s","Name":"VEO","DeliveryType":"depot","Duration":36}]}' % FIN.isoformat()
+    assert garantias.parsear_lenovo(solo_codigo)["cobertura"] == "3 años · Depósito"
+
+
 def test_sin_upma_usa_base_y_sin_json_es_none():
     base = '<script>{"BaseUpmaWarranties":[{"End":"2020-01-31","StatusV2":"Active"}]}</script>'
     d = garantias.parsear_lenovo(base)

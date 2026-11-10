@@ -124,6 +124,27 @@ def estado_por_fecha(fin, hoy=None):
     return "vigente" if fin >= (hoy or date.today()) else "vencida"
 
 
+ENTREGAS = {"on_site": "En sitio", "depot": "Depósito", "carry_in": "Llevar al service"}
+
+
+def es_codigo(nombre):
+    """Lenovo a veces nombra la cobertura con un codigo interno ("UKN", "VEO", "TP1") en vez de un texto."""
+    n = (nombre or "").strip()
+    return not n or (len(n) <= 4 and " " not in n)
+
+
+def nombre_cobertura(c):
+    if not es_codigo(c["nombre"]):
+        return c["nombre"]
+    partes = []
+    if c.get("duracion_meses"):
+        m = c["duracion_meses"]
+        partes.append("%d año%s" % (m // 12, "" if m // 12 == 1 else "s") if m % 12 == 0 else "%d meses" % m)
+    if ENTREGAS.get(c.get("entrega")):
+        partes.append(ENTREGAS[c["entrega"]])
+    return " · ".join(partes) or c["nombre"] or "Garantía"
+
+
 def parsear_lenovo(html, hoy=None):
     """HTML de la pagina de garantia -> dict con inicio/fin/estado/cobertura/entrega/origen/coberturas, o None."""
     hoy = hoy or date.today()
@@ -149,11 +170,12 @@ def parsear_lenovo(html, hoy=None):
                       "duracion_meses": meses})
     if not lista:
         return None
-    lista.sort(key=lambda c: c["fin"], reverse=True)
+    # entre las que vencen ultimo, la de nombre legible ("3 YR On-site, 9X5 Upgrade" antes que el codigo "UKN")
+    lista.sort(key=lambda c: (c["fin"], not es_codigo(c["nombre"])), reverse=True)
     mayor = lista[0]
     inicios = [c["inicio"] for c in lista if c["inicio"]]
     return {"inicio": min(inicios) if inicios else None, "fin": mayor["fin"], "estado": estado_por_fecha(mayor["fin"], hoy),
-            "cobertura": mayor["nombre"], "entrega": mayor["entrega"], "origen": mayor["origen"],
+            "cobertura": nombre_cobertura(mayor), "entrega": mayor["entrega"], "origen": mayor["origen"],
             "coberturas": [dict(c, inicio=c["inicio"].isoformat() if c["inicio"] else "", fin=c["fin"].isoformat())
                            for c in lista]}
 
