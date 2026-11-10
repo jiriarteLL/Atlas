@@ -4,6 +4,7 @@ import { apiFetch } from "../api";
 import { SEDES, TIPOS, fmtFechaHora } from "../ui";
 import { Estado, TIPO_COLOR } from "../diseno/comunes";
 import { diasGarantia } from "./filtros";
+import ParaRenovar from "../secciones/ParaRenovar";
 
 function Tarjeta({ valor, rotulo, sub, subColor, barra, demora, onClick, children }) {
   return (
@@ -105,6 +106,7 @@ export default function Dashboard({ assets, ir, verFicha, puedeVer = () => true 
       </div>
 
       {puedeVer("salud") && <RiesgosSeguridad ir={ir} />}
+      {puedeVer("activos") && <ParaRenovar assets={assets} verFicha={verFicha} />}
 
       <div className="ll-grid-dash">
         <div className="ll-card" style={{ padding: "24px 26px 20px" }}>

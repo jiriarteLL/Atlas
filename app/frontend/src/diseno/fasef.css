@@ -1,0 +1,98 @@
+/* fasef.css — Fase F: impresion (actas y etiquetas QR), firma en pantalla, auditoria en el celular y ciclo de vida.
+   Lo que se imprime va en un portal .ll-impresion: en pantalla no se ve; al imprimir se oculta todo lo demas. */
+
+.ll-impresion { display: none; }
+@media print {
+  body.ll-imprimiendo > *:not(.ll-impresion) { display: none !important; }
+  body.ll-imprimiendo { background: #fff !important; }
+  body.ll-imprimiendo .ll-impresion { display: block; color: #111; background: #fff; font-family: Arial, Helvetica, sans-serif; }
+  @page { size: A4; margin: 12mm; }
+  @page etiqueta62 { size: 62mm 29mm; margin: 0; }
+  .etq-hoja.f62 .etq { page: etiqueta62; break-after: page; }
+}
+
+/* ---------------------------------------------------------------- etiquetas QR */
+.etq-hoja { display: grid; gap: 4mm; }
+.etq-hoja.c2 { grid-template-columns: repeat(2, 1fr); }
+.etq-hoja.c3 { grid-template-columns: repeat(3, 1fr); }
+.etq-hoja.c4 { grid-template-columns: repeat(4, 1fr); }
+.etq { display: flex; align-items: center; gap: 3mm; padding: 3mm; border: 0.3mm dashed #999; border-radius: 2mm;
+  break-inside: avoid; color: #111; background: #fff; overflow: hidden; }
+.etq img { width: 24mm; height: 24mm; flex: none; image-rendering: pixelated; }
+.etq .t { min-width: 0; font-size: 8.5pt; line-height: 1.25; }
+.etq .t b { display: block; font-size: 10pt; overflow-wrap: anywhere; }
+.etq .t .m { font-family: "Courier New", monospace; font-size: 8pt; overflow-wrap: anywhere; }
+.etq .t .e { font-size: 7pt; color: #555; margin-top: 1mm; }
+.etq-hoja.c4 .etq img { width: 18mm; height: 18mm; }
+.etq-hoja.c4 .etq .t { font-size: 7.5pt; }
+.etq-hoja.f62 { display: block; }
+.etq-hoja.f62 .etq { width: 62mm; height: 29mm; box-sizing: border-box; border: none; border-radius: 0; padding: 2mm 3mm; }
+.etq-hoja.f62 .etq img { width: 24mm; height: 24mm; }
+/* vista previa en pantalla: hoja blanca dentro del modal, sea cual sea el tema */
+.etq-previa { background: #fff; border-radius: 12px; padding: 14px; max-height: 46vh; overflow: auto; border: 1px solid var(--ll-line); }
+/* la hoja A4 se ve a escala (186 mm de ancho util) para que la vista previa sea fiel a lo que sale impreso */
+.etq-previa .etq-hoja:not(.f62) { width: 186mm; zoom: .62; }
+.etq-previa .etq-hoja.f62 { display: grid; grid-template-columns: repeat(auto-fill, 62mm); gap: 3mm; zoom: .8; }
+.etq-previa .etq-hoja.f62 .etq { border: 0.3mm dashed #999; }
+
+/* ---------------------------------------------------------------- acta (A4) */
+.acta-doc { background: #fff; color: #111; font-family: Arial, Helvetica, sans-serif; font-size: 10.5pt; line-height: 1.45; }
+.ll-card .acta-doc, .acta-previa .acta-doc { padding: 28px 32px; border-radius: 12px; }
+.acta-doc .cab { display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 2px solid #0b7285; padding-bottom: 10px; margin-bottom: 14px; }
+.acta-doc .cab img { height: 42px; }
+.acta-doc .cab .num { text-align: right; font-size: 9.5pt; color: #333; }
+.acta-doc .cab .num b { display: block; font-size: 13pt; color: #0b7285; }
+.acta-doc h2 { font-size: 14pt; margin: 4px 0 12px; letter-spacing: .5px; }
+.acta-doc .datos { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 24px; margin-bottom: 14px; }
+.acta-doc .datos div span { color: #555; }
+.acta-doc table { width: 100%; border-collapse: collapse; margin: 6px 0 14px; font-size: 9.5pt; }
+/* !important: los estilos generales de tablas de la app (color por tema, sin borde en la ultima fila) no aplican al acta */
+.acta-doc th, .acta-doc td { border: 1px solid #bbb !important; padding: 5px 7px !important; text-align: left; vertical-align: top; color: #111 !important; background: #fff; }
+.acta-doc th { background: #eef4f6 !important; color: #333 !important; font-size: 8.5pt; letter-spacing: .4px; }
+.acta-doc tr:hover { background: transparent !important; }
+.acta-doc .clausula { font-size: 9pt; color: #222; border: 1px solid #ddd; background: #fafafa; padding: 8px 10px; border-radius: 4px; text-align: justify; }
+.acta-doc .firmas { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 26px; }
+.acta-doc .firma { text-align: center; font-size: 9pt; }
+.acta-doc .firma .linea { height: 70px; border-bottom: 1px solid #333; display: flex; align-items: flex-end; justify-content: center; }
+.acta-doc .firma img { max-height: 66px; max-width: 100%; }
+.acta-doc .sello { margin-top: 18px; font-size: 8pt; color: #666; text-align: center; }
+.acta-doc .anulada { color: #b4232c; font-weight: 700; border: 2px solid #b4232c; padding: 4px 10px; display: inline-block; transform: rotate(-4deg); }
+@media print { .acta-doc { font-size: 10pt; } }
+
+/* ---------------------------------------------------------------- firma en pantalla */
+.firma-lienzo { width: 100%; height: 170px; border-radius: 12px; background: #fff; border: 1px dashed var(--ll-borde-ctrl); touch-action: none; cursor: crosshair; display: block; }
+.firma-caja { display: flex; flex-direction: column; gap: 8px; }
+.firma-caja .pie { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--ll-dim); }
+
+/* ---------------------------------------------------------------- auditoria (mobile-first) */
+.aud-escaner { display: flex; flex-direction: column; gap: 12px; }
+.aud-video { position: relative; width: 100%; aspect-ratio: 4 / 3; max-height: 52vh; background: #000; border-radius: 14px; overflow: hidden; }
+.aud-video video { width: 100%; height: 100%; object-fit: cover; }
+.aud-video .mira { position: absolute; inset: 18%; border: 2px solid color-mix(in srgb, var(--accent) 80%, #fff); border-radius: 14px; box-shadow: 0 0 0 9999px rgba(0, 0, 0, .25); }
+.aud-resultado { padding: 14px 16px; border-radius: 14px; border: 1px solid var(--ll-line); font-size: 14px; }
+.aud-resultado.encontrado { border-color: var(--ll-verde); background: color-mix(in srgb, var(--ll-verde) 12%, transparent); }
+.aud-resultado.sobrante { border-color: var(--ll-ambar); background: color-mix(in srgb, var(--ll-ambar) 12%, transparent); }
+.aud-resultado.desconocido { border-color: var(--ll-rosa); background: color-mix(in srgb, var(--ll-rosa) 12%, transparent); }
+.aud-contadores { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 10px; }
+.aud-contadores button { text-align: left; border: 1px solid var(--ll-line); border-radius: 12px; background: var(--ll-card); padding: 10px 12px; color: inherit; font: inherit; cursor: pointer; }
+.aud-contadores button[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.aud-contadores .n { font-family: var(--ll-mono); font-size: 22px; font-weight: 600; }
+.aud-contadores .l { font-size: 12px; color: var(--ll-text-2); }
+.aud-fila { display: flex; align-items: center; gap: 10px; padding: 10px 4px; border-top: 1px solid var(--ll-row-line); font-size: 13px; }
+.aud-fila:first-child { border-top: none; }
+.aud-fila .q { flex: 1; min-width: 0; }
+.aud-fila .q b { display: block; color: var(--ll-text); font-weight: 600; word-break: break-all; }
+.aud-fila .q span { color: var(--ll-muted); font-size: 12px; }
+
+/* ---------------------------------------------------------------- ciclo de vida (ficha) */
+.ciclo-linea { position: relative; padding-left: 18px; display: flex; flex-direction: column; gap: 12px; }
+.ciclo-linea::before { content: ""; position: absolute; left: 5px; top: 4px; bottom: 4px; width: 2px; background: var(--ll-line); }
+.ciclo-mov { position: relative; font-size: 12.5px; color: var(--ll-text-2); }
+.ciclo-mov::before { content: ""; position: absolute; left: -17px; top: 4px; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--ll-card); }
+.ciclo-mov b { color: var(--ll-text); }
+.ciclo-mov .f { color: var(--ll-muted); font-family: var(--ll-mono); font-size: 11.5px; }
+.ll-grid-form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.ll-grid-form .doble { grid-column: 1 / -1; }
+@media (max-width: 560px) { .ll-grid-form { grid-template-columns: 1fr; } .acta-doc .datos, .acta-doc .firmas { grid-template-columns: 1fr; } }
+
+@media (max-width: 700px) { .etq-elegir { grid-template-columns: 1fr !important; } }

@@ -1,5 +1,6 @@
 // filtros.js — Calculos compartidos sobre los activos (garantia, dias sin reportar, filtros especiales).
 import { fechaUtc } from "../ui";
+import { estadoCiclo } from "../diseno/comunes";
 
 // Color del estado de BitLocker (ficha del activo y Notebooks y PC)
 export const COLOR_CIFRADO = (c) => c === "Cifrado" ? "var(--ll-verde)" : (c || "").startsWith("Cifrado (") ? "var(--ll-ambar)"
@@ -38,6 +39,6 @@ export function cumpleEstado(a, fEstado, glpiMap) {
     case "__sin_cifrar__": return !!gl && !!gl.volumenes_sin_cifrar;
     case "__anydesk__": return !!gl && (gl.acceso_remoto || "").includes("anydesk");
     case "__bateria__": return !!gl && gl.bateria_salud != null && gl.bateria_salud < 70;
-    default: return a.estado === fEstado;
+    default: return a.estado === fEstado || estadoCiclo(a) === fEstado;
   }
 }

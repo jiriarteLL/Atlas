@@ -191,6 +191,7 @@ MODULOS = [
     ("reportes",   "Reportes",       "Gráficos y exportación a Excel / CSV", ("ver",)),
     ("tendencias", "Tendencias",     "Evolución del inventario en el tiempo", ("ver",)),
     ("agente",     "Agente",         "Scripts e instrucciones del agente de inventario", ("ver",)),
+    ("auditoria",  "Auditoría física", "Campañas de relevamiento con el celular (QR / serie)", ("ver", "editar")),
     ("importar",   "Importar CSV",   "Alta masiva de activos desde un CSV", ("editar",)),
     ("accesos",    "Accesos",        "Usuarios de Atlas y sus permisos", ("administrar",)),
     ("licencias",  "Licencias",      "Próximamente", ()),
