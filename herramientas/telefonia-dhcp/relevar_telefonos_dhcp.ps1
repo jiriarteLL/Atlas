@@ -48,21 +48,29 @@ if (-not $servidores.Count -or -not $ouis.Count) { Write-Log "ERROR: faltan Serv
 if (-not $Probar -and (-not $cfg.Server -or -not $cfg.SyncKey)) { Write-Log "ERROR: faltan Server o SyncKey en telefonia-dhcp.ini"; exit 2 }
 
 # ---- Lectura de concesiones (solo lectura)
-$concesiones = @{}
-foreach ($s in $servidores) {
-    try {
-        $leidas = Invoke-Command -ComputerName $s -ErrorAction Stop -ArgumentList (, $ouis) -ScriptBlock {
-            param($ouis)
-            Get-DhcpServerv4Scope -ErrorAction Stop | ForEach-Object {
-                Get-DhcpServerv4Lease -ScopeId $_.ScopeId -ErrorAction SilentlyContinue | ForEach-Object {
-                    $mac = ($_.ClientId -replace '[^0-9A-Fa-f]', '').ToUpper()
-                    if ($mac.Length -eq 12 -and $ouis -contains $mac.Substring(0, 6)) {
-                        [pscustomobject]@{ mac = $mac; ip = "$($_.IPAddress)"; hostname = "$($_.HostName)"
-                                           vence = $(if ($_.LeaseExpiryTime) { $_.LeaseExpiryTime.ToString("s") } else { "" }) }
-                    }
-                }
+# Con el modulo DhcpServer local (RSAT-DHCP) se consulta por RPC: a la cuenta que corre la tarea le alcanza con ser
+# miembro de "DHCP Users". Sin el modulo se usa Invoke-Command (WinRM), que pide administrador en el servidor DHCP.
+$leer = {
+    param($ouis, $servidor)
+    $p = @{ ErrorAction = 'Stop' }; if ($servidor) { $p.ComputerName = $servidor }
+    Get-DhcpServerv4Scope @p | ForEach-Object {
+        Get-DhcpServerv4Lease -ScopeId $_.ScopeId @p | ForEach-Object {
+            $mac = ($_.ClientId -replace '[^0-9A-Fa-f]', '').ToUpper()
+            if ($mac.Length -eq 12 -and $ouis -contains $mac.Substring(0, 6)) {
+                [pscustomobject]@{ mac = $mac; ip = "$($_.IPAddress)"; hostname = "$($_.HostName)"
+                                   vence = $(if ($_.LeaseExpiryTime) { $_.LeaseExpiryTime.ToString("s") } else { "" }) }
             }
         }
+    }
+}
+$rpc = [bool](Get-Module -ListAvailable DhcpServer)
+$concesiones = @{}
+$leidosOk = 0
+foreach ($s in $servidores) {
+    try {
+        if ($rpc) { $leidas = & $leer $ouis $s }
+        else      { $leidas = Invoke-Command -ComputerName $s -ErrorAction Stop -ArgumentList $ouis, $null -ScriptBlock $leer }
+        $leidosOk++
         foreach ($c in @($leidas)) {
             # si la misma MAC aparece en dos servidores (ambito duplicado / conmutacion), queda la que vence despues
             $prev = $concesiones[$c.mac]
@@ -75,6 +83,7 @@ foreach ($s in $servidores) {
 }
 
 $lista = @($concesiones.Values)
+if (-not $leidosOk) { Write-Log "ERROR: no se pudo leer ningun servidor DHCP; no se manda nada a Atlas"; exit 1 }
 if ($Probar) {
     $lista | ForEach-Object { [pscustomobject]$_ } | Sort-Object ip | Format-Table mac, ip, hostname, vence -AutoSize
     Write-Host ("{0} telefonos (no se mando nada a Atlas)" -f $lista.Count)
