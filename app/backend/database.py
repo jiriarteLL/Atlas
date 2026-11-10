@@ -285,7 +285,8 @@ class LineaTelefonica(Base):
     __tablename__ = "linea_telefonica"
     id            = Column(String, primary_key=True, default=_uuid)
     interno       = Column(String, nullable=False, unique=True)
-    nombre        = Column(String, default="")
+    nombre        = Column(String, default="")           # el de 3CX
+    asignado      = Column(String, default="")           # segun la guia de internos: manda sobre "nombre"
     email         = Column(String, default="")
     departamento  = Column(String, default="")
     did           = Column(String, default="")

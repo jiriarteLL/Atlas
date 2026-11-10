@@ -108,7 +108,7 @@ def leer_csv_3cx(contenido: bytes):
 
 def _dict(linea):
     return {c: getattr(linea, c) for c in (
-        "id", "interno", "nombre", "email", "departamento", "did", "deshabilitado", "mac", "modelo", "tipo",
+        "id", "interno", "nombre", "asignado", "email", "departamento", "did", "deshabilitado", "mac", "modelo", "tipo",
         "tipo_manual", "ip", "ip_origen", "ip_visto", "hostname", "sede", "sede_manual", "piso", "notas", "estado",
         "en_3cx", "creado", "actualizado")}
 
@@ -152,6 +152,7 @@ def ver(linea_id: str, user: UserOut = Depends(require_modulo("telefonia"))):
 class LineaUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     tipo:   Optional[Literal[TIPOS]] = None
+    asignado: Optional[str] = Field(default=None, max_length=160)
     sede:   Optional[str] = Field(default=None, max_length=60)
     piso:   Optional[str] = Field(default=None, max_length=30)
     notas:  Optional[str] = Field(default=None, max_length=2000)
@@ -199,7 +200,7 @@ def editar(linea_id: str, data: LineaUpdate, request: Request,
                 x.sede, x.sede_manual = datos["sede"], True
             else:   # vacio = volver a la sede calculada
                 x.sede_manual = False
-        for campo in ("piso", "notas", "estado"):
+        for campo in ("asignado", "piso", "notas", "estado"):
             if campo in datos and datos[campo] != getattr(x, campo):
                 cambios[campo] = (getattr(x, campo), datos[campo])
                 setattr(x, campo, datos[campo])

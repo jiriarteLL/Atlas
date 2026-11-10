@@ -83,6 +83,16 @@ def test_reimportar_es_idempotente_y_marca_los_que_faltan(client, token):
     assert len(x) == 2 and not x["1201"]["en_3cx"] and x["1102"]["en_3cx"]   # nunca se borra
 
 
+def test_asignado_de_la_guia_no_lo_pisa_la_reimportacion(client, token):
+    assert _importar(client, token, _csv(FILA_1102)).status_code == 200
+    x = _por_interno(client, token)["1102"]
+    r = client.put("/api/telefonia/" + x["id"], headers=bearer(token), json={"asignado": "MORATTO, Maria Laura / OTERMIN, Gabriela"})
+    assert r.status_code == 200, r.text
+    assert _importar(client, token, _csv(FILA_1102)).status_code == 200
+    x = _por_interno(client, token)["1102"]
+    assert x["asignado"] == "MORATTO, Maria Laura / OTERMIN, Gabriela" and x["nombre"] == "Maria Laura Moratto"
+
+
 def test_rechaza_archivos_que_no_son_de_3cx_o_muy_grandes(client, token):
     assert _importar(client, token, b"Nombre,Interno\nA,1\n").status_code == 400
     assert _importar(client, token, b"x" * (2 * 1024 * 1024 + 10)).status_code == 413

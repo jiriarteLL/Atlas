@@ -23,6 +23,9 @@ async function pedir(url, opciones) {
 }
 
 // "C074ADA88EEA" -> "C0:74:AD:A8:8E:EA"
+// "ABELOVICH, José Daniel" y "Daniel Abelovich" son la misma persona: comparte alguna palabra (sin tildes ni mayúsculas)
+const palabras = (s) => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().split(/[^a-z]+/).filter((p) => p.length > 2);
+const mismoNombre = (a, b) => { const pb = new Set(palabras(b)); return palabras(a).some((p) => pb.has(p)); };
 const fmtMac = (m) => (m && m.length === 12 ? m.match(/.{2}/g).join(":") : m || "");
 
 function EstadoLinea({ valor, en3cx }) {
@@ -52,7 +55,7 @@ export default function Telefonia({ puedeEditar, avisar }) {
   const { lineas, sin_interno: sinInterno, resumen } = datos;
   const filtradas = useMemo(() => {
     const q = filtros.q.trim().toLowerCase().replace(/[:-]/g, "");
-    return lineas.filter((x) => (!q || [x.interno, x.nombre, x.mac, x.ip, x.email, x.modelo].some((v) => String(v || "").toLowerCase().replace(/[:-]/g, "").includes(q)))
+    return lineas.filter((x) => (!q || [x.interno, x.asignado, x.nombre, x.mac, x.ip, x.email, x.modelo].some((v) => String(v || "").toLowerCase().replace(/[:-]/g, "").includes(q)))
       && (!filtros.sede || x.sede === filtros.sede)
       && (!filtros.tipo || (filtros.tipo === "-" ? !x.tipo : x.tipo === filtros.tipo))
       && (!filtros.estado || x.estado === filtros.estado)
@@ -141,7 +144,11 @@ export default function Telefonia({ puedeEditar, avisar }) {
               {filtradas.map((x) => (
                 <tr key={x.id} className="click" onClick={() => setAbierta(x.id)}>
                   <td className="nombre mono">{x.interno}</td>
-                  <td>{x.nombre || <span className="tenue">—</span>}<div className="tenue" style={{ fontSize: 11.5 }}>{x.departamento}</div></td>
+                  <td>{x.asignado || x.nombre || <span className="tenue">—</span>}
+                    <div className="tenue" style={{ fontSize: 11.5 }}>
+                      {/* la guia de internos manda; si 3CX dice otra cosa se muestra para corregirlo en la consola */}
+                      {x.asignado && x.nombre && !mismoNombre(x.asignado, x.nombre) ? "En 3CX: " + x.nombre : x.departamento}
+                    </div></td>
                   <td>{x.sede || <span className="tenue">—</span>}{x.piso ? " · piso " + x.piso : ""}</td>
                   <td>{x.tipo ? <span className={"ll-chip" + (x.tipo === "WiFi" ? "" : " acento")}>{x.tipo}</span> : <span className="tenue">Sin equipo</span>}</td>
                   <td>{x.modelo || <span className="tenue">—</span>}</td>
@@ -196,7 +203,7 @@ function FichaLinea({ id, puedeEditar, avisar, onCerrar, onGuardada }) {
   }, [id]);
   useEffect(() => { cargar(); }, [cargar]);
 
-  const editar = () => setEdicion({ tipo: x.tipo || "", sede: x.sede_manual ? x.sede : "", piso: x.piso || "",
+  const editar = () => setEdicion({ asignado: x.asignado || "", tipo: x.tipo || "", sede: x.sede_manual ? x.sede : "", piso: x.piso || "",
     estado: x.estado || "Activa", notas: x.notas || "", ip: x.ip_origen === "manual" ? x.ip : "" });
 
   async function guardar() {
@@ -216,7 +223,7 @@ function FichaLinea({ id, puedeEditar, avisar, onCerrar, onGuardada }) {
       <div className="ll-drawer-cab">
         <div style={{ minWidth: 0 }}>
           <div className="mono" style={{ fontSize: 21, fontWeight: 600, color: "var(--accent)", letterSpacing: -0.3 }}>{x ? "Interno " + x.interno : "Interno"}</div>
-          {x && <div style={{ fontSize: 12.5, color: "var(--ll-dim)", marginTop: 4 }}>{[x.nombre, x.modelo].filter(Boolean).join(" · ")}</div>}
+          {x && <div style={{ fontSize: 12.5, color: "var(--ll-dim)", marginTop: 4 }}>{[x.asignado || x.nombre, x.modelo].filter(Boolean).join(" · ")}</div>}
         </div>
         <button className="ll-cerrar" onClick={onCerrar} aria-label="Cerrar">✕</button>
       </div>
@@ -225,6 +232,8 @@ function FichaLinea({ id, puedeEditar, avisar, onCerrar, onGuardada }) {
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <Rotulo>EDITAR DATOS DEL INTERNO</Rotulo>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <label className="ll-campo" style={{ gridColumn: "1 / -1" }}><span>ASIGNADO A (GUÍA DE INTERNOS)</span>
+              <input className="ll-input" value={edicion.asignado} onChange={set("asignado")} placeholder={x.nombre ? "En 3CX: " + x.nombre : ""} autoComplete="off" /></label>
             <label className="ll-campo"><span>TIPO DE TELÉFONO</span>
               <select className="ll-select" value={edicion.tipo} onChange={set("tipo")}>
                 <option value="IP">IP (escritorio)</option><option value="WiFi">WiFi</option><option value="">Sin equipo</option>
@@ -255,7 +264,7 @@ function FichaLinea({ id, puedeEditar, avisar, onCerrar, onGuardada }) {
         </div>
         <div>
           <Rotulo>INTERNO (3CX)</Rotulo>
-          <Ficha filas={[["Interno", x.interno], ["Nombre", x.nombre], ["Mail", x.email], ["Departamento", x.departamento],
+          <Ficha filas={[["Interno", x.interno], ["Asignado a (guía)", x.asignado], ["Nombre en 3CX", x.nombre], ["Mail", x.email], ["Departamento", x.departamento],
             ["DID", x.did], ["Deshabilitado en 3CX", x.deshabilitado ? "Sí" : "No"]]} />
         </div>
         <div>
