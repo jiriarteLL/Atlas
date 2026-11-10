@@ -185,6 +185,7 @@ MODULOS = [
     ("dashboard",  "Dashboard",      "Vista general, indicadores y riesgos", ("ver",)),
     ("activos",    "Activos",        "Todos los activos y monitores, ficha, historial, adjuntos, tickets y garantías", ("ver", "editar")),
     ("salud",      "Notebooks y PC", "Salud y seguridad: Windows, BitLocker, antivirus, parches, discos, batería", ("ver",)),
+    ("servidores", "Servidores y VM", "Roles, discos, reinicios pendientes, servicios y conectores (vCenter, Azure, iDRAC)", ("ver",)),
     ("impresoras", "Impresoras",     "Impresoras de red y USB, tóner y contadores", ("ver", "editar")),
     ("telefonia",  "Telefonía",      "Internos de 3CX y teléfonos IP / WiFi", ("ver", "editar")),
     ("proyectos",  "Proyectos",      "Proyectos de IT, tareas y equipo", ("ver", "editar")),
@@ -201,8 +202,8 @@ RANGO = {"ver": 1, "si": 1, "editar": 2, "administrar": 2}
 NIVELES = {k: niv for k, _, _, niv in MODULOS}
 NIVELES[ELIMINAR_ACTIVOS] = ("si",)
 # Endpoints que usan varias vistas: alcanza con ver cualquiera de estos modulos.
-MODULOS_LISTA_ACTIVOS = ("activos", "dashboard", "salud", "reportes", "proyectos")   # GET /api/assets, GLPI
-MODULOS_FICHA = ("activos", "salud", "dashboard")    # ficha, historial, adjuntos y salud de un activo
+MODULOS_LISTA_ACTIVOS = ("activos", "dashboard", "salud", "servidores", "reportes", "proyectos")   # GET /api/assets, GLPI
+MODULOS_FICHA = ("activos", "salud", "servidores", "dashboard")    # ficha, historial, adjuntos y salud de un activo
 
 
 def plantilla(rol):

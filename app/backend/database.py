@@ -273,6 +273,7 @@ class AssetSalud(Base):
     disco_estado   = Column(String, default="")    # ok | riesgo | "" (sin datos)
     bateria_salud  = Column(Integer, nullable=True)  # % de la capacidad de diseno; NULL = sin bateria
     bateria_ciclos = Column(Integer, nullable=True)
+    volumenes      = Column(Text, default="")      # JSON: [{letra, etiqueta, fs, tamano_gb, libre_gb, libre_pct}]
     actualizado    = Column(DateTime, default=datetime.utcnow)
 
 
@@ -390,6 +391,50 @@ class GarantiaCorrida(Base):
     pendientes      = Column(Integer, default=0)
     ok              = Column(Integer, default=0)
     errores         = Column(Integer, default=0)
+    mensaje         = Column(String, default="")
+
+
+# ---------------------------------------------------------------- servidores y VM (fase D, ver servidores.py)
+class AssetServidor(Base):
+    """Ultima foto del bloque "servidor" que manda el agente (solo servidores Windows)."""
+    __tablename__ = "asset_servidor"
+    asset_id            = Column(String, ForeignKey("assets.id", ondelete="CASCADE"), primary_key=True)
+    roles               = Column(Text, default="")        # JSON: [{nombre, servicios: [..]}]
+    uptime_dias         = Column(Float, nullable=True)
+    reinicio_pendiente  = Column(Boolean, default=False)
+    reinicio_motivos    = Column(Text, default="")        # JSON: ["Windows Update", ...]
+    reinicio_desde      = Column(DateTime, nullable=True)  # primera vez que se lo vio pendiente (para la alerta > 7 dias)
+    servicios_detenidos = Column(Text, default="")        # JSON: [{nombre, display}]
+    sql                 = Column(Text, default="")        # JSON: [{instancia, estado}]
+    iis                 = Column(Text, default="")        # JSON: [{nombre, estado, bindings: [..]}]
+    controlador_dominio = Column(Boolean, default=False)
+    hyperv_vms          = Column(Text, default="")        # JSON: [{nombre, estado, cpu, ram_gb}] ("" = no es host)
+    actualizado         = Column(DateTime, default=datetime.utcnow)
+
+
+class AssetExterno(Base):
+    """Lo que dice de un activo una fuente externa (vcenter | azure | idrac). `creado` = el activo lo dio de alta el
+    conector (VM sin agente, host ESXi): si despues aparece el agente con la misma serie, se unifica solo."""
+    __tablename__ = "asset_externo"
+    asset_id    = Column(String, ForeignKey("assets.id", ondelete="CASCADE"), primary_key=True)
+    fuente      = Column(String, primary_key=True)
+    clave       = Column(String, default="", index=True)   # id en la fuente (moid de vCenter, id de Azure, host iDRAC)
+    datos       = Column(Text, default="")                  # JSON normalizado (sin secretos)
+    creado      = Column(Boolean, default=False)
+    actualizado = Column(DateTime, default=datetime.utcnow)
+
+
+class ConectorCorrida(Base):
+    """Estado y lease de cada conector (una fila por conector). Mismo mecanismo que garantia_corrida."""
+    __tablename__ = "conector_corrida"
+    conector        = Column(String, primary_key=True)     # vcenter | azure | idrac
+    corriendo_hasta = Column(DateTime, nullable=True)
+    duenio          = Column(String, default="")
+    pedida          = Column(Boolean, default=False)
+    inicio          = Column(DateTime, nullable=True)
+    fin             = Column(DateTime, nullable=True)
+    ok              = Column(Boolean, nullable=True)
+    elementos       = Column(Integer, default=0)
     mensaje         = Column(String, default="")
 
 

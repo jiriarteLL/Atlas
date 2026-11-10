@@ -40,6 +40,9 @@ from garantias import borrar_datos_garantia, router as garantias_router
 from ciclo_activos import borrar_datos_ciclo, router as ciclo_router, usuario_fijado
 from actas import router as actas_router
 from auditoria import router as auditoria_router
+import conectores
+from conectores import router as conectores_router
+from servidores import borrar_datos_servidor, guardar_servidor, limitar_servidor, router as servidores_router
 from mailer import notificar_proyecto_finalizado
 from metricas import metricas_texto, registrar_request
 from ratelimit import limiter
@@ -56,6 +59,9 @@ async def lifespan(app):
     if config.GARANTIA_REFRESCO_DIAS > 0:
         # Corre en los dos procesos (HTTP y HTTPS); el lease de garantia_corrida hace que consulte uno solo
         threading.Thread(target=garantias.loop, daemon=True).start()
+    if conectores.hay_alguno_configurado():
+        # vCenter / Azure / Redfish: solo si hay alguno configurado (lease por conector, consulta un solo proceso)
+        threading.Thread(target=conectores.loop, daemon=True).start()
     log.info("app.start", extra={"event": "app.start"})
     yield
 
@@ -75,6 +81,8 @@ app.include_router(garantias_router)
 app.include_router(ciclo_router)
 app.include_router(actas_router)
 app.include_router(auditoria_router)
+app.include_router(servidores_router)
+app.include_router(conectores_router)
 if config.CORS_ORIGINS:
     app.add_middleware(CORSMiddleware, allow_origins=config.CORS_ORIGINS, allow_methods=["*"], allow_headers=["*"],
                        allow_credentials=True)
@@ -153,7 +161,7 @@ def metrics(x_maestro_api_key: str = Header(default="")):
     cuerpo, tipo = metricas_texto()
     return Response(content=cuerpo, media_type=tipo)
 # ================================================================ activos
-TIPOS_OK = ("Notebook", "Monitor", "Impresora", "Servidor", "Switch", "UPS", "CPU")
+TIPOS_OK = ("Notebook", "Monitor", "Impresora", "Servidor", "Switch", "UPS", "CPU", "VM")
 # Los primeros son los de antes; los de ciclo de vida (fase F, ver ciclo_activos.py) van al final.
 ESTADOS_OK = ("Activo", "Mantenimiento", "Dado de baja", "Libre", "Stock", "Robado",
               "En stock", "Asignado", "Prestado", "En reparación", "Para baja")
@@ -227,6 +235,13 @@ class AssetSync(AssetIn):
     salud: Optional[dict] = None
     # Monitores con el detalle del EDID (agente de Atlas): ver monitores.py
     monitores_detalle: Optional[list] = None
+    # Servidores (agente de Atlas 5.4+, solo Windows Server): ver servidores.py
+    servidor: Optional[dict] = None
+
+    @field_validator("servidor", mode="before")
+    @classmethod
+    def _servidor(cls, v):
+        return limitar_servidor(v)
 
     @field_validator("salud", mode="after")
     @classmethod
@@ -330,6 +345,7 @@ def delete_asset(aid: str, request: Request, user: UserOut = Depends(require_mod
     borrar_datos_monitor(db, aid)
     borrar_datos_garantia(db, aid)
     borrar_datos_ciclo(db, aid)
+    borrar_datos_servidor(db, aid)
     db.delete(obj)
     db.commit()
     db.close()
@@ -391,7 +407,7 @@ def _aplicar_sync(a: AssetSync):
             if nom:
                 regs.append("%s|||%s|||%s" % (nom, ver, fec))
         a.software = "~~~".join(regs)
-    salud, monitores = a.salud, a.monitores_detalle
+    salud, monitores, servidor = a.salud, a.monitores_detalle, a.servidor
     db = SessionLocal()
     obj = db.query(Asset).filter(Asset.serial == a.serial).first()
     if obj:
@@ -399,7 +415,7 @@ def _aplicar_sync(a: AssetSync):
             setattr(a, campo, getattr(obj, campo) or "")
         if usuario_fijado(db, obj.id):   # entregado por acta / asignado a mano: manda sobre el agente
             a.usuario = obj.usuario or ""
-        datos = a.model_dump(exclude={"salud", "monitores_detalle"})
+        datos = a.model_dump(exclude={"salud", "monitores_detalle", "servidor"})
         cambios = {}
         sw_ant = obj.software
         for k, v in datos.items():
@@ -419,7 +435,7 @@ def _aplicar_sync(a: AssetSync):
         if "software" in datos:
             _log_sw(db, obj.id, sw_ant, datos.get("software"))
     else:
-        obj = Asset(id=("A" + str(uuid.uuid4())[:6]).upper(), **a.model_dump(exclude={"salud", "monitores_detalle"}),
+        obj = Asset(id=("A" + str(uuid.uuid4())[:6]).upper(), **a.model_dump(exclude={"salud", "monitores_detalle", "servidor"}),
                     updated=datetime.utcnow())
         db.add(obj)
         db.flush()
@@ -428,6 +444,8 @@ def _aplicar_sync(a: AssetSync):
         guardar_salud(db, obj.id, salud)
     if monitores is not None and obj.tipo != "Monitor":
         procesar_monitores(db, obj, monitores)
+    if servidor:
+        guardar_servidor(db, obj.id, servidor)
     db.commit()
     db.close()
 

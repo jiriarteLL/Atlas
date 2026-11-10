@@ -3,7 +3,7 @@
 // Solo http(s): un link guardado nunca se usa como href si es javascript:, data:, etc.
 export const urlSegura = (u) => (typeof u === "string" && /^https?:\/\//i.test(u.trim())) ? u.trim() : null;
 export const SEDES = ["CABA","Rosario","Cordoba","Corrientes","Mendoza","Neuquen","Tigre","Resguarda"];
-export const TIPOS = ["Notebook","Monitor","Impresora","Servidor","Switch","UPS","CPU"];
+export const TIPOS = ["Notebook","Monitor","Impresora","Servidor","VM","Switch","UPS","CPU"];
 export const Badge = ({ label, map }) => <span className={`badge ${(map||{})[label]||"badge-gray"}`}><i className="badge-dot"/>{label}</span>;
 export const hexToRgba = (hex, a) => { const n=parseInt(hex.replace("#",""),16); return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`; };
 export const Tag = ({ label, color }) => <span className="tag" style={{color, background:hexToRgba(color,0.14)}}>{label}</span>;

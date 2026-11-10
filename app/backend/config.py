@@ -136,3 +136,27 @@ ACTA_CLAUSULA = os.getenv("ACTA_CLAUSULA", (
     "Cualquier rotura, perdida o robo debe informarse de inmediato a Soporte Tecnico."))
 ACTA_ACCESORIOS = _lista("ACTA_ACCESORIOS") or ["Cargador", "Mouse", "Teclado", "Mochila / funda", "Auriculares",
                                                 "Dock / adaptador", "Cable de red"]
+
+# ---- Fase D: servidores y VM (servidores.py, conectores.py)
+# Alerta de disco: volumenes con menos de este % libre
+SERVIDOR_DISCO_ALERTA_PCT = float(os.getenv("SERVIDOR_DISCO_ALERTA_PCT", "10"))
+SERVIDOR_REINICIO_DIAS = int(os.getenv("SERVIDOR_REINICIO_DIAS", "7"))      # reinicio pendiente hace mas de N dias
+SERVIDOR_UPTIME_DIAS = int(os.getenv("SERVIDOR_UPTIME_DIAS", "60"))         # sin reiniciar (sin parches) hace mas de N dias
+# Conectores: cada uno queda inerte mientras falte su configuracion. Las claves NUNCA van en el .env ni en la base:
+# van en un archivo aparte (una sola linea) con ACL solo para SYSTEM y Administradores, en la carpeta
+# "secretos" de Atlas (ver docs/conectores-servidores.md)
+CONECTORES_CADA_HORAS = int(os.getenv("CONECTORES_CADA_HORAS", "6"))       # 0 = solo con el boton "Actualizar ahora"
+VCENTER_URL = os.getenv("VCENTER_URL", "").strip().rstrip("/")
+VCENTER_USUARIO = os.getenv("VCENTER_USUARIO", "").strip()
+VCENTER_CLAVE_ARCHIVO = os.getenv("VCENTER_CLAVE_ARCHIVO", "").strip()
+VCENTER_VERIFICAR_CERT = _bool("VCENTER_VERIFICAR_CERT", False)
+AZURE_TENANT_ID = os.getenv("AZURE_TENANT_ID", "").strip()
+AZURE_CLIENT_ID = os.getenv("AZURE_CLIENT_ID", "").strip()
+AZURE_CLIENT_SECRET_ARCHIVO = os.getenv("AZURE_CLIENT_SECRET_ARCHIVO", "").strip()
+AZURE_USAR_IDENTIDAD = _bool("AZURE_USAR_IDENTIDAD", False)
+AZURE_SUSCRIPCIONES = _lista("AZURE_SUSCRIPCIONES")
+# Redfish (controladoras de servidores fisicos: iDRAC de Dell, iLO de HPE). IDRAC_* se aceptan como alias viejos.
+REDFISH_HOSTS = _lista("REDFISH_HOSTS") or _lista("IDRAC_HOSTS")
+REDFISH_USUARIO = (os.getenv("REDFISH_USUARIO") or os.getenv("IDRAC_USUARIO") or "").strip()
+REDFISH_CLAVE_ARCHIVO = (os.getenv("REDFISH_CLAVE_ARCHIVO") or os.getenv("IDRAC_CLAVE_ARCHIVO") or "").strip()
+REDFISH_VERIFICAR_CERT = _bool("REDFISH_VERIFICAR_CERT", _bool("IDRAC_VERIFICAR_CERT", False))

@@ -12,6 +12,7 @@ import { CicloActivo } from "../secciones/CicloActivo";
 import { Etiqueta, Impresion, QrImg, imprimir, urlActivo, useUrlPublica } from "../secciones/Etiquetas";
 import { COLOR_CIFRADO, glpiDe } from "./filtros";
 import { BarraBateria, EstadoAntivirus, InsigniaSoporte, fmtFecha, textoWindows } from "./Salud";
+import { ServidorActivo } from "./Servidores";
 
 export default function FichaActivo({ activo, glpiMap, user, onCerrar, onEditar, onEliminar, onGarantia, puedeEditar, puedeEliminar, abrirActivo,
   avisar, onCambio, abrirActa }) {
@@ -84,6 +85,7 @@ export default function FichaActivo({ activo, glpiMap, user, onCerrar, onEditar,
         ]} />
       </div>
 
+      {(a.tipo === "Servidor" || a.tipo === "VM") && <ServidorActivo assetId={a.id} />}
       <GarantiaActivo assetId={a.id} puedeEditar={puedeEditar} onCambio={(fin) => onGarantia && onGarantia(a.id, fin)} />
       <CicloActivo assetId={a.id} puedeEditar={puedeEditar} avisar={avisar} onCambio={onCambio} abrirActa={abrirActa} />
 

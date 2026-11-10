@@ -113,6 +113,31 @@ def disco_en_riesgo(d):
             or (d.get("errores_lectura") or 0) > 0)
 
 
+def _num(v, minimo=None, maximo=None):
+    try:
+        n = round(float(v), 1)
+    except (TypeError, ValueError):
+        return None
+    if n != n or (minimo is not None and n < minimo) or (maximo is not None and n > maximo):
+        return None
+    return n
+
+
+def normalizar_volumenes(v):
+    """Volumenes con letra (fase D): [{letra, etiqueta, fs, tamano_gb, libre_gb, libre_pct}]; basura -> fuera."""
+    out = []
+    for x in _lista(v):
+        tam, libre = _num(x.get("tamano_gb"), 0), _num(x.get("libre_gb"), 0)
+        if not tam:
+            continue
+        pct = _num(x.get("libre_pct"), 0, 100)
+        if pct is None and libre is not None:
+            pct = round(libre * 100 / tam, 1)
+        out.append({"letra": _txt(x.get("letra"), 5), "etiqueta": _txt(x.get("etiqueta"), 60), "fs": _txt(x.get("fs"), 12),
+                    "tamano_gb": tam, "libre_gb": libre, "libre_pct": pct})
+    return out
+
+
 def normalizar(s):
     so = s.get("so") if isinstance(s.get("so"), dict) else {}
     parches = s.get("parches") if isinstance(s.get("parches"), dict) else {}
@@ -133,7 +158,9 @@ def normalizar(s):
         if bat_salud is not None:
             bat_salud = min(bat_salud, 100)
         bat_ciclos = _ent(bat.get("ciclos"), 0)
+    vols = normalizar_volumenes(s.get("volumenes"))
     return {
+        "volumenes": json.dumps(vols, ensure_ascii=False),
         "so_edicion": _txt(so.get("edicion"), 60), "so_display": _txt(so.get("display_version"), 20),
         "so_build": _ent(so.get("build"), 1000, 99999), "so_ubr": _ent(so.get("ubr"), 0),
         "antivirus": json.dumps(avs, ensure_ascii=False), "av_estado": estado_antivirus(avs),
@@ -195,6 +222,7 @@ def armar(a, s, hoy=None):
         "antivirus": _json(s.antivirus) if s else [], "av_estado": estado_antivirus(_json(s.antivirus)) if s else "",
         "ultimo_parche": s.ultimo_parche if s else None, "parches_90d": s.parches_90d if s else None,
         "dias_sin_parches": (hoy - s.ultimo_parche).days if s and s.ultimo_parche else None,
+        "volumenes": _json(s.volumenes) if s else [],
         "discos": discos, "disco_estado": s.disco_estado if s else "",
         "desgaste_max": max((d["desgaste"] for d in discos if d.get("desgaste") is not None), default=None),
         "bateria_salud": s.bateria_salud if s else None, "bateria_ciclos": s.bateria_ciclos if s else None,

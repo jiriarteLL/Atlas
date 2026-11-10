@@ -14,6 +14,7 @@ import Impresoras from "./vistas/Impresoras";
 import Salud from "./vistas/Salud";
 import Telefonia from "./vistas/Telefonia";
 import Monitores from "./vistas/Monitores";
+import Servidores from "./vistas/Servidores";
 import Garantias from "./vistas/Garantias";
 import AlertaToner from "./vistas/AlertaToner";
 import FichaActivo from "./vistas/FichaActivo";
@@ -38,13 +39,14 @@ const SECCIONES = {
 };
 const FILTROS_VACIOS = { q: "", tipo: "", estado: "", sede: "" };
 // Subsecciones de Activos (pestañas). Para sumar otro tipo con vista propia, agregarlo aca y en el render.
-const VISTAS_ACTIVOS = [["todos", "Todos los activos"], ["salud", "Notebooks y PC"], ["monitores", "Monitores"], ["impresoras", "Impresoras"], ["garantias", "Garantías"]];
+const VISTAS_ACTIVOS = [["todos", "Todos los activos"], ["salud", "Notebooks y PC"], ["servidores", "Servidores y VM"], ["monitores", "Monitores"],
+  ["impresoras", "Impresoras"], ["garantias", "Garantías"]];
 // Modulo de permisos que habilita cada seccion y subseccion (ver backend/auth.py MODULOS). Sin entrada = siempre.
-const MODULO_DE_VISTA = { todos: "activos", salud: "salud", monitores: "activos", impresoras: "impresoras", garantias: "activos" };
+const MODULO_DE_VISTA = { todos: "activos", salud: "salud", servidores: "servidores", monitores: "activos", impresoras: "impresoras", garantias: "activos" };
 const MODULO_DE_SECCION = { dashboard: "dashboard", telefonia: "telefonia", proyectos: "proyectos", reportes: "reportes", tendencias: "tendencias",
   agente: "agente", accesos: "accesos", actas: "activos", auditoria: "auditoria" };
 // Para cargar /api/assets alcanza con ver alguno de estos (igual que MODULOS_LISTA_ACTIVOS del servidor)
-const MODULOS_LISTA_ACTIVOS = ["activos", "dashboard", "salud", "reportes", "proyectos"];
+const MODULOS_LISTA_ACTIVOS = ["activos", "dashboard", "salud", "servidores", "reportes", "proyectos"];
 const vistaValida = (v) => (VISTAS_ACTIVOS.some(([k]) => k === v) ? v : "todos");
 
 function leerHash() {
@@ -308,6 +310,7 @@ export default function App() {
                 aria-current={vistaEf === k ? "page" : undefined} onClick={() => setVista(k)}>{l}</button>)}
             </nav>}
             {tab === "activos" && vistaEf === "salud" && <Salud assets={assets} verFicha={verFicha} />}
+            {tab === "activos" && vistaEf === "servidores" && <Servidores assets={assets} verFicha={verFicha} puedeEditar={puedeEditar} avisar={avisar} />}
             {tab === "activos" && vistaEf === "monitores" && <Monitores assets={assets} verFicha={verFicha} />}
             {tab === "activos" && vistaEf === "garantias" && <Garantias assets={assets} verFicha={verFicha} puedeEditar={puedeEditar} avisar={avisar} />}
         {tab === "activos" && vistaEf === "impresoras" && <Impresoras puedeEditar={puede(user, "impresoras", "editar")} avisar={avisar} />}
