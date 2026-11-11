@@ -25,7 +25,7 @@ param(
     [switch]$ForzarLegacy  # no usa GLPI Agent aunque el equipo este en el piloto
 )
 
-$VERSION = "5.4.0"
+$VERSION = "5.4.1"
 $TASK    = "Atlas Inventario"
 $SELF    = $PSCommandPath
 $LOCALDIR = Join-Path $env:ProgramFiles "LLyA\Atlas Agent"
@@ -140,17 +140,18 @@ function Get-Salud($os) {
     } catch {}
 
     # Parches: ultimo instalado y cuantos en los ultimos 90 dias (Win32_QuickFixEngineering)
-    try {
+    # (en servidores, una vez por dia: ver Get-Cacheado)
+    $s.parches = Get-Cacheado "parches" { try {
         $fechas = @(Get-HotFix -ErrorAction Stop | Where-Object { $_.InstalledOn } | ForEach-Object { [datetime]$_.InstalledOn })
         if ($fechas.Count) {
             $ult = ($fechas | Measure-Object -Maximum).Maximum
-            $s.parches = [ordered]@{ ultimo = $ult.ToString('yyyy-MM-dd'); cantidad_90d = @($fechas | Where-Object { $_ -ge (Get-Date).AddDays(-90) }).Count }
+            [ordered]@{ ultimo = $ult.ToString('yyyy-MM-dd'); cantidad_90d = @($fechas | Where-Object { $_ -ge (Get-Date).AddDays(-90) }).Count }
         }
-    } catch {}
+    } catch {} }
 
-    # Discos: salud y, si el controlador lo informa, desgaste / temperatura / errores de lectura
-    try {
-        $s.discos = @(Get-PhysicalDisk -ErrorAction Stop | Where-Object { $_.BusType -notin 'USB', 'SD', 'MMC' } | ForEach-Object {
+    # Discos: salud y, si el controlador lo informa, desgaste / temperatura / errores de lectura (en servidores, 1 vez por dia)
+    $s.discos = @(Get-Cacheado "discos" { try {
+        @(Get-PhysicalDisk -ErrorAction Stop | Where-Object { $_.BusType -notin 'USB', 'SD', 'MMC' } | ForEach-Object {
             $r = $null; try { $r = $_ | Get-StorageReliabilityCounter -ErrorAction Stop } catch {}
             [ordered]@{
                 nombre = Clean($_.FriendlyName); tipo = "$($_.MediaType)"; salud = "$($_.HealthStatus)"
@@ -160,7 +161,7 @@ function Get-Salud($os) {
                 tamano_gb = [int][math]::Round($_.Size / 1GB)
             }
         })
-    } catch {}
+    } catch {} })
 
     # Bateria: capacidad de carga completa / de diseno. Equipos de escritorio y servidores: null.
     # BatteryStaticData da "Generic failure" en muchas notebooks modernas -> respaldo: powercfg /batteryreport /xml.
@@ -201,14 +202,73 @@ function Get-Salud($os) {
 # Servidores (fase D): roles, uptime, reinicio pendiente, servicios automaticos detenidos, SQL, IIS, Hyper-V y si es
 # controlador de dominio. Solo si no es una estacion de trabajo (ProductType 1). Corre en un job con tope de 90 s:
 # Get-WindowsFeature y Get-Website pueden tardar en servidores cargados y no tienen que trabar el inventario.
+# ---- Cache diaria (5.4.1): en los servidores las lecturas pesadas (roles, log de Seguridad, parches, salud de
+# discos) se hacen una vez por dia y se reusan en las corridas siguientes; antes corrian cada 2 horas y cargaban
+# disco y CPU (un DC tardaba > 90 s solo en Get-WindowsFeature). En las estaciones no se usa.
+$CACHE_FILE = Join-Path $env:ProgramData "LLyA\atlas-cache.json"
+$CACHE_HORAS = 20
+$script:Cache = $null
+function Get-EsServidor {
+    if ($null -eq $script:EsServidor) {
+        $script:EsServidor = $false
+        try { $script:EsServidor = ((Get-WmiObject Win32_OperatingSystem -ErrorAction Stop).ProductType -ne 1) } catch {}
+    }
+    return $script:EsServidor
+}
+function Get-Cacheado($clave, [scriptblock]$calcular) {
+    if (-not (Get-EsServidor)) { return (& $calcular) }
+    if ($null -eq $script:Cache) {
+        $script:Cache = @{}
+        try { if (Test-Path $CACHE_FILE) {
+                  (Get-Content $CACHE_FILE -Raw -Encoding UTF8 | ConvertFrom-Json).PSObject.Properties | ForEach-Object { $script:Cache[$_.Name] = $_.Value } } } catch {}
+    }
+    $e = $script:Cache[$clave]
+    if ($e -and $e.fecha) {
+        try { if (((Get-Date) - [datetime]$e.fecha).TotalHours -lt $CACHE_HORAS) { return $e.valor } } catch {}
+    }
+    $v = & $calcular
+    if ($null -ne $v) {   # un dato que no se pudo leer (tope de tiempo) no se guarda: se reintenta en la proxima corrida
+        $script:Cache[$clave] = [ordered]@{ fecha = (Get-Date).ToString("s"); valor = $v }
+        try { New-Item -ItemType Directory -Force (Split-Path $CACHE_FILE) | Out-Null
+              [IO.File]::WriteAllText($CACHE_FILE, ($script:Cache | ConvertTo-Json -Depth 8 -Compress), (New-Object Text.UTF8Encoding($false))) } catch {}
+    }
+    return $v
+}
+
 function Get-Servidor {
-    try { if ((Get-WmiObject Win32_OperatingSystem -ErrorAction Stop).ProductType -eq 1) { return $null } } catch { return $null }
+    if (-not (Get-EsServidor)) { return $null }
+    $t = { param($v, $l) $x = ("$v" -replace '[\x00-\x1F]', '').Trim(); if ($x.Length -gt $l) { $x.Substring(0, $l) } else { $x } }
+    # Livianos, en cada corrida: uptime, reinicio pendiente y servicios automaticos detenidos
+    $r = [ordered]@{ roles = @(); uptime_dias = $null; reinicio_pendiente = $false; reinicio_motivos = @()
+                     servicios_detenidos = @(); sql = @(); iis = @(); controlador_dominio = $false; hyperv_vms = $null }
+    try { $o = Get-WmiObject Win32_OperatingSystem -ErrorAction Stop
+          $r.uptime_dias = [math]::Round(((Get-Date) - $o.ConvertToDateTime($o.LastBootUpTime)).TotalDays, 1) } catch {}
+    if (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending') { $r.reinicio_motivos += "Componentes de Windows" }
+    if (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired') { $r.reinicio_motivos += "Windows Update" }
+    try { if ((Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager' -Name PendingFileRenameOperations -ErrorAction Stop).PendingFileRenameOperations) { $r.reinicio_motivos += "Archivos pendientes" } } catch {}
+    $r.reinicio_pendiente = ($r.reinicio_motivos.Count -gt 0)
+    # Servicios automaticos detenidos. Se excluyen los que Windows deja detenidos a proposito (inicio por
+    # disparador o actualizadores que arrancan, hacen su tarea y se detienen).
+    $normales = 'gupdate|gupdatem|sppsvc|RemoteRegistry|edgeupdate|edgeupdatem|MapsBroker|wuauserv|TrustedInstaller|' +
+                'ShellHWDetection|tiledatamodelsvc|CDPSvc|BITS|wbiosrvc|Dnscache|DoSvc|UsoSvc|WbioSrvc|sedsvc|' +
+                'GoogleUpdater.*|MozillaMaintenance|AdobeARMservice|clr_optimization.*|stisvc|WSearch|' +
+                'OneSyncSvc.*|CDPUserSvc.*|WpnUserService.*|cbdhsvc.*|IaasVmProvider|RtkAudioUniversalService|SysMain'
+    try {
+        $r.servicios_detenidos = @(Get-WmiObject Win32_Service -Filter "StartMode='Auto' AND State<>'Running'" -ErrorAction Stop |
+            Where-Object { $_.Name -notmatch "^($normales)$" -and
+                           -not (Test-Path ("HKLM:\SYSTEM\CurrentControlSet\Services\" + $_.Name + "\TriggerInfo")) } |
+            Select-Object -First 25 | ForEach-Object { [ordered]@{ nombre = (& $t $_.Name 80); display = (& $t $_.DisplayName 120) } })
+    } catch {}
+    # Pesados, una vez por dia: roles, SQL, IIS, Hyper-V y si es DC
+    $pesado = Get-Cacheado "servidor" { Get-ServidorPesado }
+    if ($pesado -and -not $pesado.sin_datos) { foreach ($k in 'roles', 'sql', 'iis', 'controlador_dominio', 'hyperv_vms') { if ($pesado.$k -ne $null) { $r[$k] = $pesado.$k } } }
+    return $r
+}
+
+function Get-ServidorPesado {
     $job = Start-Job -ScriptBlock {
         $t = { param($v, $l) $x = ("$v" -replace '[\x00-\x1F]', '').Trim(); if ($x.Length -gt $l) { $x.Substring(0, $l) } else { $x } }
-        $r = [ordered]@{ roles = @(); uptime_dias = $null; reinicio_pendiente = $false; reinicio_motivos = @()
-                         servicios_detenidos = @(); sql = @(); iis = @(); controlador_dominio = $false; hyperv_vms = $null }
-        try { $o = Get-WmiObject Win32_OperatingSystem -ErrorAction Stop
-              $r.uptime_dias = [math]::Round(((Get-Date) - $o.ConvertToDateTime($o.LastBootUpTime)).TotalDays, 1) } catch {}
+        $r = [ordered]@{ roles = @(); sql = @(); iis = @(); controlador_dominio = $false; hyperv_vms = $null }
         try { $r.controlador_dominio = ((Get-WmiObject Win32_ComputerSystem -ErrorAction Stop).DomainRole -ge 4) } catch {}
         # Roles instalados con sus servicios de rol de primer nivel (Get-WindowsFeature existe tambien en 2012 R2)
         try {
@@ -218,23 +278,6 @@ function Get-Servidor {
                 [ordered]@{ nombre = (& $t $rol.DisplayName 80)
                             servicios = @($f | Where-Object { $_.FeatureType -eq 'Role Service' -and $_.Parent -eq $rol.Name } |
                                           Select-Object -First 15 | ForEach-Object { & $t $_.DisplayName 80 }) } })
-        } catch {}
-        # Reinicio pendiente (las tres marcas estandar de Windows)
-        if (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending') { $r.reinicio_motivos += "Componentes de Windows" }
-        if (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired') { $r.reinicio_motivos += "Windows Update" }
-        try { if ((Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager' -Name PendingFileRenameOperations -ErrorAction Stop).PendingFileRenameOperations) { $r.reinicio_motivos += "Archivos pendientes" } } catch {}
-        $r.reinicio_pendiente = ($r.reinicio_motivos.Count -gt 0)
-        # Servicios automaticos detenidos. Se excluyen los que Windows deja detenidos a proposito (inicio por
-        # disparador o actualizadores que arrancan, hacen su tarea y se detienen).
-        $normales = 'gupdate|gupdatem|sppsvc|RemoteRegistry|edgeupdate|edgeupdatem|MapsBroker|wuauserv|TrustedInstaller|' +
-                    'ShellHWDetection|tiledatamodelsvc|CDPSvc|BITS|wbiosrvc|Dnscache|DoSvc|UsoSvc|WbioSrvc|sedsvc|' +
-                    'GoogleUpdater.*|MozillaMaintenance|AdobeARMservice|clr_optimization.*|stisvc|WSearch|' +
-                    'OneSyncSvc.*|CDPUserSvc.*|WpnUserService.*|cbdhsvc.*|IaasVmProvider|RtkAudioUniversalService|SysMain'
-        try {
-            $r.servicios_detenidos = @(Get-WmiObject Win32_Service -Filter "StartMode='Auto' AND State<>'Running'" -ErrorAction Stop |
-                Where-Object { $_.Name -notmatch "^($normales)$" -and
-                               -not (Test-Path ("HKLM:\SYSTEM\CurrentControlSet\Services\" + $_.Name + "\TriggerInfo")) } |
-                Select-Object -First 25 | ForEach-Object { [ordered]@{ nombre = (& $t $_.Name 80); display = (& $t $_.DisplayName 120) } })
         } catch {}
         # SQL Server: una instancia por servicio MSSQLSERVER / MSSQL$<instancia>
         try { $r.sql = @(Get-Service -Name 'MSSQLSERVER', 'MSSQL$*' -ErrorAction SilentlyContinue | ForEach-Object {
@@ -254,10 +297,12 @@ function Get-Servidor {
         }
         $r | ConvertTo-Json -Depth 5 -Compress
     }
-    $res = $null
+    # Corre una vez por dia: se le da mas tiempo (en un DC Get-WindowsFeature supera los 90 s). Si igual no termina,
+    # se guarda "sin datos" para no volver a intentarlo en cada corrida hasta el dia siguiente.
+    $res = [ordered]@{ sin_datos = $true }
     try {
-        if (Wait-Job $job -Timeout 90) { $j = "$(Receive-Job $job -ErrorAction SilentlyContinue)"; if ($j) { $res = $j | ConvertFrom-Json } }
-        else { Write-Log "Datos de servidor: tardaron mas de 90 s, se omiten" }
+        if (Wait-Job $job -Timeout 240) { $j = "$(Receive-Job $job -ErrorAction SilentlyContinue)"; if ($j) { $res = $j | ConvertFrom-Json } }
+        else { Write-Log "Datos de servidor (roles/SQL/IIS): tardaron mas de 240 s, se reintenta manana" }
     } catch {}
     Remove-Job $job -Force -ErrorAction SilentlyContinue
     return $res
@@ -337,7 +382,8 @@ function Get-Inventario {
     # Ultimo reinicio y ultimo inicio de sesion interactivo (el log de seguridad requiere elevacion)
     $ultReinicio = ""; $ultLogin = ""
     try { $ultReinicio = ([Management.ManagementDateTimeConverter]::ToDateTime($os.LastBootUpTime)).ToString("yyyy-MM-dd HH:mm") } catch {}
-    try {
+    # En servidores, una vez por dia (Get-Cacheado): si no termina en 15 s queda vacio hasta el dia siguiente
+    $ultLogin = "$(Get-Cacheado 'ultimo_login' { $u = ''; try {
         # Filtro en el propio log (no entre los ultimos N eventos): en un equipo con mucho acceso de red los 4624
         # recientes son casi todos tipo 3. 2 = consola, 10 = escritorio remoto, 11 = credenciales en cache.
         # Se descartan las cuentas internas de Windows que tambien inician sesion tipo 2 (DWM-n, UMFD-n).
@@ -350,10 +396,10 @@ function Get-Inventario {
                   Where-Object { $_.Properties[5].Value -notmatch '^(DWM|UMFD)-\d+$' } | Select-Object -First 1
             if ($ev) { $ev.TimeCreated.ToString("yyyy-MM-dd HH:mm") }
         }
-        if (Wait-Job $job -Timeout 15) { $ultLogin = "$(Receive-Job $job -ErrorAction SilentlyContinue)".Trim() }
+        if (Wait-Job $job -Timeout 15) { $u = "$(Receive-Job $job -ErrorAction SilentlyContinue)".Trim() }
         else { Write-Log "Ultimo login: el log de Seguridad tardo mas de 15 s, se omite" }
         Remove-Job $job -Force -ErrorAction SilentlyContinue
-    } catch {}
+    } catch {}; $u })"
 
     # Impresoras y monitores
     $impresoras = ""; $monitores = ""
@@ -539,10 +585,22 @@ function Sync-CopiaLocal {
 function Set-Tarea($ruta) {
     try {
         if (-not (Test-Elevado)) { return }
-        $desc = "Atlas - inventario LLyA cada 2 horas y al iniciar sesion (v$VERSION) - $ruta"
+        $srv = Get-EsServidor
+        $desc = $(if ($srv) { "Atlas - inventario LLyA cada 4 horas, prioridad baja (v$VERSION) - $ruta" }
+                  else { "Atlas - inventario LLyA cada 2 horas y al iniciar sesion (v$VERSION) - $ruta" })
         $t = Get-ScheduledTask -TaskName $TASK -ErrorAction SilentlyContinue
         if ($t -and $t.Principal.UserId -eq "SYSTEM" -and $t.Description -eq $desc) { return }
         $a   = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-ExecutionPolicy Bypass -NonInteractive -WindowStyle Hidden -File `"$ruta`""
+        $p   = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+        if ($srv) {
+            # Servidores (5.4.1): cada 4 horas todo el dia, sin disparador de inicio de sesion (en los de escritorio
+            # remoto se disparaba con cada usuario) y con prioridad baja (7 = por debajo de lo normal) para ceder CPU y disco.
+            $tr = New-ScheduledTaskTrigger -Once -At 08:00 -RandomDelay (New-TimeSpan -Minutes 30) -RepetitionInterval (New-TimeSpan -Hours 4) -RepetitionDuration (New-TimeSpan -Days 3650)
+            $s  = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 30) -MultipleInstances IgnoreNew -Priority 7
+            Register-ScheduledTask -TaskName $TASK -Description $desc -Action $a -Trigger $tr -Principal $p -Settings $s -Force | Out-Null
+            Write-Log "Tarea '$TASK' registrada como SYSTEM (servidor: cada 4 h, prioridad baja) -> $ruta"
+            return
+        }
         $tr  = New-ScheduledTaskTrigger -Daily -At 08:00 -RandomDelay (New-TimeSpan -Minutes 15)
         $rep = New-ScheduledTaskTrigger -Once -At 08:00 -RepetitionInterval (New-TimeSpan -Hours 2) -RepetitionDuration (New-TimeSpan -Hours 14)
         if ($tr.PSObject.Properties["Repetition"]) { $tr.Repetition = $rep.Repetition }
@@ -553,8 +611,7 @@ function Set-Tarea($ruta) {
         }
         $tl  = New-ScheduledTaskTrigger -AtLogOn
         if ($tl.PSObject.Properties["Delay"]) { $tl.Delay = "PT2M" }   # 2012 R2: el disparador de inicio de sesion no trae Delay
-        $p   = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
-        $s   = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 30) -MultipleInstances IgnoreNew
+        $s   =New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 30) -MultipleInstances IgnoreNew
         Register-ScheduledTask -TaskName $TASK -Description $desc -Action $a -Trigger @($tr, $tl) -Principal $p -Settings $s -Force | Out-Null
         Write-Log "Tarea '$TASK' registrada como SYSTEM -> $ruta"
     } catch { Write-Log ("No se pudo registrar la tarea: " + $_.Exception.Message) }
