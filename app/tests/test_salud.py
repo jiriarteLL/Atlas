@@ -130,7 +130,7 @@ def test_solo_notebooks_pc_y_servidores_con_datos(client, token):
     _sync(client, serial="TEST-SRV-02", nombre="SRV-TEST-2", tipo="Servidor", so="Microsoft Windows Server 2019 Standard",
           so_version="10.0.17763", salud={"so": {"edicion": "ServerStandard", "build": 17763}})
     nombres = {f["nombre"] for f in client.get("/api/salud", headers=bearer(token)).json()}
-    assert nombres == {"NB-TEST-01", "SRV-TEST-2"}
+    assert nombres == {"NB-TEST-01"}   # los servidores van en Servidores y VM
 
 
 def test_ficha_y_borrado(client, token):

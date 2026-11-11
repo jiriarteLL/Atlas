@@ -243,7 +243,7 @@ def armar(a, s, hoy=None):
 def _filas(db):
     pares = (db.query(Asset, AssetSalud).outerjoin(AssetSalud, AssetSalud.asset_id == Asset.id)
              .filter(Asset.estado != "Dado de baja")
-             .filter((Asset.tipo.in_(TIPOS_EQUIPO)) | ((Asset.tipo == "Servidor") & AssetSalud.asset_id.isnot(None)))
+             .filter(Asset.tipo.in_(TIPOS_EQUIPO))   # los servidores tienen su vista (Servidores y VM)
              .order_by(Asset.nombre).all())
     hoy = date.today()
     return [armar(a, s, hoy) for a, s in pares]

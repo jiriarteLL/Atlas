@@ -9,13 +9,14 @@ export function estadoCiclo(a) {
   if (["En stock", "Asignado", "Prestado", "En reparación", "Para baja", "Dado de baja"].includes(e)) return e;
   if (e === "Stock" || e === "Libre") return "En stock";
   if (e === "Mantenimiento") return "En reparación";
+  if ((e === "Activo" || !e) && ["Servidor", "VM"].includes(a.tipo)) return "En servicio";   // un servidor no se "asigna" a una persona
   if (e === "Activo" || !e) return (a.usuario || "").trim() ? "Asignado" : "En stock";
   return e;
 }
 export const TIPO_COLOR = { Notebook: "#3b82f6", Impresora: "#22c55e", Servidor: "#ec4899", Monitor: "#a78bfa", Switch: "#fbbf24", UPS: "#f97316", CPU: "#22d3ee" };
 
 export function estadoColor(e) {
-  if (e === "Activo" || e === "Activa" || e === "Asignado") return "var(--ll-verde)";
+  if (e === "Activo" || e === "Activa" || e === "Asignado" || e === "En servicio") return "var(--ll-verde)";
   if (e === "Mantenimiento" || e === "Por vencer" || e === "Inactivo" || e === "En reparación" || e === "Prestado") return "var(--ll-ambar)";
   if (e === "Libre" || e === "Stock" || e === "En stock") return "var(--ll-azul)";
   if (e === "Dado de baja") return "var(--ll-gris)";

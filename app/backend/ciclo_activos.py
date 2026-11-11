@@ -82,6 +82,8 @@ def estado_ciclo(a):
         return "En stock"
     if e == "Mantenimiento":
         return "En reparación"
+    if e in ("Activo", "") and (a.tipo or "") in ("Servidor", "VM"):
+        return "En servicio"   # un servidor no se "asigna" a una persona
     if e in ("Activo", ""):
         return "Asignado" if (a.usuario or "").strip() else "En stock"
     return e   # "Robado" u otro que se cargo a mano
