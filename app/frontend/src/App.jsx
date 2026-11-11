@@ -13,6 +13,7 @@ import Activos from "./vistas/Activos";
 import Impresoras from "./vistas/Impresoras";
 import Salud from "./vistas/Salud";
 import Telefonia from "./vistas/Telefonia";
+import Licencias from "./vistas/Licencias";
 import Monitores from "./vistas/Monitores";
 import Servidores from "./vistas/Servidores";
 import Garantias from "./vistas/Garantias";
@@ -31,7 +32,7 @@ import { SeccionPerfil } from "./secciones/SeccionPerfil";
 
 const SECCIONES = {
   dashboard: ["Dashboard", "Vista general"], activos: ["Activos", "Inventario completo"],
-  telefonia: ["Telefonía", "Internos de 3CX y teléfonos"], licencias: ["Licencias", "Software y suscripciones"], proyectos: ["Proyectos", "Seguimiento de IT"],
+  telefonia: ["Telefonía", "Internos de 3CX y teléfonos"], licencias: ["Licencias", "Suscripciones, costos y asignaciones"], proyectos: ["Proyectos", "Seguimiento de IT"],
   reportes: ["Reportes", "Análisis"], tendencias: ["Tendencias", "Evolución en el tiempo"],
   usuarios: ["Usuarios", "Nómina"], perfil: ["Mi perfil", "Cuenta, permisos y seguridad"],
   agente: ["Agente", "Scripts de sincronización"], accesos: ["Accesos", "Usuarios de la aplicación"],
@@ -43,7 +44,7 @@ const VISTAS_ACTIVOS = [["todos", "Todos los activos"], ["salud", "Notebooks y P
   ["impresoras", "Impresoras"], ["garantias", "Garantías"]];
 // Modulo de permisos que habilita cada seccion y subseccion (ver backend/auth.py MODULOS). Sin entrada = siempre.
 const MODULO_DE_VISTA = { todos: "activos", salud: "salud", servidores: "servidores", monitores: "activos", impresoras: "impresoras", garantias: "activos" };
-const MODULO_DE_SECCION = { dashboard: "dashboard", telefonia: "telefonia", proyectos: "proyectos", reportes: "reportes", tendencias: "tendencias",
+const MODULO_DE_SECCION = { dashboard: "dashboard", telefonia: "telefonia", licencias: "licencias", proyectos: "proyectos", reportes: "reportes", tendencias: "tendencias",
   agente: "agente", accesos: "accesos", actas: "activos", auditoria: "auditoria" };
 // Para cargar /api/assets alcanza con ver alguno de estos (igual que MODULOS_LISTA_ACTIVOS del servidor)
 const MODULOS_LISTA_ACTIVOS = ["activos", "dashboard", "salud", "servidores", "reportes", "proyectos"];
@@ -318,8 +319,7 @@ export default function App() {
               verFicha={verFicha} editar={(a) => setEdicion(a)} eliminar={eliminarActivo} nuevo={() => setEdicion({})}
               exportar={exportarExcel} puedeEditar={puedeEditar} puedeEliminar={puedeEliminar} esAdmin={esAdmin} etiquetas={setEtiquetas} />}
             {tab === "telefonia" && <Telefonia puedeEditar={puede(user, "telefonia", "editar")} avisar={avisar} />}
-            {tab === "licencias" && <Proximamente titulo="Licencias" columnas={["PRODUCTO", "CLAVE", "ASIGNADO A", "SEDE", "VENCE", "ESTADO", "ACCIONES"]}
-              texto="El control de licencias (Claude, Office, antivirus) está diseñado pero quedó fuera del alcance de la v2.0.0. Se habilita en una versión posterior." />}
+            {tab === "licencias" && <Licencias puedeEditar={puede(user, "licencias", "editar")} avisar={avisar} verFicha={verFicha} assets={assets} />}
             {tab === "usuarios" && <Proximamente titulo="Usuarios"
               texto="La nómina de empleados (con sede, rol y licencias asignadas) está diseñada pero quedó fuera del alcance de la v2.0.0. Los accesos a la aplicación se administran en Herramientas → Accesos." />}
             {tab === "proyectos" && <div className="ll-seccion-clasica"><SeccionProyectos assets={assets} user={user} puedeEditar={puede(user, "proyectos", "editar")} /></div>}

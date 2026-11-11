@@ -117,7 +117,7 @@ def test_modulos_y_niveles_invalidos(client, token):
     _usuario(client, "lector")
     assert _permisos(client, token, "lector", {"inexistente": "ver"}).status_code == 400
     assert _permisos(client, token, "lector", {"salud": "editar"}).status_code == 400   # salud es solo lectura
-    assert _permisos(client, token, "lector", {"licencias": "ver"}).status_code == 400  # proximamente
+    assert _permisos(client, token, "lector", {"licencias": "administrar"}).status_code == 400  # solo ver / editar
     assert _permisos(client, token, "lector", {"activos": "ninguno", "salud": "ver"}).status_code == 200
     assert _modulos_db("lector") == {"salud": "ver"}
 
@@ -176,5 +176,5 @@ def test_alta_con_modulos_elegidos(client, token):
     assert r.status_code == 200
     assert _modulos_db("nuevo") == {"impresoras": "ver"}
     cat = client.get("/auth/modulos", headers=bearer(token)).json()
-    assert any(m["clave"] == "licencias" and not m["disponible"] for m in cat["modulos"])
+    assert any(m["clave"] == "licencias" and m["disponible"] for m in cat["modulos"])   # habilitado en 0012
     assert cat["plantillas"]["viewer"] == plantilla("viewer")

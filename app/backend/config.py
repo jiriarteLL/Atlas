@@ -169,3 +169,17 @@ CROWDSTRIKE_CLIENT_ID = os.getenv("CROWDSTRIKE_CLIENT_ID", "").strip()
 CROWDSTRIKE_SECRET_ARCHIVO = os.getenv("CROWDSTRIKE_SECRET_ARCHIVO", "").strip()
 # (no se usa _lista: el filtro lleva comas)
 CROWDSTRIKE_FILTRO = os.getenv("CROWDSTRIKE_FILTRO", "").strip() or "product_type_desc:['Server','Domain Controller']"
+
+# Licencias (licencias.py): Adobe por la User Management API (credencial OAuth Server-to-Server de developer.adobe.com).
+# Inerte mientras falte algo. El secreto, como siempre, en un archivo aparte con ACL restringida (docs/licencias-adobe.md).
+ADOBE_CLIENT_ID = os.getenv("ADOBE_CLIENT_ID", "").strip()
+ADOBE_ORG_ID = os.getenv("ADOBE_ORG_ID", "").strip()
+ADOBE_SECRET_ARCHIVO = os.getenv("ADOBE_SECRET_ARCHIVO", "").strip()
+ADOBE_IMS_URL = os.getenv("ADOBE_IMS_URL", "").strip() or "https://ims-na1.adobelogin.com/ims/token/v3"
+ADOBE_UMAPI_URL = (os.getenv("ADOBE_UMAPI_URL", "").strip() or "https://usermanagement.adobe.io/v2/usermanagement").rstrip("/")
+LICENCIAS_CADA_HORAS = int(os.getenv("LICENCIAS_CADA_HORAS", "24"))         # 0 = solo con "Actualizar ahora"
+LICENCIAS_RENOVACION_DIAS = int(os.getenv("LICENCIAS_RENOVACION_DIAS", "60"))
+# Anthropic (Claude): preparado para un conector de costos/seats por API (todavia NO implementado: faltan los endpoints
+# confirmados). La clave de administrador iria en un archivo aparte con ACL restringida, como las demas.
+ANTHROPIC_ADMIN_KEY_ARCHIVO = os.getenv("ANTHROPIC_ADMIN_KEY_ARCHIVO", "").strip()
+ANTHROPIC_ORG_ID = os.getenv("ANTHROPIC_ORG_ID", "").strip()

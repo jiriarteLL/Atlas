@@ -195,7 +195,7 @@ MODULOS = [
     ("auditoria",  "Auditoría física", "Campañas de relevamiento con el celular (QR / serie)", ("ver", "editar")),
     ("importar",   "Importar CSV",   "Alta masiva de activos desde un CSV", ("editar",)),
     ("accesos",    "Accesos",        "Usuarios de Atlas y sus permisos", ("administrar",)),
-    ("licencias",  "Licencias",      "Próximamente", ()),
+    ("licencias",  "Licencias",      "Licencias por persona (Adobe y carga manual), cupos, costos y renovaciones", ("ver", "editar")),
 ]
 ELIMINAR_ACTIVOS = "activos_eliminar"   # permiso aparte (nivel "si"); exige activos = editar
 RANGO = {"ver": 1, "si": 1, "editar": 2, "administrar": 2}

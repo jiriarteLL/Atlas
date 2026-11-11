@@ -44,9 +44,11 @@ from salud import datos_de_agente, estado_antivirus
 log = logging.getLogger("atlas")
 router = APIRouter(prefix="/api/conectores", tags=["conectores"])
 
-CONECTORES = ("vcenter", "azure", "redfish", "crowdstrike")
+CONECTORES = ("vcenter", "azure", "redfish", "crowdstrike", "adobe")
+# Los que muestra y lanza el panel de Servidores y VM; Adobe tiene su panel en Licencias (licencias.py)
+CONECTORES_SERVIDORES = ("vcenter", "azure", "redfish", "crowdstrike")
 NOMBRES = {"vcenter": "VMware vCenter", "azure": "Microsoft Azure", "redfish": "iDRAC / iLO (Redfish)",
-           "crowdstrike": "CrowdStrike Falcon (servidores)"}
+           "crowdstrike": "CrowdStrike Falcon (servidores)", "adobe": "Adobe Admin Console (licencias)"}
 TIMEOUT_S = 30
 LEASE_MIN = 30
 USUARIO_AUTO = "conector-%s"
@@ -175,7 +177,27 @@ def falta_config(conector):
             falta.append("CROWDSTRIKE_SECRET_ARCHIVO")
         elif not leer_secreto(config.CROWDSTRIKE_SECRET_ARCHIVO):
             falta.append("archivo del secreto de CrowdStrike (no existe o está vacío)")
+    elif conector == "adobe":
+        if not config.ADOBE_CLIENT_ID:
+            falta.append("ADOBE_CLIENT_ID")
+        if not config.ADOBE_ORG_ID:
+            falta.append("ADOBE_ORG_ID")
+        if not config.ADOBE_SECRET_ARCHIVO:
+            falta.append("ADOBE_SECRET_ARCHIVO")
+        elif not leer_secreto(config.ADOBE_SECRET_ARCHIVO):
+            falta.append("archivo del secreto de Adobe (no existe o está vacío)")
+    elif conector == "anthropic":   # preparado, sin implementar (no esta en CONECTORES: nunca corre)
+        if not config.ANTHROPIC_ADMIN_KEY_ARCHIVO:
+            falta.append("ANTHROPIC_ADMIN_KEY_ARCHIVO")
+        elif not leer_secreto(config.ANTHROPIC_ADMIN_KEY_ARCHIVO):
+            falta.append("archivo de la clave de administrador de Anthropic (no existe o está vacío)")
+        falta.append("conector de Anthropic pendiente de implementar (endpoints a confirmar)")
     return falta
+
+
+def cada_horas(conector):
+    """Cada cuanto corre solo: las licencias cambian poco (LICENCIAS_CADA_HORAS); los servidores, CONECTORES_CADA_HORAS."""
+    return config.LICENCIAS_CADA_HORAS if conector == "adobe" else config.CONECTORES_CADA_HORAS
 
 
 def configurado(conector):
@@ -845,9 +867,20 @@ def aplicar_crowdstrike(db, datos, ahora=None):
     return res
 
 
+def _leer_adobe():
+    import licencias   # import tardio: licencias.py usa las utilidades de este modulo
+    return licencias.leer_adobe(http)
+
+
+def _aplicar_adobe(db, datos):
+    import licencias
+    return licencias.aplicar_adobe(db, datos)
+
+
 LEER = {"vcenter": lambda: leer_vcenter(http), "azure": lambda: leer_azure(http), "redfish": lambda: leer_redfish(http),
-        "crowdstrike": lambda: leer_crowdstrike(http)}
-APLICAR = {"vcenter": aplicar_vcenter, "azure": aplicar_azure, "redfish": aplicar_redfish, "crowdstrike": aplicar_crowdstrike}
+        "crowdstrike": lambda: leer_crowdstrike(http), "adobe": _leer_adobe}
+APLICAR = {"vcenter": aplicar_vcenter, "azure": aplicar_azure, "redfish": aplicar_redfish, "crowdstrike": aplicar_crowdstrike,
+           "adobe": _aplicar_adobe}
 
 
 # ---------------------------------------------------------------- corrida (lease por conector)
@@ -919,9 +952,10 @@ def toca_correr(db, conector, ahora=None):
     f = _fila(db, conector)
     if f.pedida:
         return True
-    if config.CONECTORES_CADA_HORAS <= 0:
+    horas = cada_horas(conector)
+    if horas <= 0:
         return False
-    return f.inicio is None or ahora - f.inicio >= timedelta(hours=config.CONECTORES_CADA_HORAS)
+    return f.inicio is None or ahora - f.inicio >= timedelta(hours=horas)
 
 
 def hay_alguno_configurado():
@@ -947,16 +981,16 @@ def loop():
 
 
 # ---------------------------------------------------------------- endpoints
-def estado(db):
+def estado(db, conectores=CONECTORES_SERVIDORES):
     ahora = datetime.utcnow()
     out = []
-    for c in CONECTORES:
+    for c in conectores:
         f = _fila(db, c)
         falta = falta_config(c)
         out.append({"conector": c, "nombre": NOMBRES[c], "configurado": not falta, "falta": falta,
                     "corriendo": bool(f.corriendo_hasta and f.corriendo_hasta > ahora), "pedida": bool(f.pedida),
                     "inicio": f.inicio, "fin": f.fin, "ok": f.ok, "elementos": f.elementos or 0, "mensaje": f.mensaje or "",
-                    "cada_horas": config.CONECTORES_CADA_HORAS})
+                    "cada_horas": cada_horas(c)})
     return out
 
 
@@ -971,11 +1005,11 @@ def listar(user: UserOut = Depends(require_modulo("servidores"))):
 
 @router.post("/actualizar")
 def actualizar(request: Request, user: UserOut = Depends(require_modulo("activos", nivel="editar"))):
-    """Pide una corrida ya de cada conector configurado (no bloquea: la corre un hilo aparte)."""
+    """Pide una corrida ya de cada conector de servidores configurado (no bloquea: la corre un hilo aparte)."""
     db = SessionLocal()
     lanzados = []
     try:
-        for c in CONECTORES:
+        for c in CONECTORES_SERVIDORES:
             if configurado(c):
                 _fila(db, c).pedida = True
                 lanzados.append(c)

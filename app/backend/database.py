@@ -2,7 +2,7 @@
 """Motor de base y modelos de negocio. El motor sale de DATABASE_URL (PostgreSQL en los compose)."""
 import uuid
 from datetime import datetime
-from sqlalchemy import create_engine, event, Boolean, Column, Date, String, DateTime, Float, ForeignKey, Text, Integer, LargeBinary
+from sqlalchemy import create_engine, event, Boolean, Column, Date, String, DateTime, Float, ForeignKey, Text, Integer, LargeBinary, Numeric
 from sqlalchemy.orm import declarative_base, deferred, sessionmaker
 import config
 
@@ -436,6 +436,119 @@ class ConectorCorrida(Base):
     ok              = Column(Boolean, nullable=True)
     elementos       = Column(Integer, default=0)
     mensaje         = Column(String, default="")
+
+
+# ---------------------------------------------------------------- licencias (ver licencias.py)
+# Fuente principal: el UserManager productivo (productos, asignaciones, nomina, pares de Adobe y cuentas de equipo de
+# Claude). Secundarias: exportacion CSV / API de Adobe y carga manual. Los costos se cargan en Atlas y no se pisan.
+class LicenciaProducto(Base):
+    __tablename__ = "licencia_producto"
+    id               = Column(String, primary_key=True, default=_uuid)
+    proveedor        = Column(String, default="Otro")          # Adobe | Microsoft | Anthropic | Otro ...
+    producto         = Column(String, default="")
+    tipo             = Column(String, default="")              # Software | IA ...
+    plan             = Column(String, default="")              # Teams, Business Standard, Max 20x ...
+    sku              = Column(String, default="")
+    origen           = Column(String, default="manual")        # usermanager | adobe | adobe-csv | manual
+    id_externo       = Column(String, default="", index=True)  # id en el UserManager / perfil de Adobe
+    producto_externo = Column(String, default="")              # Adobe: productName del perfil
+    cupo             = Column(Integer, nullable=True)          # contratadas (None = sin dato)
+    ilimitado        = Column(Boolean, default=False)          # Adobe "UNLIMITED"
+    cupo_manual      = Column(Boolean, default=False)          # lo cargo un usuario: las importaciones no lo pisan
+    precio_usd       = Column(Numeric(14, 2), nullable=True)   # precio por licencia y periodo (USD y/o ARS)
+    precio_ars       = Column(Numeric(16, 2), nullable=True)
+    periodo          = Column(String, default="mensual")       # mensual | anual
+    costo_origen     = Column(String, default="manual")        # manual | api (precio que informa el proveedor)
+    workspace        = Column(String, default="")              # Anthropic: workspace / org del que salen los costos
+    fecha_renovacion = Column(Date, nullable=True)
+    contrato         = Column(String, default="")
+    notas            = Column(Text, default="")
+    activo           = Column(Boolean, default=True)
+    creado           = Column(DateTime, default=datetime.utcnow)
+    actualizado      = Column(DateTime, default=datetime.utcnow)
+
+
+class LicenciaAsignacion(Base):
+    """Una persona con un producto. Nunca se borra: al desasignarse pasa a "liberada" con fecha hasta (historial)."""
+    __tablename__ = "licencia_asignacion"
+    id          = Column(String, primary_key=True, default=_uuid)
+    producto_id = Column(String, ForeignKey("licencia_producto.id", ondelete="CASCADE"), nullable=False, index=True)
+    persona     = Column(String, nullable=False, index=True)   # email en minusculas (o "legajo-N" si no tiene mail)
+    nombre      = Column(String, default="")
+    origen      = Column(String, default="manual")             # usermanager | adobe | adobe-csv | manual | csv
+    id_externo  = Column(String, default="", index=True)       # id de la asignacion en el UserManager
+    detalle     = Column(String, default="")                   # sector / comentario de la fuente
+    desde       = Column(DateTime, default=datetime.utcnow)
+    hasta       = Column(DateTime, nullable=True)
+    estado      = Column(String, default="activa")             # activa | liberada
+
+
+class LicenciaPersona(Base):
+    """Datos de la persona: nomina (UserManager), estado en Adobe y cuenta de AD (se alimenta aparte)."""
+    __tablename__ = "licencia_persona"
+    persona        = Column(String, primary_key=True)          # email en minusculas (o "legajo-N")
+    nombre         = Column(String, default="")
+    legajo         = Column(String, default="")
+    centro_costo   = Column(String, default="")
+    area           = Column(String, default="")                # UserManager: subauxiliar (p. ej. "CABA 1-ACTUARIO")
+    categoria      = Column(String, default="")
+    sede           = Column(String, default="")
+    estado_nomina  = Column(String, default="")                # activo | baja | "" (sin dato)
+    id_externo     = Column(String, default="", index=True)    # id del empleado en el UserManager
+    estado_externo = Column(String, default="")                # Adobe: active | disabled | ...
+    cuenta_ad      = Column(String, default="desconocida")     # activa | deshabilitada | desconocida
+    actualizado    = Column(DateTime, default=datetime.utcnow)
+
+
+class LicenciaCompartida(Base):
+    """Una licencia que usan dos personas (pares de Adobe del UserManager): cuenta como UNA licencia. El costo va al
+    centro de imputacion si esta cargado; si no, mitad a cada centro de costo de las dos personas."""
+    __tablename__ = "licencia_compartida"
+    id          = Column(String, primary_key=True, default=_uuid)
+    producto_id = Column(String, ForeignKey("licencia_producto.id", ondelete="CASCADE"), nullable=True, index=True)
+    id_externo  = Column(String, default="", index=True)
+    sector      = Column(String, default="")
+    principal   = Column(String, default="")                   # clave de la persona (email)
+    principal_nombre  = Column(String, default="")
+    secundario  = Column(String, default="")
+    secundario_nombre = Column(String, default="")
+    imputacion  = Column(String, default="")                   # centro de costo al que se imputa
+    porcentaje  = Column(Float, nullable=True)                 # % imputado a "imputacion" (None/0 = todo)
+    activo      = Column(Boolean, default=True)
+    actualizado = Column(DateTime, default=datetime.utcnow)
+
+
+class LicenciaCuentaEquipo(Base):
+    """Cuenta compartida por una unidad de negocio (equipos de Claude del UserManager): una cuenta = una licencia."""
+    __tablename__ = "licencia_cuenta_equipo"
+    id          = Column(String, primary_key=True, default=_uuid)
+    producto_id = Column(String, ForeignKey("licencia_producto.id", ondelete="SET NULL"), nullable=True, index=True)
+    id_externo  = Column(String, default="", index=True)
+    numero      = Column(String, default="")
+    unidad      = Column(String, default="")
+    lider       = Column(String, default="")
+    responsable = Column(String, default="")
+    email       = Column(String, default="")
+    tipo        = Column(String, default="")                   # Standard | Premium | Max 20x
+    estado      = Column(String, default="")
+    activo      = Column(Boolean, default=True)
+    actualizado = Column(DateTime, default=datetime.utcnow)
+
+
+class LicenciaCostoPeriodo(Base):
+    """Costo real de un periodo (mes AAAA-MM) por producto y workspace: lo informa la API del proveedor (Anthropic,
+    Adobe) o se carga a mano. Una fila por (producto, periodo, workspace, moneda, origen)."""
+    __tablename__ = "licencia_costo_periodo"
+    id          = Column(String, primary_key=True, default=_uuid)
+    producto_id = Column(String, ForeignKey("licencia_producto.id", ondelete="CASCADE"), nullable=False, index=True)
+    periodo     = Column(String, nullable=False, index=True)   # AAAA-MM
+    workspace   = Column(String, default="")
+    moneda      = Column(String, default="USD")
+    monto       = Column(Numeric(16, 2), nullable=False)
+    cantidad    = Column(Integer, nullable=True)               # seats / licencias facturadas en el periodo
+    origen      = Column(String, default="manual")             # api | manual
+    detalle     = Column(Text, default="")
+    actualizado = Column(DateTime, default=datetime.utcnow)
 
 
 def init_db():

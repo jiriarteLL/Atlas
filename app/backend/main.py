@@ -42,6 +42,7 @@ from actas import router as actas_router
 from auditoria import router as auditoria_router
 import conectores
 from conectores import router as conectores_router
+from licencias import router as licencias_router
 from servidores import borrar_datos_servidor, guardar_servidor, limitar_servidor, router as servidores_router
 from mailer import notificar_proyecto_finalizado
 from metricas import metricas_texto, registrar_request
@@ -83,6 +84,7 @@ app.include_router(actas_router)
 app.include_router(auditoria_router)
 app.include_router(servidores_router)
 app.include_router(conectores_router)
+app.include_router(licencias_router)
 if config.CORS_ORIGINS:
     app.add_middleware(CORSMiddleware, allow_origins=config.CORS_ORIGINS, allow_methods=["*"], allow_headers=["*"],
                        allow_credentials=True)

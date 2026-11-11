@@ -54,6 +54,18 @@ def seed_superadmin():
         db.close()
 
 
+def seed_licencias():
+    """Catalogo de licencias contratadas (sin costos ni personas). Idempotente: no duplica ni pisa lo existente."""
+    import licencias
+    db = SessionLocal()
+    try:
+        creados = licencias.sembrar_catalogo(db)
+        db.commit()
+        return creados
+    finally:
+        db.close()
+
+
 def main():
     try:
         estado = seed_superadmin()
@@ -61,6 +73,8 @@ def main():
         print("[seed] ERROR: %s" % e, file=sys.stderr)
         return 1
     print("[seed] superadmin %s: %s" % (config.SUPERADMIN_EMAIL, estado))
+    creados = seed_licencias()
+    print("[seed] licencias: %s" % ("catalogo creado: " + ", ".join(creados) if creados else "catalogo ya cargado"))
     return 0
 
 
