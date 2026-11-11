@@ -5,7 +5,8 @@ Fuentes de cada servidor:
 - el agente de Atlas (bloque "servidor" de /api/sync, solo en Windows Server): roles, uptime, reinicio pendiente,
   servicios automaticos detenidos, SQL, IIS, controlador de dominio y VMs de Hyper-V; los volumenes llegan en el
   bloque "salud" (todos los equipos) y se guardan en asset_salud.volumenes;
-- los conectores (conectores.py): vCenter, Azure y Redfish (iDRAC / iLO), guardados en asset_externo.
+- los conectores (conectores.py): vCenter, Azure, Redfish (iDRAC / iLO) y CrowdStrike Falcon, guardados en
+  asset_externo. CrowdStrike reemplaza al agente en los servidores: identidad, red, SO y ultimo contacto.
 
 Alertas: volumen con menos de SERVIDOR_DISCO_ALERTA_PCT % libre, reinicio pendiente hace mas de
 SERVIDOR_REINICIO_DIAS, sin reiniciar hace mas de SERVIDOR_UPTIME_DIAS (no se aplicaron parches), servicios
@@ -18,16 +19,18 @@ from fastapi import APIRouter, Depends, HTTPException
 
 import config
 from auth import MODULOS_FICHA, UserOut, require_modulo
-from ciclo_vida import build_de, soporte
-from database import Asset, AssetExterno, AssetSalud, AssetServidor, SessionLocal
+from ciclo_vida import build_de, soporte, soporte_linux
+from database import Asset, AssetExterno, AssetSalud, AssetServidor, Historial, SessionLocal
+from salud import datos_de_agente
 
 router = APIRouter(prefix="/api/servidores", tags=["servidores"])
 
 MAX_JSON = 60000          # bytes del bloque "servidor"; si se pasa se ignora (el sync clasico sigue)
 MAX_ITEMS = 100
 DIAS_SIN_REPORTAR = 15
+DIAS_SIN_REPORTAR_CS = 30     # equipos que ve CrowdStrike (sin agente): sin contacto hace mas de 30 dias
 TIPOS_SERVIDOR = ("Servidor", "VM")
-FUENTES = ("vcenter", "azure", "redfish")
+FUENTES = ("vcenter", "azure", "redfish", "crowdstrike")
 
 
 # ---------------------------------------------------------------- normalizacion de lo que manda el agente
@@ -134,25 +137,39 @@ def _lista(t):
     return v if isinstance(v, list) else []
 
 
-def armar(a, srv, salud, externos, hoy=None, ahora=None):
+def con_historial_de_agente(db, ids=None):
+    """Activos que alguna vez sincronizo el agente (Historial con usuario "agente-automatico")."""
+    q = db.query(Historial.asset_id).filter(Historial.usuario == "agente-automatico")
+    if ids is not None:
+        q = q.filter(Historial.asset_id.in_(list(ids)))
+    return {r[0] for r in q.distinct().all()}
+
+
+def armar(a, srv, salud, externos, hoy=None, ahora=None, hist_agente=False):
     hoy = hoy or date.today()
     ahora = ahora or datetime.utcnow()
     ext = {e.fuente: _json(e.datos, {}) for e in externos}
     creado_por = [e.fuente for e in externos if e.creado]
-    con_agente = srv is not None or salud is not None or not creado_por
+    # agente = bloque servidor o salud cargada por el agente (CrowdStrike tambien crea la fila de salud, solo antivirus)
+    con_agente = srv is not None or datos_de_agente(salud) or hist_agente or not (creado_por or "crowdstrike" in ext)
     origenes = (["agente"] if con_agente else []) + [f for f in FUENTES if f in ext]
     build = (salud.so_build if salud and salud.so_build else None) or build_de(a.so_version)
     # El agente manda la edicion como "Standard"/"Datacenter": para saber que es Windows Server sirve el nombre del SO
     edicion = a.so if "server" in (a.so or "").lower() else ((salud.so_edicion if salud and salud.so_edicion else "") or a.so)
-    sop = soporte(build, edicion, hoy) if "windows" in (a.so or "").lower() or (salud and salud.so_edicion) else \
-        {"producto": "", "version": "", "fin_soporte": None, "estado": "desconocido", "dias": None}
+    if "windows" in (a.so or "").lower() or (salud and salud.so_edicion):
+        sop = soporte(build, edicion, hoy)
+    else:   # Linux (Ubuntu / Debian que trae CrowdStrike o vCenter)
+        sop = soporte_linux(a.so, hoy)
     vols = _lista(salud.volumenes) if salud else []
     libres = [v.get("libre_pct") for v in vols if isinstance(v, dict) and v.get("libre_pct") is not None]
     min_libre = min(libres) if libres else None
     reinicio_dias = (ahora - srv.reinicio_desde).days if srv and srv.reinicio_pendiente and srv.reinicio_desde else None
     servicios = _lista(srv.servicios_detenidos) if srv else []
     host = (ext.get("vcenter") or {}).get("host") or (ext.get("azure") or {}).get("grupo_recursos") or ""
-    sin_reportar = bool(con_agente and a.updated and ahora - a.updated > timedelta(days=DIAS_SIN_REPORTAR))
+    if "crowdstrike" in ext:   # updated = el contacto mas reciente entre agente y CrowdStrike
+        sin_reportar = bool(a.updated and ahora - a.updated > timedelta(days=DIAS_SIN_REPORTAR_CS))
+    else:
+        sin_reportar = bool(con_agente and a.updated and ahora - a.updated > timedelta(days=DIAS_SIN_REPORTAR))
     alertas = {
         "disco_lleno": min_libre is not None and min_libre < config.SERVIDOR_DISCO_ALERTA_PCT,
         "reinicio_pendiente": reinicio_dias is not None and reinicio_dias > config.SERVIDOR_REINICIO_DIAS,
@@ -191,7 +208,9 @@ def _filas(db):
     activos = [a for a in q.all() if a.tipo in TIPOS_SERVIDOR or a.id in ids]
     salud = {s.asset_id: s for s in db.query(AssetSalud).filter(AssetSalud.asset_id.in_([a.id for a in activos])).all()} if activos else {}
     hoy, ahora = date.today(), datetime.utcnow()
-    filas = [armar(a, srvs.get(a.id), salud.get(a.id), externos.get(a.id, []), hoy, ahora) for a in activos]
+    con_cs = [a.id for a in activos if any(e.fuente == "crowdstrike" for e in externos.get(a.id, []))]
+    hist = con_historial_de_agente(db, con_cs) if con_cs else set()
+    filas = [armar(a, srvs.get(a.id), salud.get(a.id), externos.get(a.id, []), hoy, ahora, a.id in hist) for a in activos]
     filas.sort(key=lambda f: (f["nombre"] or "").lower())
     return filas
 
@@ -243,6 +262,6 @@ def ver(asset_id: str, user: UserOut = Depends(require_modulo("servidores", *MOD
         if a.tipo not in TIPOS_SERVIDOR and srv is None and not ext:
             raise HTTPException(404, "No es un servidor")
         salud = db.get(AssetSalud, asset_id)
-        return armar(a, srv, salud, ext)
+        return armar(a, srv, salud, ext, hist_agente=bool(con_historial_de_agente(db, [asset_id])))
     finally:
         db.close()

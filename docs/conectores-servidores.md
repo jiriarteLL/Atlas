@@ -84,7 +84,40 @@ del agente por la serie (Dell: service tag).
 Controladoras vistas hasta ahora: iDRAC de LLROSSVR03 (Rosario) y dos iLO de HPE en la red 192.168.100.x. Las de la
 red 192.168.0.x tienen el mismo problema de ruta hacia Azure que vCenter.
 
+## 4. CrowdStrike Falcon (solo servidores)
+
+Reemplaza al agente de Atlas en los servidores: trae de la API de hosts de Falcon **solo** los equipos de tipo
+`Server` y `Domain Controller` (Windows y Linux). Las PC siguen con el agente.
+
+Qué pedir: un cliente de API en la consola de Falcon (Support and resources → API clients and keys) con alcance
+**Hosts: Read** y nada más.
+
+```
+CROWDSTRIKE_URL=https://api.us-2.crowdstrike.com
+CROWDSTRIKE_CLIENT_ID=<client id>
+CROWDSTRIKE_SECRET_ARCHIVO=C:\Atlas\secretos\crowdstrike-secret.txt
+# opcional (FQL); por defecto:
+# CROWDSTRIKE_FILTRO=product_type_desc:['Server','Domain Controller']
+```
+
+Cómo se cruzan con los activos que ya hay:
+1. el mismo dispositivo de una corrida anterior (`device_id`);
+2. la misma serie (las VM de VMware traen `VMware-56 4d …`, igual que el agente; las de Azure `0000-0003-…`);
+3. el mismo nombre de equipo, solo si ese activo no tiene otra serie.
+
+Si no aparece, se da de alta: tipo **VM** si es virtual (serie `VMware-…` o fabricante VMware / Microsoft
+Corporation / "Virtual"), **Servidor** si es físico; la sede sale de la IP (`SEDES_POR_RED`). Dos equipos con el
+mismo nombre y distinta serie (pasa con LLAZCRM) quedan como dos activos: el segundo se llama "LLAZCRM (172.20.0.6)".
+
+Qué actualiza: nombre, serie, SO y versión, IP local y pública, MAC, gateway, dominio, último reinicio y último
+inicio de sesión; marca, modelo y OU solo si están vacíos. Nunca toca garantía, comentarios, estado, usuario ni datos
+de compra. Si el agente de Atlas reportó después que el último contacto de CrowdStrike, esa vez gana el agente. Cada
+cambio queda en el Historial con el usuario `crowdstrike`. En la salud del equipo deja el sensor como antivirus:
+contenido (aislado de la red) o en modo de funcionalidad reducida cuenta como alerta.
+
+"Sin reportar": más de 30 días sin contacto con CrowdStrike. No se dan de baja solos.
+
 ## Apagar un conector
 
-Borrar (o dejar vacía) su variable principal (`VCENTER_URL`, `AZURE_SUSCRIPCIONES`, `REDFISH_HOSTS`) y reiniciar
-los servicios. Los datos que ya trajo quedan en las fichas.
+Borrar (o dejar vacía) su variable principal (`VCENTER_URL`, `AZURE_SUSCRIPCIONES`, `REDFISH_HOSTS`,
+`CROWDSTRIKE_URL`) y reiniciar los servicios. Los datos que ya trajo quedan en las fichas.

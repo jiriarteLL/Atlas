@@ -50,6 +50,47 @@ SERVIDOR = {
 }
 
 
+# Linux de los servidores (los trae CrowdStrike / vCenter). Ubuntu LTS: fin del soporte estandar (sin Ubuntu Pro/ESM);
+# Debian: fin del LTS. Fechas de los calendarios publicados por Canonical y Debian LTS; las que se anuncian solo por
+# mes (Ubuntu 22.04 y 24.04, Debian 13) van al ultimo dia de ese mes y son APROXIMADAS: revisarlas cuando se acerquen.
+LINUX = {
+    ("ubuntu", "14.04"): ("Ubuntu", "14.04 LTS", date(2019, 4, 30)),
+    ("ubuntu", "16.04"): ("Ubuntu", "16.04 LTS", date(2021, 4, 30)),
+    ("ubuntu", "18.04"): ("Ubuntu", "18.04 LTS", date(2023, 5, 31)),
+    ("ubuntu", "20.04"): ("Ubuntu", "20.04 LTS", date(2025, 5, 31)),
+    ("ubuntu", "22.04"): ("Ubuntu", "22.04 LTS", date(2027, 4, 30)),    # aproximada (abril 2027)
+    ("ubuntu", "24.04"): ("Ubuntu", "24.04 LTS", date(2029, 4, 30)),    # aproximada (abril 2029)
+    ("debian", "9"): ("Debian", "9 (stretch)", date(2022, 6, 30)),
+    ("debian", "10"): ("Debian", "10 (buster)", date(2024, 6, 30)),
+    ("debian", "11"): ("Debian", "11 (bullseye)", date(2026, 8, 31)),
+    ("debian", "12"): ("Debian", "12 (bookworm)", date(2028, 6, 30)),
+    ("debian", "13"): ("Debian", "13 (trixie)", date(2030, 6, 30)),     # aproximada
+}
+
+
+def _estado(fin, hoy):
+    dias = (fin - hoy).days
+    return ("sin_soporte" if dias < 0 else "vence_pronto" if dias <= AVISO_DIAS else "vigente"), dias
+
+
+def soporte_linux(so, hoy=None):
+    """"Ubuntu 24.04" / "Ubuntu 24.04.1 LTS" / "Debian GNU 9" -> mismo formato que soporte(); desconocido si no esta."""
+    hoy = hoy or date.today()
+    s = (so or "").lower()
+    fila = None
+    m = re.search(r"ubuntu\D*(\d{2}\.\d{2})", s)
+    if m:
+        fila = LINUX.get(("ubuntu", m.group(1)))
+    m = re.search(r"debian\D*(\d{1,2})\b", s)
+    if not fila and m:
+        fila = LINUX.get(("debian", m.group(1)))
+    if not fila:
+        return {"producto": "", "version": "", "fin_soporte": None, "estado": "desconocido", "dias": None}
+    prod, ver, fin = fila
+    estado, dias = _estado(fin, hoy)
+    return {"producto": prod, "version": ver, "fin_soporte": fin, "estado": estado, "dias": dias}
+
+
 def tipo_edicion(edicion):
     """'servidor' | 'ltsc' | 'empresa' (Enterprise/Education) | 'pro' (Home/Pro y cualquier otra)."""
     e = (edicion or "").lower().replace(" ", "")

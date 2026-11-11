@@ -88,6 +88,13 @@ def es_corporativo(a):
     return bool(config.AV_CORPORATIVO) and config.AV_CORPORATIVO.lower() in nombre
 
 
+def datos_de_agente(s):
+    """True si la fila de salud la cargo el agente de Atlas. CrowdStrike (conectores.py) tambien crea la fila, pero
+    solo con el antivirus: eso no cuenta como "tiene agente"."""
+    return bool(s and (s.so_build or s.so_edicion or s.ultimo_parche or (s.volumenes or "[]") not in ("[]", "")
+                       or (s.discos or "[]") not in ("[]", "")))
+
+
 def estado_antivirus(avs):
     """'' sin datos | 'falta_corporativo' no tiene el antivirus de la empresa (CrowdStrike) |
     'desactivado' lo tiene pero apagado | 'desactualizado' activo sin firmas al dia | 'ok'.

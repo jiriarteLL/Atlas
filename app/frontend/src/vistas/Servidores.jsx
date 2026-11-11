@@ -1,6 +1,6 @@
 // Servidores.jsx — Subseccion de Activos "Servidores y VM": lo que informa el agente en Windows Server (roles,
 // volumenes, uptime, reinicio pendiente, servicios detenidos, SQL, IIS, Hyper-V) mas lo que traen los conectores
-// (vCenter, Azure y Redfish: iDRAC / iLO). Las tarjetas son alertas que filtran la tabla; un clic abre la ficha.
+// (vCenter, Azure, Redfish: iDRAC / iLO, y CrowdStrike Falcon). Las tarjetas son alertas que filtran la tabla; un clic abre la ficha.
 // Abajo, el panel de conectores con su estado y lo que falta configurar. Datos de /api/servidores y /api/conectores.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../api";
@@ -12,10 +12,10 @@ const ALERTAS = [
   ["reinicio_pendiente", "Reinicio pendiente +7 días", "var(--ll-ambar)"],
   ["uptime_alto", "Sin reiniciar +60 días", "var(--ll-ambar)"],
   ["servicios_detenidos", "Servicios automáticos detenidos", "var(--ll-rojo)"],
-  ["sin_soporte", "Windows Server sin soporte", "var(--ll-rosa)"],
-  ["sin_reportar", "Sin reportar +15 días", "var(--ll-muted)"],
+  ["sin_soporte", "Sistema sin soporte", "var(--ll-rosa)"],
+  ["sin_reportar", "Sin reportar (+15 d · CrowdStrike +30 d)", "var(--ll-muted)"],
 ];
-const ORIGENES = { agente: "Agente", vcenter: "vCenter", azure: "Azure", redfish: "iDRAC / iLO" };
+const ORIGENES = { agente: "Agente", crowdstrike: "CrowdStrike", vcenter: "vCenter", azure: "Azure", redfish: "iDRAC / iLO" };
 
 const colorLibre = (p) => (p === null || p === undefined ? "var(--ll-dim)" : p < 10 ? "var(--ll-rojo)" : p < 20 ? "var(--ll-ambar)" : "var(--ll-verde)");
 
@@ -233,6 +233,14 @@ const Fila = ({ k, v }) => (v === null || v === undefined || v === "" ? null : (
   <div style={{ display: "flex", gap: 12, fontSize: 13, padding: "3px 0" }}><span style={{ color: "var(--ll-dim)", minWidth: 150 }}>{k}</span><span style={{ color: "var(--ll-text)" }}>{v}</span></div>
 ));
 
+// Sensor de CrowdStrike: contenido (aislado de la red) o en modo de funcionalidad reducida = alerta
+function EstadoCS({ cs }) {
+  const contenido = (cs.estado || "").toLowerCase() === "contained" || !["", "normal"].includes((cs.contencion || "").toLowerCase());
+  const rfm = ["yes", "true"].includes((cs.rfm || "").toLowerCase());
+  const [txt, color] = contenido ? ["Contenido: aislado de la red", "var(--ll-rojo)"] : rfm ? ["Funcionalidad reducida", "var(--ll-ambar)"] : ["Normal", "var(--ll-verde)"];
+  return <span style={{ color, fontWeight: 600 }}>{txt}</span>;
+}
+
 export function ServidorActivo({ assetId }) {
   const [x, setX] = useState(null);
   useEffect(() => {
@@ -242,7 +250,7 @@ export function ServidorActivo({ assetId }) {
   }, [assetId]);
   if (!x) return null;
   const ext = x.externos || {};
-  const vc = ext.vcenter, az = ext.azure, rf = ext.redfish;
+  const vc = ext.vcenter, az = ext.azure, rf = ext.redfish, cs = ext.crowdstrike;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <Bloque titulo="SERVIDOR">
@@ -250,7 +258,7 @@ export function ServidorActivo({ assetId }) {
         <Fila k="Uptime" v={x.uptime_dias !== null ? textoUptime(x.uptime_dias) : null} />
         <Fila k="Reinicio pendiente" v={x.reinicio_pendiente ? `Sí (${(x.reinicio_motivos || []).join(", ")}${x.reinicio_dias !== null ? ` · hace ${x.reinicio_dias} días` : ""})` : (x.servidor_actualizado ? "No" : null)} />
         <Fila k="Controlador de dominio" v={x.controlador_dominio ? "Sí" : null} />
-        <Fila k="Soporte de Windows" v={x.fin_soporte ? <Soporte f={x} /> : null} />
+        <Fila k="Soporte del sistema" v={x.fin_soporte ? <>{[x.soporte_producto, x.soporte_version].filter(Boolean).join(" ")} · <Soporte f={x} /></> : null} />
       </Bloque>
       {x.roles?.length > 0 && <Bloque titulo="ROLES">
         {x.roles.map((r) => <div key={r.nombre} style={{ fontSize: 13, padding: "3px 0" }}><b style={{ fontWeight: 600 }}>{r.nombre}</b>{r.servicios?.length ? <span className="tenue"> · {r.servicios.join(", ")}</span> : null}</div>)}
@@ -269,6 +277,18 @@ export function ServidorActivo({ assetId }) {
       </Bloque>}
       {x.hyperv_vms && <Bloque titulo={`HYPER-V · ${x.hyperv_vms.length} VM`}>
         {x.hyperv_vms.map((v) => <Fila key={v.nombre} k={v.nombre} v={[v.estado, v.cpu ? v.cpu + " vCPU" : "", v.ram_gb ? v.ram_gb + " GB" : ""].filter(Boolean).join(" · ")} />)}
+      </Bloque>}
+      {cs && <Bloque titulo="CROWDSTRIKE FALCON">
+        <Fila k="Estado del sensor" v={<EstadoCS cs={cs} />} />
+        <Fila k="Versión del sensor" v={cs.version_sensor} />
+        <Fila k="Último contacto" v={cs.ultima_vez ? fmtFechaHora(cs.ultima_vez) : null} />
+        <Fila k="Visto por primera vez" v={cs.primera_vez ? fmtFechaHora(cs.primera_vez) : null} />
+        <Fila k="Plataforma" v={[cs.plataforma, cs.tipo_cs, cs.chasis].filter(Boolean).join(" · ")} />
+        <Fila k="Kernel" v={cs.kernel} />
+        <Fila k="Sitio / OU" v={[cs.sitio, cs.ou].filter(Boolean).join(" · ")} />
+        <Fila k="Último inicio de sesión" v={cs.ultimo_login} />
+        <Fila k="Grupos" v={(cs.grupos || []).length ? cs.grupos.join(", ") : null} />
+        <Fila k="Etiquetas" v={(cs.tags || []).length ? cs.tags.join(", ") : null} />
       </Bloque>}
       {(vc || az || rf) && <Bloque titulo="VIRTUALIZACIÓN / HARDWARE">
         {vc && (vc.es_host

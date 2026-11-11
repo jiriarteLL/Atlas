@@ -29,7 +29,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy import text as _sql
@@ -39,12 +39,14 @@ from audit import log_action
 from auth import UserOut, require_modulo
 from database import Asset, AssetExterno, AssetSalud, ConectorCorrida, Historial, SessionLocal
 from impresoras_relevamiento import sede_de_ip
+from salud import datos_de_agente, estado_antivirus
 
 log = logging.getLogger("atlas")
 router = APIRouter(prefix="/api/conectores", tags=["conectores"])
 
-CONECTORES = ("vcenter", "azure", "redfish")
-NOMBRES = {"vcenter": "VMware vCenter", "azure": "Microsoft Azure", "redfish": "iDRAC / iLO (Redfish)"}
+CONECTORES = ("vcenter", "azure", "redfish", "crowdstrike")
+NOMBRES = {"vcenter": "VMware vCenter", "azure": "Microsoft Azure", "redfish": "iDRAC / iLO (Redfish)",
+           "crowdstrike": "CrowdStrike Falcon (servidores)"}
 TIMEOUT_S = 30
 LEASE_MIN = 30
 USUARIO_AUTO = "conector-%s"
@@ -56,7 +58,13 @@ AZURE_IMDS = "http://169.254.169.254/metadata/identity/oauth2/token?api-version=
 
 
 class ErrorConector(Exception):
-    """Error para mostrar en la vista: nunca lleva claves ni respuestas crudas."""
+    """Error para mostrar en la vista: nunca lleva claves ni respuestas crudas. `status` y `reintentar_en` (segundos)
+    los usa CrowdStrike para renovar el token (401) y esperar el limite de pedidos (429)."""
+
+    def __init__(self, mensaje, status=None, reintentar_en=None):
+        super().__init__(mensaje)
+        self.status = status
+        self.reintentar_en = reintentar_en
 
 
 # ---------------------------------------------------------------- utilidades
@@ -92,7 +100,17 @@ def http(metodo, url, headers=None, cuerpo=None, verificar=True):
             crudo = r.read()
             status = r.status
     except urllib.error.HTTPError as e:
-        raise ErrorConector("HTTP %d en %s" % (e.code, urllib.parse.urlsplit(url).path[:80])) from None
+        espera = None
+        try:
+            # CrowdStrike: X-RateLimit-RetryAfter es el instante (epoch) en que se libera; Retry-After, segundos
+            ra = e.headers.get("X-RateLimit-RetryAfter") if e.headers else None
+            if ra:
+                espera = max(1, int(float(ra) - time.time()))
+            elif e.headers and e.headers.get("Retry-After"):
+                espera = max(1, int(float(e.headers.get("Retry-After"))))
+        except (TypeError, ValueError):
+            espera = None
+        raise ErrorConector("HTTP %d en %s" % (e.code, urllib.parse.urlsplit(url).path[:80]), e.code, espera) from None
     except (urllib.error.URLError, socket.timeout, ssl.SSLError, ConnectionError, OSError) as e:
         raise ErrorConector("Sin conexión con %s (%s)" % (urllib.parse.urlsplit(url).hostname, type(e).__name__)) from None
     try:
@@ -148,6 +166,15 @@ def falta_config(conector):
             falta.append("REDFISH_CLAVE_ARCHIVO")
         elif not leer_secreto(config.REDFISH_CLAVE_ARCHIVO):
             falta.append("archivo de clave de Redfish (no existe o está vacío)")
+    elif conector == "crowdstrike":
+        if not config.CROWDSTRIKE_URL:
+            falta.append("CROWDSTRIKE_URL")
+        if not config.CROWDSTRIKE_CLIENT_ID:
+            falta.append("CROWDSTRIKE_CLIENT_ID")
+        if not config.CROWDSTRIKE_SECRET_ARCHIVO:
+            falta.append("CROWDSTRIKE_SECRET_ARCHIVO")
+        elif not leer_secreto(config.CROWDSTRIKE_SECRET_ARCHIVO):
+            falta.append("archivo del secreto de CrowdStrike (no existe o está vacío)")
     return falta
 
 
@@ -404,6 +431,144 @@ def leer_redfish(http=http):
     return {"equipos": equipos, "errores": errores}
 
 
+# ---------------------------------------------------------------- CrowdStrike Falcon (solo servidores)
+CS_TIPOS = ("Server", "Domain Controller")
+CS_PAGINA = 500
+CS_LOTE = 100
+CS_REINTENTOS_429 = 3
+CS_ESPERA_MAX_S = 60
+
+
+class _ClienteCS:
+    """Token OAuth2 (client_credentials) que se renueva solo ante un 401, y espera ante un 429."""
+
+    def __init__(self, http, dormir):
+        self.http, self.dormir = http, dormir
+        self.base = config.CROWDSTRIKE_URL
+        self.token = None
+
+    def _token(self):
+        secreto = leer_secreto(config.CROWDSTRIKE_SECRET_ARCHIVO)
+        if not secreto:
+            raise ErrorConector("No se pudo leer el archivo del secreto de CrowdStrike")
+        cuerpo = urllib.parse.urlencode({"client_id": config.CROWDSTRIKE_CLIENT_ID, "client_secret": secreto}).encode("ascii")
+        try:
+            _, r = self.http("POST", self.base + "/oauth2/token", {"Content-Type": "application/x-www-form-urlencoded",
+                                                                  "Accept": "application/json"}, cuerpo)
+        except ErrorConector as e:
+            raise ErrorConector("CrowdStrike no aceptó el cliente de API (%s)" % (e.status or "sin conexión"), e.status) from None
+        tok = r.get("access_token") if isinstance(r, dict) else None
+        if not tok:
+            raise ErrorConector("CrowdStrike no devolvió un token")
+        self.token = tok
+
+    def pedir(self, metodo, ruta, cuerpo=None):
+        if not self.token:
+            self._token()
+        renovado, intentos = False, 0
+        while True:
+            h = {"Authorization": "Bearer " + self.token, "Accept": "application/json"}
+            if cuerpo is not None:
+                h["Content-Type"] = "application/json"
+            try:
+                return self.http(metodo, self.base + ruta, h, cuerpo)[1]
+            except ErrorConector as e:
+                if e.status == 401 and not renovado:
+                    renovado = True
+                    self._token()
+                    continue
+                if e.status == 429 and intentos < CS_REINTENTOS_429:
+                    intentos += 1
+                    self.dormir(min(CS_ESPERA_MAX_S, e.reintentar_en or 5))
+                    continue
+                raise
+
+
+def _cs_fecha(v):
+    """'2026-11-11T17:37:12Z' -> datetime UTC naive (como guarda Atlas), o None."""
+    s = (v or "").strip()
+    if not s:
+        return None
+    try:
+        return datetime.strptime(s[:19], "%Y-%m-%dT%H:%M:%S")
+    except ValueError:
+        return None
+
+
+def _cs_local(dt):
+    """datetime UTC -> 'AAAA-MM-DD HH:MM' en la hora local del servidor (el agente informa hora local)."""
+    if not dt:
+        return ""
+    try:
+        return dt.replace(tzinfo=timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M")
+    except (OverflowError, OSError, ValueError):
+        return dt.strftime("%Y-%m-%d %H:%M")
+
+
+def _cs_mac(v):
+    h = re.sub(r"[^0-9A-Fa-f]", "", v or "").upper()
+    return ":".join(h[i:i + 2] for i in range(0, 12, 2)) if len(h) == 12 else ""
+
+
+def normalizar_cs(d):
+    """Dispositivo de la API de hosts -> dict de Atlas (solo campos utiles, sin ids internos de politicas)."""
+    host = _txt(d.get("hostname"), 120)
+    dominio = _txt(d.get("machine_domain"), 120)
+    # "SRV.llasesores.corp" -> "SRV"; los Linux sin dominio ("demo.e-contratistas.com") quedan como vienen
+    corto = host.split(".")[0] if ("." in host and (host.lower().endswith("." + dominio.lower()) if dominio else False)) else host
+    so_win = (d.get("platform_name") or "").lower() == "windows"
+    maj, mn, b = _txt(d.get("major_version"), 10), _txt(d.get("minor_version"), 10), _txt(d.get("build_number") or d.get("os_build"), 20)
+    so_version = ".".join(x for x in (maj, mn, b) if x) if so_win else _txt(d.get("kernel_version"), 60)
+    ou = d.get("ou")
+    ultimo_login = _cs_fecha(d.get("last_login_timestamp"))
+    return {
+        "device_id": _txt(d.get("device_id"), 64), "hostname": corto, "tipo_cs": _txt(d.get("product_type_desc"), 40),
+        "plataforma": _txt(d.get("platform_name"), 30),
+        "so": _txt(d.get("os_product_name") or d.get("os_version"), 120), "so_version": so_version,
+        "kernel": "" if so_win else _txt(d.get("kernel_version"), 80),
+        "ip": _txt(d.get("local_ip"), 45), "ip_publica": _txt(d.get("external_ip"), 45),
+        "mac": _cs_mac(d.get("mac_address") or d.get("connection_mac_address")),
+        "gateway": _txt(d.get("default_gateway_ip"), 45), "dominio": dominio,
+        "ou": " / ".join(_txt(x, 60) for x in ou) if isinstance(ou, list) else _txt(ou, 200),
+        "sitio": _txt(d.get("site_name"), 80),
+        "serie": _txt(d.get("serial_number"), 120), "fabricante": _txt(d.get("system_manufacturer"), 80),
+        "modelo": _txt(d.get("system_product_name"), 80), "bios": _txt(d.get("bios_version"), 80),
+        "chasis": _txt(d.get("chassis_type_desc"), 40),
+        "version_sensor": _txt(d.get("agent_version"), 30), "estado": _txt(d.get("status"), 30),
+        "contencion": _txt(d.get("filesystem_containment_status"), 30),
+        "rfm": _txt(d.get("reduced_functionality_mode"), 20),
+        "grupos": [_txt(x, 60) for x in (d.get("groups") or []) if x][:20] if isinstance(d.get("groups"), list) else [],
+        "tags": [_txt(x, 80) for x in (d.get("tags") or []) if x][:20] if isinstance(d.get("tags"), list) else [],
+        "primera_vez": _txt(d.get("first_seen"), 30), "ultima_vez": _txt(d.get("last_seen"), 30),
+        "ultimo_reinicio": _cs_local(_cs_fecha(d.get("last_reboot"))),
+        "ultimo_login": ((_cs_local(ultimo_login) + (" (%s)" % _txt(d.get("last_login_user"), 80) if d.get("last_login_user") else ""))
+                         if ultimo_login else ""),
+    }
+
+
+def leer_crowdstrike(http=http, dormir=time.sleep):
+    """Servidores que ve CrowdStrike: ids paginados con el filtro FQL y el detalle en lotes de 100."""
+    cli = _ClienteCS(http, dormir)
+    filtro = urllib.parse.quote(config.CROWDSTRIKE_FILTRO, safe="")
+    ids, offset = [], 0
+    while True:
+        r = cli.pedir("GET", "/devices/queries/devices/v1?limit=%d&offset=%d&filter=%s" % (CS_PAGINA, offset, filtro)) or {}
+        pagina = [x for x in (r.get("resources") or []) if isinstance(x, str)]
+        ids.extend(pagina)
+        total = ((r.get("meta") or {}).get("pagination") or {}).get("total") or 0
+        offset += len(pagina)
+        if not pagina or offset >= total or len(ids) >= 10000:
+            break
+    equipos = []
+    for i in range(0, len(ids), CS_LOTE):
+        r = cli.pedir("POST", "/devices/entities/devices/v2", {"ids": ids[i:i + CS_LOTE]}) or {}
+        for d in r.get("resources") or []:
+            # el filtro ya pide solo servidores; igual se descarta cualquier estacion que llegue
+            if isinstance(d, dict) and d.get("product_type_desc") in CS_TIPOS:
+                equipos.append(normalizar_cs(d))
+    return {"equipos": equipos}
+
+
 # ---------------------------------------------------------------- aplicar a los activos
 def _externo(db, asset_id, fuente):
     return db.query(AssetExterno).filter(AssetExterno.asset_id == asset_id, AssetExterno.fuente == fuente).first()
@@ -419,8 +584,9 @@ def _guardar_externo(db, a, fuente, clave, datos, creado, ahora):
 
 
 def _sin_agente(db, a):
-    """El activo lo dio de alta un conector y el agente todavia no reporto: el conector puede completar sus datos."""
-    return db.get(AssetSalud, a.id) is None
+    """El activo lo dio de alta un conector y el agente todavia no reporto: el conector puede completar sus datos.
+    (CrowdStrike tambien escribe asset_salud, solo el antivirus: eso no cuenta como agente.)"""
+    return not datos_de_agente(db.get(AssetSalud, a.id))
 
 
 def _por_clave(db, fuente, clave):
@@ -535,8 +701,151 @@ def aplicar_redfish(db, datos, ahora=None):
     return res
 
 
-LEER = {"vcenter": lambda: leer_vcenter(http), "azure": lambda: leer_azure(http), "redfish": lambda: leer_redfish(http)}
-APLICAR = {"vcenter": aplicar_vcenter, "azure": aplicar_azure, "redfish": aplicar_redfish}
+# ---- CrowdStrike: cruce y campos
+# Campos del activo que trae CrowdStrike. Los "solo si estan vacios" vienen con otro formato que el del agente
+# (modelo tecnico "VMware7,1" vs comercial, OU como lista vs DN): si los pisara, alternarian en cada corrida.
+CS_CAMPOS = (("nombre", "hostname"), ("serial", "serie"), ("so", "so"), ("so_version", "so_version"), ("ip", "ip"),
+             ("ip_publica", "ip_publica"), ("mac", "mac"), ("gateway", "gateway"), ("red", "dominio"),
+             ("ultimo_reinicio", "ultimo_reinicio"), ("ultimo_login", "ultimo_login"))
+CS_SI_VACIO = (("marca", "fabricante"), ("modelo", "modelo"), ("ou_ad", "ou"))
+CS_VIRTUAL = ("vmware, inc.", "vmware", "microsoft corporation", "qemu", "xen", "amazon ec2", "google")
+
+
+def _comparable(campo, v):
+    s = (v or "").strip().lower()
+    if campo == "so":
+        s = re.sub(r"^microsoft\s+", "", s)
+    if campo == "mac":
+        s = re.sub(r"[^0-9a-f]", "", s)
+    if campo == "serial":
+        s = clave_vmware(v) or re.sub(r"\s+", "", s)
+    if campo in ("ultimo_reinicio", "ultimo_login"):
+        s = s[:16]
+    return s
+
+
+def _misma_serie(a, b):
+    return bool(a and b) and _comparable("serial", a) == _comparable("serial", b)
+
+
+def _tipo_cs(x):
+    fab = (x.get("fabricante") or "").lower()
+    virtual = (x.get("serie") or "").lower().startswith("vmware-") or fab in CS_VIRTUAL or "virtual" in (x.get("modelo") or "").lower()
+    return "VM" if virtual else "Servidor"
+
+
+def _nombre_libre(db, x, propio_id=None):
+    """El hostname, o "HOST (ip)" si otro activo (con otra serie) ya se llama asi: CrowdStrike tiene hostnames
+    repetidos (dos LLAZCRM con series distintas) y en la vista se tienen que poder distinguir."""
+    host = x["hostname"] or x["serie"] or x["device_id"]
+    q = db.query(Asset).filter(Asset.nombre.ilike(host), Asset.estado != "Dado de baja")
+    if propio_id:
+        q = q.filter(Asset.id != propio_id)
+    otro = q.first()
+    if otro and not _misma_serie(otro.serial, x["serie"]):
+        return "%s (%s)" % (host, x["ip"] or x["serie"][:12] or x["device_id"][:8])
+    return host
+
+
+def _buscar_cs(db, x, usados):
+    """Activo de este dispositivo: 1) ya cruzado antes (device_id), 2) misma serie, 3) mismo hostname y sin otra serie."""
+    a = _por_clave(db, "crowdstrike", x["device_id"]) if x["device_id"] else None
+    if a is None and x["serie"]:
+        clave = _comparable("serial", x["serie"])
+        for c in db.query(Asset).filter(Asset.estado != "Dado de baja", Asset.serial != "").all():
+            if c.id not in usados and _comparable("serial", c.serial) == clave:
+                a = c
+                break
+    if a is None and x["hostname"]:
+        for c in db.query(Asset).filter(Asset.nombre.ilike(x["hostname"]), Asset.estado != "Dado de baja").all():
+            otro_cs = _externo(db, c.id, "crowdstrike")
+            if c.id in usados or (otro_cs and otro_cs.clave != x["device_id"]):
+                continue
+            if not c.serial or not x["serie"] or _misma_serie(c.serial, x["serie"]):
+                a = c
+                break
+    return a
+
+
+def _antivirus_cs(db, a, x, ahora):
+    """Deja constancia del sensor de CrowdStrike en la salud del equipo (sin tocar lo demas que haya cargado el agente).
+    activo = estado normal y sin modo de funcionalidad reducida; al dia = CrowdStrike lo vio en las ultimas 24 h."""
+    visto = _cs_fecha(x["ultima_vez"])
+    contenido = x["estado"].lower() == "contained" or x["contencion"].lower() not in ("", "normal")
+    rfm = x["rfm"].lower() in ("yes", "true", "si", "sí")
+    nota = "Contenido: aislado de la red por CrowdStrike" if contenido else ("Modo de funcionalidad reducida" if rfm else "")
+    entrada = {"nombre": "CrowdStrike Falcon Sensor", "activo": not contenido and not rfm,
+               "actualizado": bool(visto and ahora - visto <= timedelta(hours=24)), "fuente": "crowdstrike"}
+    if nota:
+        entrada["nota"] = nota
+    s = db.get(AssetSalud, a.id)
+    if s is None:
+        s = AssetSalud(asset_id=a.id, so_edicion="", so_display="", antivirus="[]", av_estado="", discos="", disco_estado="")
+        db.add(s)
+    try:
+        avs = json.loads(s.antivirus or "[]")
+        avs = avs if isinstance(avs, list) else []
+    except ValueError:
+        avs = []
+    avs = [v for v in avs if isinstance(v, dict) and "crowdstrike" not in (v.get("nombre") or "").lower()] + [entrada]
+    s.antivirus = json.dumps(avs, ensure_ascii=False)
+    s.av_estado = estado_antivirus(avs)
+    if not datos_de_agente(s):
+        s.actualizado = ahora
+
+
+def aplicar_crowdstrike(db, datos, ahora=None):
+    """Servidores de CrowdStrike -> activos. Nunca pisa datos administrativos (garantia, comentarios, estado, usuario,
+    datos de compra): solo los de identidad y red. Si el agente de Atlas reporto despues que el ultimo contacto de
+    CrowdStrike, gana el agente (no se tocan esos campos esa vez). Historial con usuario "crowdstrike"."""
+    ahora = ahora or datetime.utcnow()
+    res = {"servidores": 0, "altas": 0}
+    usados = set()
+    for x in datos.get("equipos", []):
+        if x.get("tipo_cs") not in CS_TIPOS or not (x.get("device_id") or x.get("serie") or x.get("hostname")):
+            continue
+        visto = _cs_fecha(x["ultima_vez"]) or ahora
+        a = _buscar_cs(db, x, usados)
+        nuevo = a is None
+        if nuevo:
+            a = _alta(db, "crowdstrike", ahora, nombre=_nombre_libre(db, x), tipo=_tipo_cs(x),
+                      marca=x["fabricante"], modelo=x["modelo"], serial=x["serie"],
+                      ubicacion=sede_de_ip(x["ip"]) if x["ip"] else "")
+            a.updated = visto
+            res["altas"] += 1
+        usados.add(a.id)
+        manda_cs = nuevo or a.updated is None or visto >= a.updated
+        if manda_cs:
+            cambios = []
+            for campo, k in CS_CAMPOS:
+                v = _nombre_libre(db, x, a.id) if campo == "nombre" else x.get(k) or ""
+                ant = _comparable(campo, getattr(a, campo))
+                # "Windows Server 2019" (CrowdStrike) vs "Microsoft Windows Server 2019 Standard" (agente): el mismo SO
+                if campo == "so" and ant and _comparable(campo, v) in ant:
+                    continue
+                if v and ant != _comparable(campo, v):
+                    cambios.append((campo, getattr(a, campo) or "", v))
+                    setattr(a, campo, v)
+            for campo, k in CS_SI_VACIO:
+                if x.get(k) and not (getattr(a, campo) or "").strip():
+                    cambios.append((campo, "", x[k]))
+                    setattr(a, campo, x[k])
+            if x["ip"] and not a.ubicacion:
+                a.ubicacion = sede_de_ip(x["ip"])
+            for campo, ant, new in cambios:
+                if not nuevo:
+                    db.add(Historial(asset_id=a.id, usuario="crowdstrike", campo=campo, valor_ant=str(ant),
+                                     valor_new=str(new), accion="sincronizacion"))
+            a.updated = max(visto, a.updated or visto)
+        _guardar_externo(db, a, "crowdstrike", x["device_id"], x, nuevo, ahora)
+        _antivirus_cs(db, a, x, ahora)
+        res["servidores"] += 1
+    return res
+
+
+LEER = {"vcenter": lambda: leer_vcenter(http), "azure": lambda: leer_azure(http), "redfish": lambda: leer_redfish(http),
+        "crowdstrike": lambda: leer_crowdstrike(http)}
+APLICAR = {"vcenter": aplicar_vcenter, "azure": aplicar_azure, "redfish": aplicar_redfish, "crowdstrike": aplicar_crowdstrike}
 
 
 # ---------------------------------------------------------------- corrida (lease por conector)

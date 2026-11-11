@@ -160,3 +160,10 @@ REDFISH_HOSTS = _lista("REDFISH_HOSTS") or _lista("IDRAC_HOSTS")
 REDFISH_USUARIO = (os.getenv("REDFISH_USUARIO") or os.getenv("IDRAC_USUARIO") or "").strip()
 REDFISH_CLAVE_ARCHIVO = (os.getenv("REDFISH_CLAVE_ARCHIVO") or os.getenv("IDRAC_CLAVE_ARCHIVO") or "").strip()
 REDFISH_VERIFICAR_CERT = _bool("REDFISH_VERIFICAR_CERT", _bool("IDRAC_VERIFICAR_CERT", False))
+# CrowdStrike Falcon (API de hosts): trae SOLO los servidores (con el filtro FQL de abajo). Cliente de API con alcance
+# "Hosts: Read"; el secreto en un archivo aparte con ACL restringida, como las demas claves.
+CROWDSTRIKE_URL = os.getenv("CROWDSTRIKE_URL", "").strip().rstrip("/")
+CROWDSTRIKE_CLIENT_ID = os.getenv("CROWDSTRIKE_CLIENT_ID", "").strip()
+CROWDSTRIKE_SECRET_ARCHIVO = os.getenv("CROWDSTRIKE_SECRET_ARCHIVO", "").strip()
+# (no se usa _lista: el filtro lleva comas)
+CROWDSTRIKE_FILTRO = os.getenv("CROWDSTRIKE_FILTRO", "").strip() or "product_type_desc:['Server','Domain Controller']"
