@@ -73,6 +73,15 @@ def _ip_valida(ip):
         return ""
 
 
+def sede_de_nombre(nombre):
+    """Sede por prefijo del nombre del equipo (SEDES_POR_NOMBRE, default LLAZ=Azure): manda sobre la de la IP."""
+    n = (nombre or "").strip().upper()
+    for prefijo, sede in config.SEDES_POR_NOMBRE:
+        if prefijo.strip() and n.startswith(prefijo.strip().upper()):
+            return sede.strip()
+    return ""
+
+
 def sede_de_ip(ip):
     try:
         dir_ = ipaddress.IPv4Address(ip)

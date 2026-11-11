@@ -62,7 +62,7 @@ export default function Intro({ alEntrar }) {
 
   return (
     <div className="ll-intro" style={{ opacity: saliendo ? 0 : 1, pointerEvents: saliendo ? "none" : "auto" }}>
-      <img className="ll-intro-logo" src="/brand/isotipo.png" alt="LL&A" />
+      <img className="ll-intro-logo" src="/favicon.svg" alt="Atlas · LLyA" />
       <h1>ATLAS</h1>
       <div className="mono" style={{ fontSize: 12, letterSpacing: 5, color: "var(--accent)" }}>SISTEMA DE ACTIVOS · TI</div>
       <div style={{ display: "flex", alignItems: "baseline", gap: 15, marginTop: 42 }}>

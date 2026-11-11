@@ -91,6 +91,8 @@ SYNC_API_KEY = os.getenv("SYNC_API_KEY", "")
 # Sede de una impresora relevada por SNMP segun su red: "red/prefijo=Sede", separadas por coma; gana la
 # primera que contenga la IP (poner las mas especificas primero). Vacio = la sede queda para cargar a mano.
 SEDES_POR_RED = [tuple(x.split("=", 1)) for x in _lista("SEDES_POR_RED") if "=" in x]
+# Sede por prefijo del nombre del equipo ("PREFIJO=Sede" separados por coma): manda sobre la IP y lo que diga el agente
+SEDES_POR_NOMBRE = [tuple(x.split("=", 1)) for x in (_lista("SEDES_POR_NOMBRE") or ["LLAZ=Azure"]) if "=" in x]
 # Aviso emergente de toner: cartuchos por debajo de este porcentaje
 TONER_ALERTA_PCT = int(os.getenv("TONER_ALERTA_PCT", "10"))
 

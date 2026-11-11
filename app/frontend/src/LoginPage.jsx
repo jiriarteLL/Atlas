@@ -20,14 +20,12 @@ export default function LoginPage({ saliendo }) {
   return (
     <div className="ll-login-velo" style={saliendo ? { opacity: 0, pointerEvents: "none" } : undefined}>
       <form className="ll-login" onSubmit={enviar}>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14 }}>
-          {/* logo-light: letras blancas para el tema oscuro; logo-dark: letras oscuras para Claro y Blanco */}
-          <img className="ll-login-logo ll-solo-oscuro" src="/brand/logo-light.png" alt="Lisicki, Litvin & Abelovich — Member of Nexia" />
-          <img className="ll-login-logo ll-solo-claro" src="/brand/logo-dark.png" alt="" />
-          <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 21, fontWeight: 600, letterSpacing: -0.3 }}>Atlas</div>
-            <div className="mono" style={{ fontSize: 10.5, letterSpacing: 3, color: "var(--accent)", marginTop: 5 }}>ACCESO · SISTEMA DE ACTIVOS</div>
-          </div>
+        {/* Como Argos: el emblema (globo de Atlas con los colores de LLyA) y el nombre en grande; el logo de LLyA va al pie */}
+        <div className="ll-login-cab">
+          <div className="ll-login-emblema"><span className="anillo" aria-hidden /><img src="/favicon.svg" alt="" /></div>
+          <div className="mono ll-login-kicker">ACCESO · DOMINIO TANGO</div>
+          <h1 className="ll-login-nombre">ATLAS</h1>
+          <div className="ll-login-lema">Sistema de activos de Lisicki, Litvin &amp; Abelovich</div>
         </div>
         <div className="ll-sep" />
         <label className="ll-campo">
@@ -50,7 +48,12 @@ export default function LoginPage({ saliendo }) {
         </label>
         {mensaje && <div className="ll-error" role="alert"><span>⚠</span>{mensaje}</div>}
         <button type="submit" className="ll-login-btn" disabled={loading}>{loading ? "VERIFICANDO…" : "INGRESAR →"}</button>
-        <div style={{ textAlign: "center", fontSize: 11.5, color: "var(--ll-faint)" }}>Soporte Técnico · Lisicki, Litvin &amp; Abelovich</div>
+        <div className="ll-login-pie">
+          {/* logo-light: letras blancas para el tema oscuro; logo-dark: letras oscuras para Claro y Blanco */}
+          <img className="ll-login-logo ll-solo-oscuro" src="/brand/logo-light.png" alt="Lisicki, Litvin & Abelovich — Member of Nexia" />
+          <img className="ll-login-logo ll-solo-claro" src="/brand/logo-dark.png" alt="" />
+          <span>Soporte Técnico</span>
+        </div>
       </form>
     </div>
   );

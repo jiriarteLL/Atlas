@@ -38,7 +38,7 @@ import config
 from audit import log_action
 from auth import UserOut, require_modulo
 from database import Asset, AssetExterno, AssetSalud, ConectorCorrida, Historial, SessionLocal
-from impresoras_relevamiento import sede_de_ip
+from impresoras_relevamiento import sede_de_ip, sede_de_nombre
 from salud import datos_de_agente, estado_antivirus
 
 log = logging.getLogger("atlas")
@@ -810,7 +810,7 @@ def aplicar_crowdstrike(db, datos, ahora=None):
         if nuevo:
             a = _alta(db, "crowdstrike", ahora, nombre=_nombre_libre(db, x), tipo=_tipo_cs(x),
                       marca=x["fabricante"], modelo=x["modelo"], serial=x["serie"],
-                      ubicacion=sede_de_ip(x["ip"]) if x["ip"] else "")
+                      ubicacion=sede_de_nombre(x.get("hostname")) or (sede_de_ip(x["ip"]) if x["ip"] else ""))
             a.updated = visto
             res["altas"] += 1
         usados.add(a.id)
@@ -830,7 +830,9 @@ def aplicar_crowdstrike(db, datos, ahora=None):
                 if x.get(k) and not (getattr(a, campo) or "").strip():
                     cambios.append((campo, "", x[k]))
                     setattr(a, campo, x[k])
-            if x["ip"] and not a.ubicacion:
+            if sede_de_nombre(a.nombre):
+                a.ubicacion = sede_de_nombre(a.nombre)
+            elif x["ip"] and not a.ubicacion:
                 a.ubicacion = sede_de_ip(x["ip"])
             for campo, ant, new in cambios:
                 if not nuevo:

@@ -31,7 +31,7 @@ from auth import (ELIMINAR_ACTIVOS, MODULOS_FICHA, MODULOS_LISTA_ACTIVOS, User, 
 from database import (Adjunto, Asset, AssetGlpi, Historial, Proyecto, ProyectoActivo, ProyectoResponsable,
                       ProyectoTarea, SessionLocal, Snapshot, Ticket, init_db)
 from impresoras import borrar_datos_impresora, router as impresoras_router
-from impresoras_relevamiento import router as relevamiento_router
+from impresoras_relevamiento import router as relevamiento_router, sede_de_nombre
 from salud import borrar_datos_salud, guardar_salud, limitar_salud, router as salud_router
 from telefonia import router as telefonia_router
 from monitores import borrar_datos_monitor, limitar_monitores, procesar_monitores, router as monitores_router
@@ -407,6 +407,8 @@ def _aplicar_sync(a: AssetSync):
             if nom:
                 regs.append("%s|||%s|||%s" % (nom, ver, fec))
         a.software = "~~~".join(regs)
+    if sede_de_nombre(a.nombre):   # LLAZ... = Azure (SEDES_POR_NOMBRE), aunque el agente diga otra cosa
+        a.ubicacion = sede_de_nombre(a.nombre)
     salud, monitores, servidor = a.salud, a.monitores_detalle, a.servidor
     db = SessionLocal()
     obj = db.query(Asset).filter(Asset.serial == a.serial).first()

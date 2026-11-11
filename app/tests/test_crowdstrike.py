@@ -156,7 +156,7 @@ def test_trae_servidores_cruza_y_da_de_alta(client, token, cfg_cs):
     crm = [x for x in f.values() if x["nombre"].startswith("LLAZCRM")]
     assert sorted(x["nombre"] for x in crm) == ["LLAZCRM", "LLAZCRM (172.20.0.6)"]
     viejo = next(x for x in crm if x["nombre"] == "LLAZCRM (172.20.0.6)")
-    assert viejo["tipo"] == "VM" and viejo["origenes"] == ["crowdstrike"] and viejo["sede"] == "CABA"
+    assert viejo["tipo"] == "VM" and viejo["origenes"] == ["crowdstrike"] and viejo["sede"] == "Azure"   # LLAZ... = Azure por nombre
     assert viejo["soporte_producto"] == "Ubuntu" and viejo["soporte_estado"] == "sin_soporte"          # 16.04
     nuevo = next(x for x in crm if x["nombre"] == "LLAZCRM")
     assert nuevo["soporte_version"] == "24.04 LTS" and nuevo["soporte_estado"] == "vigente"

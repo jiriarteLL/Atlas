@@ -124,7 +124,15 @@ input:focus, select:focus, textarea:focus { outline: none; }
 .ll-logo { width: 46px; height: 46px; flex: 0 0 46px; border-radius: 13px; background: linear-gradient(135deg,var(--accent),var(--accent2)); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px; color: var(--ll-on-accent); letter-spacing: -1px; box-shadow: 0 8px 26px -6px var(--accent); }
 /* Logos de LLyA: isotipo LL&A (sidebar, intro) y logo completo en blanco para fondo oscuro (login). */
 .ll-isotipo { display: block; height: 30px; width: auto; flex: 0 0 auto; filter: drop-shadow(0 6px 18px color-mix(in srgb, var(--accent) 35%, transparent)); }
-.ll-login-logo { display: block; width: 236px; max-width: 82%; height: auto; margin-bottom: 4px; }
+.ll-login-logo { display: block; width: 118px; max-width: 50%; height: auto; opacity: .85; }
+.ll-login-cab { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; }
+.ll-login-emblema { position: relative; width: 96px; height: 96px; display: grid; place-items: center; margin-bottom: 8px; }
+.ll-login-emblema img { width: 78px; height: 78px; position: relative; filter: drop-shadow(0 0 22px color-mix(in srgb, var(--accent) 45%, transparent)); animation: ll-floatY 4s ease-in-out infinite; }
+.ll-login-emblema .anillo { position: absolute; inset: 0; border-radius: 50%; border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); box-shadow: 0 0 28px -6px var(--accent), inset 0 0 22px -10px var(--accent); }
+.ll-login-kicker { font-size: 10.5px; letter-spacing: 3px; color: var(--accent); }
+.ll-login-nombre { margin: 2px 0 0; font-size: 46px; line-height: 1; font-weight: 700; letter-spacing: 9px; padding-left: 9px; background: linear-gradient(90deg,var(--ll-strong),var(--accent),var(--ll-strong)); background-size: 200% auto; -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; animation: ll-shimmer 5s linear infinite; }
+.ll-login-lema { font-size: 12.5px; color: var(--ll-muted); }
+.ll-login-pie { display: flex; flex-direction: column; align-items: center; gap: 8px; font-size: 11px; color: var(--ll-faint); }
 .ll-marca-sub { font-size: 10.5px; font-weight: 500; letter-spacing: 2.5px; color: var(--accent); font-family: var(--ll-mono); }
 .ll-nav { flex: 1; overflow-y: auto; margin-top: 6px; }
 .ll-nav-sec { font-size: 10px; letter-spacing: 2.5px; color: var(--ll-ghost); font-weight: 600; margin: 8px 8px 10px; }
