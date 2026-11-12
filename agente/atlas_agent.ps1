@@ -25,7 +25,7 @@ param(
     [switch]$ForzarLegacy  # no usa GLPI Agent aunque el equipo este en el piloto
 )
 
-$VERSION = "5.4.1"
+$VERSION = "5.5.0"
 $TASK    = "Atlas Inventario"
 $SELF    = $PSCommandPath
 $LOCALDIR = Join-Path $env:ProgramFiles "LLyA\Atlas Agent"
@@ -33,8 +33,11 @@ $LOGDIR  = Join-Path $env:ProgramData "LLyA"
 $LOG     = Join-Path $LOGDIR "atlas-agente.log"
 
 # ---- Configuracion
+# Relevo (5.5.0): servidor de la oficina (LLBASVRAPPS01) que reenvia el puerto 8743 al Atlas de Azure. Lo usan las
+# sedes sin ruta a Azure (Mendoza, Tigre...), igual que llegan al inventario productivo. Vacio en atlas.ini = sin relevo.
 $cfg = @{ Server = ""; SyncKey = ""; Glpi = "piloto"; Piloto = "TEST,SISTEMAS*"
-          GlpiMsi = "\\192.168.100.18\varios\glpi\GLPI-Agent-1.20-x64.msi"; CertInterno = "0" }
+          GlpiMsi = "\\192.168.100.18\varios\glpi\GLPI-Agent-1.20-x64.msi"; CertInterno = "0"
+          Relevo = "https://192.168.100.116:8743" }
 try {
     $ini = Join-Path (Split-Path -Parent $SELF) "atlas.ini"
     if (Test-Path $ini) {
@@ -474,19 +477,30 @@ function Get-Inventario {
 
 # POST con hasta 3 intentos (cubre cortes breves de red o un reinicio del servidor). Devuelve el texto de la respuesta.
 function Send-Post($ruta, [byte[]]$bytes, $extra = @{}) {
+    # Primero Atlas en Azure; si no hay conexion (sin respuesta HTTP), el relevo de la oficina. El que funciono queda
+    # para el resto de la corrida (el envio GLPI va por el mismo camino).
+    $destinos = @($script:Destino, $Server, $cfg.Relevo.TrimEnd("/")) | Where-Object { $_ } | Select-Object -Unique
     $ultimo = $null
-    for ($i = 1; $i -le 3; $i++) {
-        try {
-            $wc = New-Object Net.WebClient
-            $wc.Headers.Add("x-sync-key", $SyncKey)
-            $wc.Headers.Add("User-Agent", "LLyA-Atlas-Agent/$VERSION")
-            foreach ($k in $extra.Keys) { $wc.Headers.Add($k, $extra[$k]) }
-            return [Text.Encoding]::UTF8.GetString($wc.UploadData("$Server$ruta", "POST", $bytes))
-        } catch {
-            $ultimo = $_.Exception
-            $resp = $_.Exception.InnerException.Response
-            if ($resp -and [int]$resp.StatusCode -in 401,413,422) { break }   # errores que no se arreglan reintentando
-            if ($i -lt 3) { Start-Sleep -Seconds (10 * $i) }
+    foreach ($base in $destinos) {
+        $intentos = $(if ($base -eq $Server -and $destinos.Count -gt 1) { 1 } else { 3 })
+        for ($i = 1; $i -le $intentos; $i++) {
+            try {
+                $wc = New-Object Net.WebClient
+                $wc.Headers.Add("x-sync-key", $SyncKey)
+                $wc.Headers.Add("User-Agent", "LLyA-Atlas-Agent/$VERSION")
+                foreach ($k in $extra.Keys) { $wc.Headers.Add($k, $extra[$k]) }
+                $r = [Text.Encoding]::UTF8.GetString($wc.UploadData("$base$ruta", "POST", $bytes))
+                if ($base -ne $Server -and $script:Destino -ne $base) { Write-Log "Sin conexion directa a Atlas: enviado por el relevo $base" }
+                $script:Destino = $base
+                return $r
+            } catch {
+                $ultimo = $_.Exception
+                $resp = $_.Exception.InnerException.Response
+                if ($resp) {   # Atlas respondio: no es un problema de red, el relevo no ayuda
+                    if ([int]$resp.StatusCode -in 401,413,422) { throw $ultimo }   # no se arreglan reintentando
+                } elseif ($intentos -eq 1) { break }   # sin conexion directa: probar el relevo enseguida
+                if ($i -lt $intentos) { Start-Sleep -Seconds (10 * $i) }
+            }
         }
     }
     throw $ultimo
