@@ -93,7 +93,11 @@ export default function Salud({ assets, verFicha }) {
   const [lista, setLista] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
-  const [filtros, setFiltros] = useState({ q: "", sede: "", alerta: "" });
+  const [filtros, setFiltros] = useState({ q: "", sede: "", alerta: "", centro: "" });
+  // segundo usuario y centro de costo: vienen de la lista de activos (se cargan en la ficha, "Uso y centro de costo")
+  const reparto = useMemo(() => Object.fromEntries((assets || []).map((a) => [a.id, a])), [assets]);
+  const centros = useMemo(() => [...new Set((assets || []).filter((a) => a.tipo === "Notebook" || a.tipo === "CPU")
+    .map((a) => a.centro_costo).filter(Boolean))].sort(), [assets]);
 
   const cargar = useCallback(async () => {
     setCargando(true);
@@ -106,14 +110,17 @@ export default function Salud({ assets, verFicha }) {
   }, []);
   useEffect(() => { cargar(); }, [cargar]);
 
-  const porSede = useMemo(() => lista.filter((f) => !filtros.sede || (f.sede || "").toLowerCase() === filtros.sede.toLowerCase()), [lista, filtros.sede]);
+  const porSede = useMemo(() => lista.filter((f) => (!filtros.sede || (f.sede || "").toLowerCase() === filtros.sede.toLowerCase())
+    && (!filtros.centro || (filtros.centro === "-" ? !reparto[f.id]?.centro_costo : reparto[f.id]?.centro_costo === filtros.centro))),
+  [lista, filtros.sede, filtros.centro, reparto]);
   const cuentas = useMemo(() => Object.fromEntries(ALERTAS_SALUD.map(([k, , , cond]) => [k, porSede.filter(cond).length])), [porSede]);
   const filtradas = useMemo(() => {
     const q = filtros.q.trim().toLowerCase();
     const cond = ALERTAS_SALUD.find(([k]) => k === filtros.alerta)?.[3];
     return porSede.filter((f) => (!cond || cond(f))
-      && (!q || [f.nombre, f.usuario, f.serial, f.modelo, f.so, f.so_display].some((v) => String(v || "").toLowerCase().includes(q))));
-  }, [porSede, filtros]);
+      && (!q || [f.nombre, f.usuario, f.serial, f.modelo, f.so, f.so_display, reparto[f.id]?.centro_costo, reparto[f.id]?.usuario_secundario]
+        .some((v) => String(v || "").toLowerCase().includes(q))));
+  }, [porSede, filtros, reparto]);
   const f = (k) => (e) => setFiltros({ ...filtros, [k]: e.target.value });
   const abrir = (fila) => { const a = assets.find((x) => x.id === fila.id); if (a) verFicha(a); };
 
@@ -143,6 +150,11 @@ export default function Salud({ assets, verFicha }) {
           <option value="">Todas las sedes</option>
           {SEDES.map((s) => <option key={s}>{s}</option>)}
         </select>
+        <select className="ll-select" style={{ width: "auto" }} value={filtros.centro} onChange={f("centro")} aria-label="Centro de costo">
+          <option value="">Todo centro de costo</option>
+          {centros.map((c) => <option key={c}>{c}</option>)}
+          <option value="-">Sin centro de costo</option>
+        </select>
         <select className="ll-select" style={{ width: "auto" }} value={filtros.alerta} onChange={f("alerta")} aria-label="Alerta">
           <option value="">Todas las alertas</option>
           {ALERTAS_SALUD.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
@@ -153,9 +165,9 @@ export default function Salud({ assets, verFicha }) {
       {error && <div className="ll-vacio" style={{ color: "var(--ll-warn)" }}>No se pudo cargar la salud de los equipos: {error}</div>}
       <div className="ll-card" style={{ overflow: "hidden" }}>
         <div className="ll-tabla-wrap">
-          <table className="ll-tabla" style={{ minWidth: 1250 }}>
+          <table className="ll-tabla" style={{ minWidth: 1380 }}>
             <thead><tr>
-              <th>EQUIPO</th><th>USUARIO</th><th>SEDE</th><th>WINDOWS</th><th>BITLOCKER</th><th>ANTIVIRUS</th>
+              <th>EQUIPO</th><th>USUARIO</th><th>SEDE</th><th>CENTRO DE COSTO</th><th>WINDOWS</th><th>BITLOCKER</th><th>ANTIVIRUS</th>
               <th>ÚLTIMO PARCHE</th><th>DISCO</th><th>BATERÍA</th><th>ÚLTIMO REPORTE</th>
             </tr></thead>
             <tbody>
@@ -164,8 +176,11 @@ export default function Salud({ assets, verFicha }) {
                 return (
                   <tr key={x.id} className="click" onClick={() => abrir(x)}>
                     <td className="nombre">{x.nombre}<div className="tenue" style={{ fontSize: 11.5, fontWeight: 400 }}>{x.tipo}</div></td>
-                    <td>{x.usuario || <span className="tenue">—</span>}</td>
+                    <td>{x.usuario || <span className="tenue">—</span>}{reparto[x.id]?.usuario_secundario && <span className="ll-chip"
+                      style={{ marginLeft: 6, padding: "1px 7px", fontSize: 11 }}
+                      title={"Segundo usuario: " + [reparto[x.id].usuario_secundario_nombre, reparto[x.id].usuario_secundario].filter(Boolean).join(" · ")}>+1</span>}</td>
                     <td>{x.sede || <span className="tenue">—</span>}</td>
+                    <td className="tenue">{reparto[x.id]?.centro_costo || "—"}</td>
                     <td>
                       <div>{textoWindows(x)}{x.so_build ? <span className="mono tenue" style={{ fontSize: 11.5 }}> · {x.so_build}{x.so_ubr != null ? "." + x.so_ubr : ""}</span> : null}</div>
                       <div style={{ marginTop: 4 }}><InsigniaSoporte f={x} /></div>

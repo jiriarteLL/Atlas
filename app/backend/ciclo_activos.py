@@ -22,6 +22,7 @@ import config
 from audit import log_action
 from auth import MODULOS_FICHA, UserOut, require_modulo
 from database import Asset, AssetGlpi, Base, Historial, MonitorDetalle, SessionLocal, _uuid
+from reparto import clave_persona, misma_persona, norm_centro
 
 router = APIRouter(prefix="/api/ciclo", tags=["ciclo de vida"])
 
@@ -53,6 +54,11 @@ class AssetAdmin(Base):
     moneda          = Column(String, default="")
     vida_util_meses = Column(Integer, nullable=True)       # vacio = la del tipo (config.VIDA_UTIL_MESES)
     notas           = Column(Text, default="")
+    # Reparto (0013): segundo usuario del equipo y centro de costo. Para el costo final por persona (costos.py).
+    usuario_secundario        = Column(String, default="")   # usuario de Windows o email (minusculas)
+    usuario_secundario_nombre = Column(String, default="")
+    porcentaje_principal      = Column(Float, nullable=True) # % del usuario principal (None = 100, o 50 con 2do)
+    centro_costo              = Column(String, default="")
     actualizado     = Column(DateTime, default=datetime.utcnow)
 
 
@@ -185,12 +191,30 @@ def vida_util(a, adm, monitor=None, glpi=None, hoy=None):
     return out
 
 
+CAMPOS_ADMIN = ("nro_inventario", "fecha_compra", "proveedor", "factura", "costo", "moneda", "vida_util_meses", "notas",
+                "usuario_secundario", "usuario_secundario_nombre", "porcentaje_principal", "centro_costo")
+CAMPOS_REPARTO = ("usuario_secundario", "usuario_secundario_nombre", "porcentaje_principal", "centro_costo")
+
+
 def _admin_dict(adm):
     if not adm:
-        return {"nro_inventario": "", "fecha_compra": None, "proveedor": "", "factura": "", "costo": None,
-                "moneda": "", "vida_util_meses": None, "notas": ""}
-    return {k: getattr(adm, k) for k in ("nro_inventario", "fecha_compra", "proveedor", "factura", "costo",
-                                         "moneda", "vida_util_meses", "notas")}
+        return {k: (None if k in ("fecha_compra", "costo", "vida_util_meses", "porcentaje_principal") else "")
+                for k in CAMPOS_ADMIN}
+    return {k: getattr(adm, k) if getattr(adm, k) is not None or k in ("fecha_compra", "costo", "vida_util_meses",
+                                                                       "porcentaje_principal") else ""
+            for k in CAMPOS_ADMIN}
+
+
+def reparto_activos(db):
+    """{asset_id: {usuario_secundario, usuario_secundario_nombre, porcentaje_principal, centro_costo}} de los activos
+    que tienen algo cargado (para /api/assets: lista, filtro por centro de costo y exportacion)."""
+    out = {}
+    for x in db.query(AssetAdmin).all():
+        if (x.usuario_secundario or "") or (x.centro_costo or "") or x.porcentaje_principal is not None:
+            out[x.asset_id] = {"usuario_secundario": x.usuario_secundario or "",
+                               "usuario_secundario_nombre": x.usuario_secundario_nombre or "",
+                               "porcentaje_principal": x.porcentaje_principal, "centro_costo": x.centro_costo or ""}
+    return out
 
 
 def _mov_dict(m):
@@ -243,6 +267,10 @@ class AdminIn(BaseModel):
     moneda:          Optional[Literal["ARS", "USD", ""]] = None
     vida_util_meses: Optional[int] = Field(default=None, ge=1, le=240)
     notas:           Optional[str] = Field(default=None, max_length=2000)
+    usuario_secundario:        Optional[str] = Field(default=None, max_length=200)
+    usuario_secundario_nombre: Optional[str] = Field(default=None, max_length=160)
+    porcentaje_principal:      Optional[float] = Field(default=None, ge=0, le=100)
+    centro_costo:              Optional[str] = Field(default=None, max_length=80)
 
     @field_validator("*", mode="after")
     @classmethod
@@ -334,12 +362,22 @@ def editar_admin(asset_id: str, data: AdminIn, request: Request,
         a = db.get(Asset, asset_id)
         if not a:
             raise HTTPException(404)
+        datos = data.model_dump(exclude_unset=True)
+        if "usuario_secundario" in datos:
+            datos["usuario_secundario"] = clave_persona(datos["usuario_secundario"])
+            if datos["usuario_secundario"] and misma_persona(datos["usuario_secundario"], a.usuario):
+                raise HTTPException(422, "El segundo usuario no puede ser el mismo que el usuario principal")
+            if not datos["usuario_secundario"]:
+                datos["usuario_secundario_nombre"] = ""
+        if "centro_costo" in datos:
+            datos["centro_costo"] = norm_centro(datos["centro_costo"])
         adm = db.get(AssetAdmin, asset_id)
         if not adm:
-            adm = AssetAdmin(asset_id=asset_id, nro_inventario="", proveedor="", factura="", moneda="", notas="")
+            adm = AssetAdmin(asset_id=asset_id, nro_inventario="", proveedor="", factura="", moneda="", notas="",
+                             usuario_secundario="", usuario_secundario_nombre="", centro_costo="")
             db.add(adm)
         cambios = {}
-        for k, v in data.model_dump(exclude_unset=True).items():
+        for k, v in datos.items():
             if v != getattr(adm, k):
                 cambios[k] = (getattr(adm, k), v)
                 setattr(adm, k, v)

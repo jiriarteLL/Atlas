@@ -34,9 +34,11 @@ import conectores
 from audit import log_action
 from auth import UserOut, require_modulo
 from conectores import ErrorConector, leer_secreto
-from database import (Asset, LicenciaAsignacion, LicenciaCompartida, LicenciaCostoPeriodo, LicenciaCuentaEquipo,
-                      LicenciaPersona, LicenciaProducto, SessionLocal)
+from ciclo_activos import AssetAdmin
+from database import (Asset, LicenciaAsignacion, LicenciaCostoPeriodo, LicenciaCuentaEquipo, LicenciaPersona,
+                      LicenciaProducto, SessionLocal)
 from impresoras import tiene_credencial
+from reparto import clave_persona, fracciones, misma_persona, norm_centro, parte_local, porcentaje_efectivo
 
 router = APIRouter(prefix="/api/licencias", tags=["licencias"])
 
@@ -487,37 +489,47 @@ def aplicar_usermanager(db, datos, ahora=None):
         vistas.add(ext)
         res["asignaciones"] += 1
     for ext, a in asig.items():
-        if ext not in vistas and a.estado == "activa":
+        if ext not in vistas and a.estado == "activa" and not ext.startswith("par-"):
             a.estado, a.hasta = "liberada", ahora
             res["liberadas"] += 1
-    # licencias compartidas (pares de Adobe)
+    # licencias compartidas (pares de Adobe): UNA asignacion del principal con segundo usuario. Si el principal ya tiene
+    # su asignacion del producto se le completa el segundo usuario; si no, se crea una "par-<id>". Los campos de reparto
+    # (segundo usuario, centro, %) solo se completan si estan vacios: lo cargado en Atlas manda.
     adobe = next((p for p in prods.values() if (p.proveedor or "").lower() == "adobe" and p.activo), None)
-    pares = {c.id_externo: c for c in db.query(LicenciaCompartida).all()}
-    vistos_p = set()
+
+    def quien(mail, nombre):
+        m = norm_email(mail)
+        if m in por_mail:
+            return por_mail[m]
+        return (m or ("nombre:" + _txt(nombre, 80).lower() if _txt(nombre, 80) else ""), _txt(nombre, 120))
     for x in datos.get("adobe_pares") or []:
         ext = _txt(x.get("id"), 60)
-        if not ext:
+        principal, p_nombre = quien(x.get("email_principal"), x.get("usuario_principal"))
+        secundario, s_nombre = quien(x.get("email_secundario"), x.get("usuario_secundario"))
+        if not ext or adobe is None or not principal:
             continue
-        c = pares.get(ext)
-        if c is None:
-            c = pares[ext] = LicenciaCompartida(id_externo=ext)
-            db.add(c)
-        def quien(mail, nombre):
-            m = norm_email(mail)
-            if m in por_mail:
-                return por_mail[m]
-            return (m or ("nombre:" + _txt(nombre, 80).lower() if _txt(nombre, 80) else ""), _txt(nombre, 120))
-        c.principal, c.principal_nombre = quien(x.get("email_principal"), x.get("usuario_principal"))
-        c.secundario, c.secundario_nombre = quien(x.get("email_secundario"), x.get("usuario_secundario"))
-        c.producto_id, c.sector, c.imputacion = adobe.id if adobe else None, _txt(x.get("sector"), 80), _txt(x.get("imputacion"), 80)
-        pct = _num(x.get("porcentaje_imputacion"))
-        c.porcentaje = pct if pct and 0 < pct < 100 else None
-        c.activo, c.actualizado = _activo(x.get("activo")), ahora
-        vistos_p.add(ext)
+        activo = _activo(x.get("activo"))
+        a = db.query(LicenciaAsignacion).filter(LicenciaAsignacion.id_externo == "par-" + ext).first()
+        if a is None:
+            a = db.query(LicenciaAsignacion).filter(LicenciaAsignacion.producto_id == adobe.id,
+                                                    LicenciaAsignacion.persona == principal,
+                                                    LicenciaAsignacion.estado == "activa").first()
+        if a is None:
+            if not activo:
+                continue
+            a = LicenciaAsignacion(producto_id=adobe.id, persona=principal, nombre=p_nombre, origen="usermanager",
+                                   id_externo="par-" + ext, detalle=_txt(x.get("sector"), 160), desde=ahora, estado="activa",
+                                   secundario="", secundario_nombre="", centro_costo="")
+            db.add(a)
+            res["altas"] += 1
+        if (a.id_externo or "").startswith("par-"):
+            a.estado, a.hasta = ("activa", None) if activo else ("liberada", a.hasta or ahora)
+        if activo:
+            if not a.secundario and secundario and not misma_persona(secundario, a.persona):
+                a.secundario, a.secundario_nombre = secundario, s_nombre
+            if not a.centro_costo and _txt(x.get("imputacion"), 80):
+                a.centro_costo = norm_centro(x.get("imputacion"))
         res["compartidas"] += 1
-    for ext, c in pares.items():
-        if ext not in vistos_p and c.activo:
-            c.activo, c.actualizado = False, ahora
     # cuentas de equipo (Claude por unidad): el producto sale del plan ("Standard" -> el de Anthropic con plan Standard)
     por_plan = {(p.plan or "").strip().lower(): p for p in prods.values() if (p.proveedor or "").lower() == "anthropic" and p.activo}
     cuentas = {c.id_externo: c for c in db.query(LicenciaCuentaEquipo).all()}
@@ -609,14 +621,21 @@ def _por(d, k):
 
 
 def _uso(db):
-    """Por producto: personas con asignacion individual, pares activos (1 licencia c/u) y cuentas de equipo activas."""
-    ind = defaultdict(dict)       # producto -> {persona: asignacion}
+    """Por producto: asignaciones activas (persona -> asignacion), las que tienen segundo usuario (licencia compartida:
+    cuenta UNA) y cuentas de equipo activas. Si alguien figura como segundo usuario de una licencia y ademas tiene su
+    propia asignacion del mismo producto sin segundo usuario, esa propia se toma como duplicado (no suma otra licencia)."""
+    todas = defaultdict(dict)       # producto -> {persona: asignacion}
     for a in db.query(LicenciaAsignacion).filter(LicenciaAsignacion.estado == "activa").all():
-        ind[a.producto_id][a.persona] = a
-    pares = defaultdict(list)
-    for c in db.query(LicenciaCompartida).filter(LicenciaCompartida.activo.is_(True)).all():
-        if c.producto_id:
-            pares[c.producto_id].append(c)
+        todas[a.producto_id][a.persona] = a
+    ind, pares = defaultdict(dict), defaultdict(list)
+    for pid, d in todas.items():
+        secundarios = {a.secundario for a in d.values() if a.secundario}
+        for persona, a in d.items():
+            if persona in secundarios and not a.secundario:
+                continue                     # duplicado: ya la usa como segundo usuario de otra
+            ind[pid][persona] = a
+            if a.secundario:
+                pares[pid].append(a)
     cuentas = defaultdict(list)
     for c in db.query(LicenciaCuentaEquipo).filter(LicenciaCuentaEquipo.activo.is_(True)).all():
         if c.producto_id:
@@ -625,13 +644,14 @@ def _uso(db):
 
 
 def _en_pares(pares):
-    return {x for c in pares for x in (c.principal, c.secundario) if x}
+    """Personas (principal y segundo usuario) de las asignaciones compartidas."""
+    return {x for a in pares for x in (a.persona, a.secundario) if x}
 
 
 def armar_producto(p, ind, pares, cuentas, hoy=None):
     hoy = hoy or date.today()
     unit = mensual_unitario(p)
-    individuales = [k for k in ind if k not in _en_pares(pares)]
+    individuales = [k for k, a in ind.items() if not a.secundario]
     en_uso = len(individuales) + len(pares) + len(cuentas)
     personas = len(set(ind) | _en_pares(pares))
     cupo = None if p.ilimitado else p.cupo
@@ -655,14 +675,26 @@ def armar_producto(p, ind, pares, cuentas, hoy=None):
     }
 
 
-def reparto_centros(productos_db, uso, personas):
-    """Costo mensual por centro de costo (o unidad): asignacion individual -> centro de la persona; licencia compartida
-    -> el centro de imputacion (o su %), si no mitad a cada centro de las dos personas; cuenta de equipo -> su unidad;
-    lo contratado sin usar -> "sin asignar"."""
+def partes_asignacion(a):
+    """[(persona, fraccion del costo, centro de costo de la asignacion o "")] de una asignacion: el principal y, si la
+    licencia es compartida, el segundo usuario (reparto por porcentaje_principal; vacio = 50/50)."""
+    fp, fs = fracciones(a.porcentaje_principal, bool(a.secundario))
+    out = [(a.persona, fp, a.centro_costo or "")]
+    if a.secundario:
+        out.append((a.secundario, fs, a.centro_costo or ""))
+    return out
+
+
+def reparto_centros(productos_db, uso, personas, centros_equipos=None):
+    """Costo mensual por centro de costo (o unidad): cada asignacion reparte su costo entre el principal y el segundo
+    usuario (si lo tiene) segun el %; cada parte va al centro de la asignacion o, si esta vacio, al de esa persona.
+    Cuenta de equipo -> su unidad; lo contratado sin usar -> "sin asignar"."""
     ind, pares, cuentas = uso
     centros = {}
 
     def poner(centro, unit, factor):
+        if factor <= 0:
+            return
         c = centros.setdefault(centro or SIN_DATO, {})
         for m, v in unit.items():
             _suma(c, m, v * factor)
@@ -672,25 +704,13 @@ def reparto_centros(productos_db, uso, personas):
         unit = mensual_unitario(p)
         if not unit:
             continue
-        cubiertas = _en_pares(pares.get(p.id, []))
-        for persona in ind.get(p.id, {}):
-            if persona not in cubiertas:
-                poner(_centro(personas.get(persona)), unit, 1)
-        for c in pares.get(p.id, []):
-            miembros = [x for x in (c.principal, c.secundario) if x]
-            if c.imputacion:
-                pct = (c.porcentaje or 100) / 100.0
-                poner(c.imputacion, unit, pct)
-                resto = 1 - pct
-            else:
-                resto = 1.0
-            if resto > 0:
-                for x in miembros or [None]:
-                    poner(_centro(personas.get(x)), unit, resto / max(1, len(miembros)))
+        for a in ind.get(p.id, {}).values():
+            for persona, fr, centro in partes_asignacion(a):
+                poner(centro or _centro_de(persona, personas, centros_equipos), unit, fr)
         for c in cuentas.get(p.id, []):
             poner(c.unidad or SIN_DATO, unit, 1)
         cupo = None if p.ilimitado else p.cupo
-        en_uso = len([k for k in ind.get(p.id, {}) if k not in cubiertas]) + len(pares.get(p.id, [])) + len(cuentas.get(p.id, []))
+        en_uso = len(ind.get(p.id, {})) + len(cuentas.get(p.id, []))
         if cupo is not None and cupo > en_uso:
             poner(SIN_ASIGNAR, unit, cupo - en_uso)
     return [{"centro": k, "mensual": v, "anual": {m: round(x * 12, 2) for m, x in v.items()}}
@@ -699,6 +719,25 @@ def reparto_centros(productos_db, uso, personas):
 
 def _centro(per):
     return (per.centro_costo or per.area) if per and (per.centro_costo or per.area) else SIN_DATO
+
+
+def centros_de_equipos(db):
+    """usuario de Windows (minusculas) -> centro de costo cargado en su equipo (principal o segundo usuario)."""
+    out = {}
+    for a, adm in db.query(Asset, AssetAdmin).join(AssetAdmin, AssetAdmin.asset_id == Asset.id).filter(
+            Asset.estado != "Dado de baja", AssetAdmin.centro_costo != "").all():
+        for u in (clave_persona(a.usuario), clave_persona(adm.usuario_secundario)):
+            if u:
+                out.setdefault(parte_local(u), adm.centro_costo)
+    return out
+
+
+def _centro_de(clave, personas, centros_equipos=None):
+    """Centro de la persona: el de la nomina (licencias) o, si no hay, el de su equipo en Atlas."""
+    c = _centro(personas.get(clave))
+    if c == SIN_DATO and centros_equipos:
+        c = centros_equipos.get(parte_local(clave), SIN_DATO)
+    return c
 
 
 def _equipos_por_persona(db):
@@ -711,40 +750,35 @@ def _equipos_por_persona(db):
     return out
 
 
-def _personas_vista(db, prods, uso, personas):
-    ind, pares, _ = uso
+def _personas_vista(db, prods, uso, personas, centros_equipos=None):
+    ind, _, _ = uso
     equipos = _equipos_por_persona(db)
-    tiene = defaultdict(list)                     # persona -> [(producto, origen, desde, fraccion)]
+    tiene = defaultdict(list)                     # persona -> [(producto, origen, desde, fraccion, detalle)]
+    nombres = {}
     for pid, d in ind.items():
         if pid not in prods:
             continue
-        cubiertas = _en_pares(pares.get(pid, []))
-        for persona, a in d.items():
-            if persona not in cubiertas:
-                tiene[persona].append((prods[pid], a.origen, a.desde, 1.0, a.detalle or ""))
-    for pid, lista in pares.items():
-        if pid not in prods:
-            continue
-        for c in lista:
-            miembros = [x for x in (c.principal, c.secundario) if x]
-            for x in miembros:
-                otro = next((y for y in miembros if y != x), "")
-                desde = ind.get(pid, {}).get(x).desde if x in ind.get(pid, {}) else None
-                tiene[x].append((prods[pid], "compartida", desde, 1.0 / len(miembros), "compartida con " + (otro or "-")))
+        for a in d.values():
+            nombres.setdefault(a.persona, a.nombre or "")
+            if a.secundario:
+                nombres.setdefault(a.secundario, a.secundario_nombre or "")
+            for persona, fr, _ in partes_asignacion(a):
+                otro = (a.secundario_nombre or a.secundario) if persona == a.persona else (a.nombre or a.persona)
+                det = ("compartida con " + otro) if a.secundario else (a.detalle or "")
+                tiene[persona].append((prods[pid], a.origen if persona == a.persona else "compartida", a.desde, fr, det))
     out = []
     for clave, items in tiene.items():
         d = personas.get(clave)
-        usuario = clave.split("@")[0] if "@" in clave else ""
+        usuario = parte_local(clave)
         eq = equipos.get(usuario, []) if usuario else []
         mensual = {}
         for prod, _, _, fr, _ in items:
             for m, v in prod["mensual_unitario"].items():
                 _suma(mensual, m, v * fr)
-        nombre = (d.nombre if d and d.nombre else "") or next(
-            (c.principal_nombre if c.principal == clave else c.secundario_nombre
-             for lst in pares.values() for c in lst if clave in (c.principal, c.secundario)), "")
+        nombre = (d.nombre if d and d.nombre else "") or nombres.get(clave, "")
         out.append({
-            "persona": clave, "nombre": nombre, "legajo": d.legajo if d else "", "centro_costo": _centro(d),
+            "persona": clave, "nombre": nombre, "legajo": d.legajo if d else "",
+            "centro_costo": _centro_de(clave, personas, centros_equipos),
             "area": d.area if d else "", "categoria": d.categoria if d else "",
             "estado_nomina": d.estado_nomina if d else "", "estado_externo": d.estado_externo if d else "",
             "cuenta_ad": d.cuenta_ad if d else "desconocida", "de_baja": de_baja(d), "deshabilitada": deshabilitada(d),
@@ -817,8 +851,9 @@ def _todo(db):
     for lst in pares.values():
         claves |= _en_pares(lst)
     personas = {x.persona: x for x in db.query(LicenciaPersona).filter(LicenciaPersona.persona.in_(claves or {""})).all()}
-    vista = _personas_vista(db, activos, uso, personas)
-    centros = reparto_centros(prods_db, uso, personas)
+    eq_centros = centros_de_equipos(db)
+    vista = _personas_vista(db, activos, uso, personas, eq_centros)
+    centros = reparto_centros(prods_db, uso, personas, eq_centros)
     por_sede = {}
     for x in vista:
         s = por_sede.setdefault(x["sede"], {"personas": 0, "mensual": {}})
@@ -880,6 +915,18 @@ class AsignacionIn(_Base):
     producto_id: str = Field(..., max_length=60)
     persona: str = Field(..., max_length=200)
     nombre: Optional[str] = Field("", max_length=160)
+    secundario: Optional[str] = Field("", max_length=200)
+    secundario_nombre: Optional[str] = Field("", max_length=160)
+    porcentaje_principal: Optional[float] = Field(None, ge=0, le=100)
+    centro_costo: Optional[str] = Field("", max_length=80)
+
+
+class RepartoIn(_Base):
+    """Segundo usuario, % del principal y centro de costo de una asignacion (vacio = quitar)."""
+    secundario: Optional[str] = Field(None, max_length=200)
+    secundario_nombre: Optional[str] = Field(None, max_length=160)
+    porcentaje_principal: Optional[float] = Field(None, ge=0, le=100)
+    centro_costo: Optional[str] = Field(None, max_length=80)
 
 
 class PersonaUpdate(_Base):
@@ -926,20 +973,24 @@ def personas(user: UserOut = Depends(require_modulo("licencias"))):
 
 @router.get("/compartidas")
 def compartidas(user: UserOut = Depends(require_modulo("licencias"))):
+    """Asignaciones activas con segundo usuario (una licencia que usan dos personas)."""
     db = SessionLocal()
     try:
         prods = {p.id: p for p in db.query(LicenciaProducto).all()}
         personas = {x.persona: x for x in db.query(LicenciaPersona).all()}
+        eq = centros_de_equipos(db)
         out = []
-        for c in db.query(LicenciaCompartida).order_by(LicenciaCompartida.activo.desc(), LicenciaCompartida.sector).all():
-            p = prods.get(c.producto_id)
-            pp, ps = personas.get(c.principal), personas.get(c.secundario)
-            out.append({"id": c.id, "producto": p.producto if p else "", "producto_id": c.producto_id, "sector": c.sector,
-                        "principal": c.principal, "principal_nombre": (pp.nombre if pp and pp.nombre else c.principal_nombre),
-                        "principal_centro": _centro(pp), "principal_baja": de_baja(pp),
-                        "secundario": c.secundario, "secundario_nombre": (ps.nombre if ps and ps.nombre else c.secundario_nombre),
-                        "secundario_centro": _centro(ps) if c.secundario else "", "secundario_baja": de_baja(ps),
-                        "imputacion": c.imputacion, "porcentaje": c.porcentaje, "activo": bool(c.activo),
+        for a in (db.query(LicenciaAsignacion).filter(LicenciaAsignacion.estado == "activa", LicenciaAsignacion.secundario != "")
+                  .order_by(LicenciaAsignacion.persona).all()):
+            p = prods.get(a.producto_id)
+            pp, ps = personas.get(a.persona), personas.get(a.secundario)
+            pct = porcentaje_efectivo(a.porcentaje_principal, True)
+            out.append({"id": a.id, "producto": p.producto if p else "", "producto_id": a.producto_id, "sector": a.detalle or "",
+                        "principal": a.persona, "principal_nombre": (pp.nombre if pp and pp.nombre else a.nombre),
+                        "principal_centro": a.centro_costo or _centro_de(a.persona, personas, eq), "principal_baja": de_baja(pp),
+                        "secundario": a.secundario, "secundario_nombre": (ps.nombre if ps and ps.nombre else a.secundario_nombre),
+                        "secundario_centro": a.centro_costo or _centro_de(a.secundario, personas, eq), "secundario_baja": de_baja(ps),
+                        "imputacion": a.centro_costo or "", "porcentaje": pct, "activo": True,
                         "mensual": mensual_unitario(p) if p else {}})
         return out
     finally:
@@ -994,14 +1045,25 @@ def ver_producto(pid: str, user: UserOut = Depends(require_modulo("licencias")))
         ind, pares, cuentas = _uso(db)
         asig = (db.query(LicenciaAsignacion).filter(LicenciaAsignacion.producto_id == pid)
                 .order_by(LicenciaAsignacion.estado, LicenciaAsignacion.persona).all())
-        datos = {x.persona: x for x in db.query(LicenciaPersona).filter(
-            LicenciaPersona.persona.in_({a.persona for a in asig} or {""})).all()}
+        claves = {a.persona for a in asig} | {a.secundario for a in asig if a.secundario}
+        datos = {x.persona: x for x in db.query(LicenciaPersona).filter(LicenciaPersona.persona.in_(claves or {""})).all()}
+        eq = centros_de_equipos(db)
+        efectivas = {a.id for a in ind.get(pid, {}).values()}
         out = armar_producto(p, ind.get(pid, {}), pares.get(pid, []), cuentas.get(pid, []))
         out["asignaciones"] = [{"id": a.id, "persona": a.persona,
                                 "nombre": a.nombre or (datos[a.persona].nombre if a.persona in datos else ""),
-                                "centro_costo": _centro(datos.get(a.persona)), "origen": a.origen, "detalle": a.detalle or "",
+                                "centro_costo": _centro_de(a.persona, datos, eq), "origen": a.origen, "detalle": a.detalle or "",
                                 "estado": a.estado, "desde": a.desde, "hasta": a.hasta,
-                                "deshabilitada": deshabilitada(datos.get(a.persona)), "de_baja": de_baja(datos.get(a.persona))}
+                                "deshabilitada": deshabilitada(datos.get(a.persona)), "de_baja": de_baja(datos.get(a.persona)),
+                                # reparto (editable aunque la asignacion venga de una importacion)
+                                "secundario": a.secundario or "",
+                                "secundario_nombre": a.secundario_nombre or (datos[a.secundario].nombre
+                                                                             if a.secundario in datos else ""),
+                                "secundario_centro": _centro_de(a.secundario, datos, eq) if a.secundario else "",
+                                "porcentaje_principal": a.porcentaje_principal,
+                                "porcentaje_efectivo": porcentaje_efectivo(a.porcentaje_principal, bool(a.secundario)),
+                                "centro_asignacion": a.centro_costo or "",
+                                "duplicada": a.estado == "activa" and a.id not in efectivas}
                                for a in asig]
         out["costos_periodo"] = [dict(x, periodo=per["periodo"]) for per in costos_por_periodo(db)
                                  for x in per["productos"] if x["producto_id"] == pid]
@@ -1080,13 +1142,66 @@ def alta_asignacion(data: AsignacionIn, request: Request, user: UserOut = Depend
                                                  LicenciaAsignacion.estado == "activa").first()
         if ya:
             raise HTTPException(409, "Esa persona ya tiene este producto")
+        sec = _clave_secundario(data.secundario)
+        if sec and misma_persona(sec, email):
+            raise HTTPException(422, "El segundo usuario no puede ser el mismo que el principal")
         a = LicenciaAsignacion(producto_id=p.id, persona=email, nombre=data.nombre or "", origen="manual", id_externo="",
-                               detalle="", desde=datetime.utcnow(), estado="activa")
+                               detalle="", desde=datetime.utcnow(), estado="activa", secundario=sec,
+                               secundario_nombre=(data.secundario_nombre or "") if sec else "",
+                               porcentaje_principal=data.porcentaje_principal if sec else None,
+                               centro_costo=norm_centro(data.centro_costo))
         db.add(a)
         _persona(db, email, data.nombre or "")
+        if sec:
+            _persona(db, sec, data.secundario_nombre or "")
         db.commit()
         log_action(user.username, "asignacion", "licencia", a.id, {"producto": p.producto, "persona": email}, ip=_ip(request))
         return {"id": a.id, "estado": a.estado}
+    finally:
+        db.close()
+
+
+def _clave_secundario(v):
+    """Segundo usuario: email (normalizado) o usuario de Windows en minusculas."""
+    v = _txt(v, 200)
+    return norm_email(v) or clave_persona(v)
+
+
+@router.put("/asignaciones/{aid}")
+def editar_reparto(aid: str, data: RepartoIn, request: Request,
+                   user: UserOut = Depends(require_modulo("licencias", nivel="editar"))):
+    """Segundo usuario, % y centro de costo de una asignacion. Vale tambien para las que vienen de una importacion
+    (CSV de Adobe, UserManager): son datos de Atlas y ninguna importacion los pisa."""
+    db = SessionLocal()
+    try:
+        a = db.get(LicenciaAsignacion, aid)
+        if a is None:
+            raise HTTPException(404, "Asignación no encontrada")
+        datos = data.model_dump(exclude_unset=True)
+        if "secundario" in datos:
+            datos["secundario"] = _clave_secundario(datos["secundario"])
+            if datos["secundario"] and misma_persona(datos["secundario"], a.persona):
+                raise HTTPException(422, "El segundo usuario no puede ser el mismo que el principal")
+            if not datos["secundario"]:
+                datos["secundario_nombre"], datos["porcentaje_principal"] = "", None
+        if "centro_costo" in datos:
+            datos["centro_costo"] = norm_centro(datos["centro_costo"])
+        if "secundario_nombre" in datos:
+            datos["secundario_nombre"] = datos["secundario_nombre"] or ""
+        cambios = {}
+        for k, v in datos.items():
+            if getattr(a, k) != v:
+                cambios[k] = [getattr(a, k), v]
+                setattr(a, k, v)
+        if a.secundario:
+            _persona(db, a.secundario, a.secundario_nombre or "")
+        db.commit()
+        if cambios:
+            log_action(user.username, "modificacion", "licencia_asignacion", a.id, cambios, ip=_ip(request))
+        return {"id": a.id, "secundario": a.secundario or "", "secundario_nombre": a.secundario_nombre or "",
+                "porcentaje_principal": a.porcentaje_principal,
+                "porcentaje_efectivo": porcentaje_efectivo(a.porcentaje_principal, bool(a.secundario)),
+                "centro_costo": a.centro_costo or ""}
     finally:
         db.close()
 

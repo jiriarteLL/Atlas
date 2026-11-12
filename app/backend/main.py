@@ -37,12 +37,13 @@ from telefonia import router as telefonia_router
 from monitores import borrar_datos_monitor, limitar_monitores, procesar_monitores, router as monitores_router
 import garantias
 from garantias import borrar_datos_garantia, router as garantias_router
-from ciclo_activos import borrar_datos_ciclo, router as ciclo_router, usuario_fijado
+from ciclo_activos import borrar_datos_ciclo, reparto_activos, router as ciclo_router, usuario_fijado
 from actas import router as actas_router
 from auditoria import router as auditoria_router
 import conectores
 from conectores import router as conectores_router
 from licencias import router as licencias_router
+from costos import router as costos_router
 from servidores import borrar_datos_servidor, guardar_servidor, limitar_servidor, router as servidores_router
 from mailer import notificar_proyecto_finalizado
 from metricas import metricas_texto, registrar_request
@@ -80,6 +81,7 @@ app.include_router(telefonia_router)
 app.include_router(monitores_router)
 app.include_router(garantias_router)
 app.include_router(ciclo_router)
+app.include_router(costos_router)
 app.include_router(actas_router)
 app.include_router(auditoria_router)
 app.include_router(servidores_router)
@@ -284,9 +286,14 @@ def get_historial(asset_id: str, user: UserOut = Depends(require_modulo(*MODULOS
 @app.get("/api/assets")
 def list_assets(user: UserOut = Depends(require_modulo(*MODULOS_LISTA_ACTIVOS))):
     db = SessionLocal()
-    r = db.query(Asset).all()
-    db.close()
-    return r
+    try:
+        r = db.query(Asset).all()
+        reparto = reparto_activos(db)     # segundo usuario y centro de costo (asset_admin, carga manual)
+    finally:
+        db.close()
+    vacio = {"usuario_secundario": "", "usuario_secundario_nombre": "", "porcentaje_principal": None, "centro_costo": ""}
+    columnas = [c.name for c in Asset.__table__.columns]
+    return [dict({k: getattr(a, k) for k in columnas}, **reparto.get(a.id, vacio)) for a in r]
 
 
 @app.get("/api/assets/{aid}/ficha")

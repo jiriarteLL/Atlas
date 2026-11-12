@@ -38,7 +38,7 @@ const SECCIONES = {
   agente: ["Agente", "Scripts de sincronización"], accesos: ["Accesos", "Usuarios de la aplicación"],
   actas: ["Actas", "Entrega, devolución y préstamo de equipos"], auditoria: ["Auditoría física", "Relevamiento por sede con el celular"],
 };
-const FILTROS_VACIOS = { q: "", tipo: "", estado: "", sede: "" };
+const FILTROS_VACIOS = { q: "", tipo: "", estado: "", sede: "", centro: "" };
 // Subsecciones de Activos (pestañas). Para sumar otro tipo con vista propia, agregarlo aca y en el render.
 const VISTAS_ACTIVOS = [["todos", "Todos los activos"], ["salud", "Notebooks y PC"], ["servidores", "Servidores y VM"], ["monitores", "Monitores"],
   ["impresoras", "Impresoras"], ["garantias", "Garantías"]];
@@ -54,7 +54,7 @@ function leerHash() {
   const [sec, query] = (window.location.hash || "").replace("#", "").split("?");
   const p = new URLSearchParams(query || "");
   return { tab: SECCIONES[sec] ? sec : "dashboard", vista: vistaValida(p.get("vista")), activo: p.get("activo") || "",
-    filtros: { ...FILTROS_VACIOS, tipo: p.get("tipo") || "", sede: p.get("sede") || "", estado: p.get("estado") || "" } };
+    filtros: { ...FILTROS_VACIOS, tipo: p.get("tipo") || "", sede: p.get("sede") || "", estado: p.get("estado") || "", centro: p.get("centro") || "" } };
 }
 
 export default function App() {
@@ -135,7 +135,7 @@ export default function App() {
     if (tab === "activos") {
       const p = new URLSearchParams();
       if (vista !== "todos") p.set("vista", vista);
-      else ["tipo", "sede", "estado"].forEach((k) => { if (filtros[k]) p.set(k, filtros[k]); });
+      else ["tipo", "sede", "estado", "centro"].forEach((k) => { if (filtros[k]) p.set(k, filtros[k]); });
       if (p.toString()) destino += "?" + p.toString();
     }
     const actual = (window.location.hash || "").replace("#", "");
@@ -164,9 +164,10 @@ export default function App() {
   const filtrados = useMemo(() => {
     const q = filtros.q.trim().toLowerCase();
     return assets.filter((a) =>
-      (!q || [a.nombre, a.marca, a.modelo, a.serial, a.usuario, a.ubicacion].some((v) => (v || "").toLowerCase().includes(q))) &&
+      (!q || [a.nombre, a.marca, a.modelo, a.serial, a.usuario, a.ubicacion, a.usuario_secundario, a.centro_costo].some((v) => (v || "").toLowerCase().includes(q))) &&
       (!filtros.tipo || a.tipo === filtros.tipo) &&
       (!filtros.sede || (a.ubicacion || "").toLowerCase() === filtros.sede.toLowerCase()) &&
+      (!filtros.centro || (filtros.centro === "-" ? !a.centro_costo : a.centro_costo === filtros.centro)) &&
       cumpleEstado(a, filtros.estado, glpiMap));
   }, [assets, filtros, glpiMap]);
 
@@ -317,7 +318,7 @@ export default function App() {
         {tab === "activos" && vistaEf === "impresoras" && <Impresoras puedeEditar={puede(user, "impresoras", "editar")} avisar={avisar} />}
             {tab === "activos" && vistaEf === "todos" && <Activos filtrados={filtrados} filtros={filtros} setFiltros={setFiltros} orden={orden} setOrden={setOrden}
               verFicha={verFicha} editar={(a) => setEdicion(a)} eliminar={eliminarActivo} nuevo={() => setEdicion({})}
-              exportar={exportarExcel} puedeEditar={puedeEditar} puedeEliminar={puedeEliminar} esAdmin={esAdmin} etiquetas={setEtiquetas} />}
+              exportar={exportarExcel} puedeEditar={puedeEditar} puedeEliminar={puedeEliminar} esAdmin={esAdmin} etiquetas={setEtiquetas} todos={assets} />}
             {tab === "telefonia" && <Telefonia puedeEditar={puede(user, "telefonia", "editar")} avisar={avisar} />}
             {tab === "licencias" && <Licencias puedeEditar={puede(user, "licencias", "editar")} avisar={avisar} verFicha={verFicha} assets={assets} />}
             {tab === "usuarios" && <Proximamente titulo="Usuarios"

@@ -2,6 +2,8 @@
 // exceljs y html2canvas pesan mucho: se descargan recien cuando el usuario exporta.
 
 const COLS_CSV = ["nombre","tipo","marca","modelo","serial","usuario","ubicacion","estado","cpu","ram","disco","so","ip","garantia","comentarios"];
+// Solo se exportan (no se importan: se cargan en la ficha, Uso y centro de costo)
+const COLS_REPARTO = ["usuario_secundario","usuario_secundario_nombre","porcentaje_principal","centro_costo"];
 
 function descargar(blob, nombre) {
   const url = URL.createObjectURL(blob);
@@ -18,8 +20,9 @@ const celda = (v) => {
 };
 
 export function exportarCSV(activos) {
-  const filas = activos.map((a) => COLS_CSV.map((c) => celda(a[c])).join(","));
-  descargar(new Blob([COLS_CSV.join(",") + "\n" + filas.join("\n")], { type: "text/csv" }), "atlas_inventario.csv");
+  const cols = [...COLS_CSV, ...COLS_REPARTO];
+  const filas = activos.map((a) => cols.map((c) => celda(a[c])).join(","));
+  descargar(new Blob([cols.join(",") + "\n" + filas.join("\n")], { type: "text/csv" }), "atlas_inventario.csv");
 }
 
 // Separa una linea CSV respetando comillas ("a, b" es un solo campo; "" es una comilla).
@@ -67,8 +70,12 @@ export async function exportarActivosExcel(activos) {
     { header: "IP", key: "ip", width: 16 }, { header: "Usuario", key: "usuario", width: 22 },
     { header: "Sede", key: "ubicacion", width: 14 }, { header: "S.O.", key: "so", width: 22 },
     { header: "Ult Sync", key: "updated", width: 18 }, { header: "Estado", key: "estado", width: 14 },
+    { header: "Centro de costo", key: "centro_costo", width: 18 }, { header: "Segundo usuario", key: "usuario_secundario", width: 20 },
+    { header: "% principal", key: "porcentaje_principal", width: 12 },
   ];
-  activos.forEach((a) => ws.addRow({ nombre: a.nombre, tipo: a.tipo, modelo: ((a.marca || "") + " " + (a.modelo || "")).trim(), serial: a.serial, ip: a.ip, usuario: a.usuario, ubicacion: a.ubicacion, so: a.so, updated: a.updated, estado: a.estado }));
+  activos.forEach((a) => ws.addRow({ nombre: a.nombre, tipo: a.tipo, modelo: ((a.marca || "") + " " + (a.modelo || "")).trim(), serial: a.serial, ip: a.ip, usuario: a.usuario, ubicacion: a.ubicacion, so: a.so, updated: a.updated, estado: a.estado,
+    centro_costo: a.centro_costo || "", usuario_secundario: [a.usuario_secundario_nombre, a.usuario_secundario].filter(Boolean).join(" · "),
+    porcentaje_principal: a.usuario_secundario ? (a.porcentaje_principal ?? 50) : "" }));
   ENCABEZADO(ws);
   descargar(new Blob([await wb.xlsx.writeBuffer()], { type: XLSX }), "activos_llya.xlsx");
 }

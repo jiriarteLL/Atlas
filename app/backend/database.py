@@ -481,6 +481,12 @@ class LicenciaAsignacion(Base):
     desde       = Column(DateTime, default=datetime.utcnow)
     hasta       = Column(DateTime, nullable=True)
     estado      = Column(String, default="activa")             # activa | liberada
+    # Licencia compartida por 2 personas (0013): UNA licencia, el costo se reparte. Campos manuales: ninguna
+    # importacion (CSV de Adobe, API) los pisa; el UserManager solo los completa si estan vacios.
+    secundario        = Column(String, default="")             # email o usuario de Windows (minusculas)
+    secundario_nombre = Column(String, default="")
+    porcentaje_principal = Column(Float, nullable=True)        # % del costo del principal (None = 100, o 50 con 2do)
+    centro_costo      = Column(String, default="")             # de la asignacion; vacio = el de cada persona
 
 
 class LicenciaPersona(Base):
@@ -501,8 +507,9 @@ class LicenciaPersona(Base):
 
 
 class LicenciaCompartida(Base):
-    """Una licencia que usan dos personas (pares de Adobe del UserManager): cuenta como UNA licencia. El costo va al
-    centro de imputacion si esta cargado; si no, mitad a cada centro de costo de las dos personas."""
+    """SIN USO desde 0013: la licencia compartida por 2 personas se expresa en la asignacion (secundario,
+    porcentaje_principal, centro_costo). La migracion 0013 paso sus filas a licencia_asignacion; la tabla queda solo
+    como registro historico (no se lee ni se escribe)."""
     __tablename__ = "licencia_compartida"
     id          = Column(String, primary_key=True, default=_uuid)
     producto_id = Column(String, ForeignKey("licencia_producto.id", ondelete="CASCADE"), nullable=True, index=True)

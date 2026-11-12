@@ -325,3 +325,5 @@ input:focus, select:focus, textarea:focus { outline: none; }
   .ll-niveles { justify-self: start; }
   .ll-permisos-pendiente { flex-direction: column; align-items: flex-start; }
 }
+/* Tablas dentro de un panel lateral (p. ej. asignaciones de una licencia): celdas mas angostas */
+.ll-tabla-compacta th, .ll-tabla-compacta td { padding: 8px 6px; }

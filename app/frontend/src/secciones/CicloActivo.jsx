@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "../api";
 import { SEDES, fmtFechaHora } from "../ui";
 import { Ficha, Rotulo, estadoColor } from "../diseno/comunes";
+import { DatalistCentros, pctEfectivo, refrescarCentros } from "../centros";
 import "../diseno/fasef.css";
 
 const fmtF = (s) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s || ""); return m ? `${m[3]}/${m[2]}/${m[1]}` : ""; };
@@ -33,6 +34,7 @@ export function CicloActivo({ assetId, puedeEditar, avisar, onCambio, abrirActa 
   const [error, setError] = useState("");
   const [accion, setAccion] = useState(null);      // {tipo, a_usuario, sede, motivo}
   const [compra, setCompra] = useState(null);       // edicion de datos de compra
+  const [uso, setUso] = useState(null);             // edicion de segundo usuario / centro de costo
   const [guardando, setGuardando] = useState(false);
 
   const cargar = useCallback(async () => {
@@ -66,12 +68,58 @@ export function CicloActivo({ assetId, puedeEditar, avisar, onCambio, abrirActa 
     } catch (e) { setError(e.message); } finally { setGuardando(false); }
   }
 
+  async function guardarUso() {
+    setGuardando(true);
+    try {
+      const body = { usuario_secundario: uso.usuario_secundario.trim(), usuario_secundario_nombre: uso.usuario_secundario_nombre.trim(),
+        centro_costo: uso.centro_costo, porcentaje_principal: uso.usuario_secundario.trim() && uso.porcentaje_principal !== "" ? Number(uso.porcentaje_principal) : null };
+      await pedir("/api/ciclo/" + assetId + "/admin", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      setUso(null);
+      refrescarCentros();
+      await cargar();
+      avisar && avisar("Uso y centro de costo guardados");
+      onCambio && onCambio();
+    } catch (e) { setError(e.message); } finally { setGuardando(false); }
+  }
+
   if (!c) return error ? <div className="tenue" style={{ fontSize: 12.5 }}>{error}</div> : null;
   const v = c.vida_util, adm = c.admin, ec = estadoColor(c.estado_ciclo);
   const set = (o, setO, k) => (e) => setO({ ...o, [k]: e.target.value });
   const def = ACCIONES.find(([k]) => k === accion?.tipo);
 
+  const pct = pctEfectivo(adm.porcentaje_principal, !!adm.usuario_secundario);
+
   return (<>
+    <div>
+      <Rotulo>USO Y CENTRO DE COSTO</Rotulo>
+      {uso ? <div className="ll-card" style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+        <div className="ll-grid-form">
+          <label className="ll-campo doble"><span>CENTRO DE COSTO</span>
+            <input className="ll-input" list="ll-centros-costo" value={uso.centro_costo} onChange={set(uso, setUso, "centro_costo")} placeholder="p. ej. CABA 1-AUD EA" autoComplete="off" /></label>
+          <label className="ll-campo"><span>SEGUNDO USUARIO (WINDOWS O MAIL)</span>
+            <input className="ll-input" value={uso.usuario_secundario} onChange={set(uso, setUso, "usuario_secundario")} placeholder="opcional" autoComplete="off" /></label>
+          <label className="ll-campo"><span>NOMBRE DEL SEGUNDO USUARIO</span>
+            <input className="ll-input" value={uso.usuario_secundario_nombre} onChange={set(uso, setUso, "usuario_secundario_nombre")} disabled={!uso.usuario_secundario.trim()} autoComplete="off" /></label>
+          <label className="ll-campo doble"><span>% DEL COSTO QUE VA AL USUARIO PRINCIPAL (VACÍO = 50 CON SEGUNDO USUARIO)</span>
+            <input className="ll-input" type="number" min="0" max="100" value={uso.porcentaje_principal} onChange={set(uso, setUso, "porcentaje_principal")} disabled={!uso.usuario_secundario.trim()} /></label>
+        </div>
+        <DatalistCentros />
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <button className="ll-btn-borde" onClick={() => setUso(null)}>Cancelar</button>
+          <button className="ll-btn-primario" disabled={guardando} onClick={guardarUso}>{guardando ? "Guardando…" : "Guardar"}</button>
+        </div>
+      </div> : <>
+        <Ficha filas={[
+          ["Centro de costo", adm.centro_costo],
+          ["Segundo usuario", adm.usuario_secundario ? [adm.usuario_secundario_nombre, adm.usuario_secundario].filter(Boolean).join(" · ") : ""],
+          ["Reparto del costo", adm.usuario_secundario ? `${pct} % principal · ${100 - pct} % segundo usuario` : ""],
+        ]} />
+        {puedeEditar && <button className="ll-btn-borde ll-btn-chico" style={{ marginTop: 10 }} onClick={() => setUso({
+          centro_costo: adm.centro_costo || "", usuario_secundario: adm.usuario_secundario || "",
+          usuario_secundario_nombre: adm.usuario_secundario_nombre || "", porcentaje_principal: adm.porcentaje_principal ?? "" })}>Editar uso y centro de costo</button>}
+      </>}
+    </div>
+
     <div>
       <Rotulo>CICLO DE VIDA</Rotulo>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
