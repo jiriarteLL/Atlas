@@ -304,6 +304,7 @@ COLS_USUARIO = ("username", "nombredeusuario", "usuario")
 COLS_NOMBRE = ("firstname", "nombre", "givenname")
 COLS_APELLIDO = ("lastname", "apellido", "apellidos", "surname", "familyname")
 COLS_PRODUCTOS = ("productconfigurations", "configuracionesdeproducto", "configuracionesdeproductos", "productprofiles",
+                  "productosdeequipo", "teamproducts",
                   "perfilesdeproducto", "assignedproducts", "productosasignados", "products", "productos", "product", "producto")
 
 
@@ -355,20 +356,40 @@ def leer_csv_adobe(contenido):
     return out
 
 
+# Nombres de la exportacion de Adobe -> producto del catalogo (sin el sufijo "(DIRECT - <contrato>)")
+ALIAS_ADOBE = {"acrobatpremiumforteams": "Acrobat Premium para equipos", "acrobatpremiumparaequipos": "Acrobat Premium para equipos",
+               "premiereproedition": "Premiere Pro", "premierepro": "Premiere Pro", "creativecloudpro": "Creative Cloud Pro",
+               "illustrator": "Illustrator", "photoshop": "Photoshop"}
+SUFIJO_CONTRATO = re.compile(r"\s*\((DIRECT|INDIRECT|VIP)\b[^)]*\)\s*$", re.I)
+
+
+def nombre_adobe(nombre):
+    """"Acrobat Premium for teams (DIRECT - CD0B...)" -> "Acrobat Premium para equipos" (o el nombre limpio)."""
+    limpio = SUFIJO_CONTRATO.sub("", nombre or "").strip()
+    return ALIAS_ADOBE.get(_col(limpio), limpio)
+
+
 def aplicar_csv_adobe(db, filas, ahora=None):
+    """Solo personas con licencia: las filas sin productos se ignoran (no se dan de alta)."""
     ahora = ahora or datetime.utcnow()
-    res = {"personas": len(filas), "productos_nuevos": 0, "altas": 0, "liberadas": 0, "sin_productos": 0}
+    res = {"personas": 0, "productos_nuevos": 0, "altas": 0, "liberadas": 0, "sin_productos": 0}
     prods = {p.id_externo: p for p in db.query(LicenciaProducto).filter(LicenciaProducto.origen == "adobe-csv").all()}
+    # el catalogo de Adobe (seed o carga a mano) se reusa por nombre: no se duplican productos
+    catalogo = {_col(p.producto): p for p in db.query(LicenciaProducto).filter(LicenciaProducto.proveedor == "Adobe").all()}
     deben = {}
     for f in filas:
-        _persona(db, f["email"], f["nombre"], None, ahora)
         if not f["productos"]:
             res["sin_productos"] += 1
-        for nombre in f["productos"]:
-            p = prods.get(nombre)
+            continue
+        res["personas"] += 1
+        _persona(db, f["email"], f["nombre"], None, ahora)
+        for crudo in f["productos"]:
+            nombre = nombre_adobe(crudo)
+            p = prods.get(nombre) or catalogo.get(_col(nombre))
             if p is None:
-                p = prods[nombre] = _nuevo_producto(db, "adobe-csv", nombre, ahora, proveedor="Adobe", producto=nombre)
+                p = _nuevo_producto(db, "adobe-csv", nombre, ahora, proveedor="Adobe", producto=nombre)
                 res["productos_nuevos"] += 1
+            prods[nombre] = catalogo[_col(nombre)] = p
             p.activo, p.actualizado = True, ahora
             deben[(p.id, f["email"])] = f["nombre"]
     _sincronizar_asignaciones(db, "adobe-csv", deben, ahora, res)

@@ -338,7 +338,7 @@ def _importar_adobe(client, token, texto):
 def test_exportacion_adobe_enterprise(client, token):
     r = _importar_adobe(client, token, CSV_ENTERPRISE)
     assert r.status_code == 200, r.text
-    assert r.json() == {"personas": 3, "productos_nuevos": 2, "altas": 3, "liberadas": 0, "sin_productos": 1, "asignadas": 3}
+    assert r.json() == {"personas": 2, "productos_nuevos": 2, "altas": 3, "liberadas": 0, "sin_productos": 1, "asignadas": 3}
     p, _, _ = _productos(client, token)
     acro = p["Acrobat Pro - Default"]
     assert acro["proveedor"] == "Adobe" and acro["origen"] == "adobe-csv" and acro["asignadas"] == 2
@@ -503,3 +503,25 @@ def test_renovaciones_proximas():
     prods = [{"activo": True, "fecha_renovacion": hoy + timedelta(days=10)}, {"activo": True, "fecha_renovacion": hoy + timedelta(days=200)},
              {"activo": False, "fecha_renovacion": hoy + timedelta(days=5)}]
     assert len(licencias.proximas_renovaciones(prods, hoy)) == 1
+
+
+def test_csv_adobe_teams_real_usa_el_catalogo_y_omite_sin_licencia(client, token):
+    # Formato real de la Admin Console (plan Teams, castellano): "Productos de equipo" con sufijo "(DIRECT - <contrato>)"
+    seed.seed_licencias()
+    csv_ = ("Correo electrónico,Nombre,Apellidos,Funciones de administrador,Grupos de usuarios,Productos de equipo\n"
+            'ana@llyasoc.com,Ana,Prueba,,,"Acrobat Premium for teams (DIRECT - CD0B0217959655120B2A)"\n'
+            'beto@llyasoc.com,Beto,Prueba,,,"Creative Cloud Pro (DIRECT - CD0B0217959655120B2A),Premiere - Pro Edition (DIRECT - CD0B0217959655120B2A)"\n'
+            "sinlic@llyasoc.com,Sin,Licencia,,,\n").encode("utf-8-sig")
+    db = database.SessionLocal()
+    try:
+        antes = db.query(licencias.LicenciaProducto).count()
+        res = licencias.aplicar_csv_adobe(db, licencias.leer_csv_adobe(csv_))
+        db.commit()
+        assert res["personas"] == 2 and res["sin_productos"] == 1 and res["productos_nuevos"] == 0 and res["altas"] == 3
+        assert db.query(licencias.LicenciaProducto).count() == antes          # reusa el catalogo, sin duplicados
+        personas = {a.persona for a in db.query(licencias.LicenciaAsignacion).all()}
+        assert personas == {"ana@llyasoc.com", "beto@llyasoc.com"}             # el que no tiene licencia no entra
+        nombres = {db.get(licencias.LicenciaProducto, a.producto_id).producto for a in db.query(licencias.LicenciaAsignacion).all()}
+        assert nombres == {"Acrobat Premium para equipos", "Creative Cloud Pro", "Premiere Pro"}
+    finally:
+        db.close()
