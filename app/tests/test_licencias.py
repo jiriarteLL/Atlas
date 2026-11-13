@@ -531,8 +531,9 @@ def test_csv_adobe_teams_real_usa_el_catalogo_y_omite_sin_licencia(client, token
 
 
 # ---------------------------------------------------------------- cuentas de equipo de Claude (planilla propia)
-PLANILLA_CUENTAS = ("\tUnidad de Negocio / Áreas de soporte\tLider \tResponsable licencia Claude\tResponsable licencia CLAUDE\tTipo de Lic\r\n"
-                    "#01\tBancos\tL. Martinez\tAgustin Barelli\tia-bancos@ejemplo.com\tStandard\r\n"
+FILA_BANCOS = "#01\tBancos\tL. Martinez\tAgustin Barelli\tia-bancos@ejemplo.com\tStandard\r\n"
+PLANILLA_CUENTAS = ("\tUnidad de Negocio / Áreas de soporte\tLider \tResponsable licencia Claude\t"
+                    "Responsable licencia CLAUDE\tTipo de Lic\r\n" + FILA_BANCOS +
                     "#05\tTransformación Digital \tR. Meyer\tMario Esquerdo\tia-td@ejemplo.com\tPremium\r\n"
                     "#12\tNahuel Scioro\t\tNahuel scioro\tnscioro@ejemplo.com \tPremium\r\n"
                     "\t\t\t\t\t\r\n\tCuentas FUERA del dominio LLyA\t\t\t\t\r\n"
@@ -561,6 +562,35 @@ def test_cuentas_de_equipo_desde_planilla_tabulada(client, token):
     assert p["Claude Team Premium"]["asignadas"] == 2 and p["Claude Team Standard"]["asignadas"] == 1
     assert p["Claude Max 20x"]["asignadas"] == 1
     # la lista es completa: la que no viene queda inactiva; volver a subir no duplica
-    r = _subir_cuentas(client, token, PLANILLA_CUENTAS.replace("#01\tBancos\tL. Martinez\tAgustin Barelli\tia-bancos@ejemplo.com\tStandard\r\n", ""))
+    r = _subir_cuentas(client, token, PLANILLA_CUENTAS.replace(FILA_BANCOS, ""))
     assert r.json()["inactivas"] == 1 and r.json()["altas"] == 0
     assert _subir_cuentas(client, token, "a\tb\nx\ty\n").status_code == 400
+
+
+def test_cuentas_de_equipo_alta_edicion_y_baja_a_mano(client, token):
+    seed.seed_licencias()
+    h = bearer(token)
+    url = "/api/licencias/cuentas-equipo"
+    r = client.post(url, headers=h, json={"numero": "#38", "unidad": "Legales", "lider": "X. Lider", "responsable": "Ana",
+                                         "email": "IA-Legales@ejemplo.com", "tipo": "Standard"})
+    assert r.status_code == 200, r.text
+    cid = r.json()["id"]
+    c = {x["id"]: x for x in client.get(url, headers=h).json()}[cid]
+    assert c["email"] == "ia-legales@ejemplo.com" and c["producto"] == "Claude Team Standard" and c["activo"]
+    # mail repetido y tipo inexistente
+    assert client.post(url, headers=h, json={"unidad": "Otra", "email": "ia-legales@ejemplo.com", "tipo": "Standard"}).status_code == 409
+    assert client.post(url, headers=h, json={"unidad": "Otra", "email": "otra@ejemplo.com", "tipo": "Gold"}).status_code == 422
+    # edicion: tipo y mail (la planilla la reconoce por el mail nuevo)
+    assert client.put(url + "/" + cid, headers=h, json={"tipo": "Premium", "email": "ia-legales2@ejemplo.com",
+                                                        "lider": None}).status_code == 200
+    c = {x["id"]: x for x in client.get(url, headers=h).json()}[cid]
+    assert c["producto"] == "Claude Team Premium" and c["email"] == "ia-legales2@ejemplo.com" and c["lider"] == ""
+    r = _subir_cuentas(client, token, "#\tUnidad\tResponsable\tMail\tTipo\n#38\tLegales\tAna\tia-legales2@ejemplo.com\tPremium\n")
+    assert r.json()["altas"] == 0
+    p, _, _ = _productos(client, token)
+    assert p["Claude Team Premium"]["asignadas"] == 1
+    # baja y reactivacion
+    assert client.put(url + "/" + cid, headers=h, json={"activo": False}).json()["activo"] is False
+    p, _, _ = _productos(client, token)
+    assert p["Claude Team Premium"]["asignadas"] == 0
+    assert client.put(url + "/" + cid, headers=h, json={"activo": True}).json()["activo"] is True

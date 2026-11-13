@@ -1022,6 +1022,25 @@ class PersonaUpdate(_Base):
     cuenta_ad: Literal["activa", "deshabilitada", "desconocida"]
 
 
+class CuentaIn(_Base):
+    numero: Optional[str] = Field("", max_length=20)
+    unidad: str = Field(..., min_length=1, max_length=120)
+    lider: Optional[str] = Field("", max_length=120)
+    responsable: Optional[str] = Field("", max_length=120)
+    email: str = Field(..., max_length=200)
+    tipo: str = Field(..., min_length=1, max_length=40)
+
+
+class CuentaUpdate(_Base):
+    numero: Optional[str] = Field(None, max_length=20)
+    unidad: Optional[str] = Field(None, min_length=1, max_length=120)
+    lider: Optional[str] = Field(None, max_length=120)
+    responsable: Optional[str] = Field(None, max_length=120)
+    email: Optional[str] = Field(None, max_length=200)
+    tipo: Optional[str] = Field(None, min_length=1, max_length=40)
+    activo: Optional[bool] = None
+
+
 class CostoIn(_Base):
     producto_id: str = Field(..., max_length=60)
     periodo: str = Field(..., pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
@@ -1096,6 +1115,72 @@ def cuentas_equipo(user: UserOut = Depends(require_modulo("licencias"))):
                  "producto": prods[c.producto_id].producto if c.producto_id in prods else "",
                  "mensual": mensual_unitario(prods[c.producto_id]) if c.producto_id in prods else {}}
                 for c in db.query(LicenciaCuentaEquipo).order_by(LicenciaCuentaEquipo.numero).all()]
+    finally:
+        db.close()
+
+
+def _datos_cuenta(db, datos, cid=None):
+    """Valida mail (unico entre las cuentas) y tipo (tiene que corresponder a un producto de Anthropic)."""
+    if "email" in datos:
+        datos["email"] = norm_email(datos["email"])
+        if not datos["email"]:
+            raise HTTPException(400, "Ingresá el mail de la cuenta")
+        otra = db.query(LicenciaCuentaEquipo).filter(LicenciaCuentaEquipo.email == datos["email"]).first()
+        if otra is not None and otra.id != cid:
+            raise HTTPException(409, "Ya hay una cuenta de equipo con ese mail")
+    if "tipo" in datos:
+        p = producto_de_tipo(_productos_anthropic(db), datos["tipo"])
+        if p is None:
+            raise HTTPException(422, "El tipo no corresponde a ningún producto de Anthropic (Standard, Premium o Max 20x)")
+        datos["producto_id"] = p.id
+    return datos
+
+
+@router.post("/cuentas-equipo")
+def alta_cuenta(data: CuentaIn, request: Request, user: UserOut = Depends(require_modulo("licencias", nivel="editar"))):
+    db = SessionLocal()
+    try:
+        datos = _datos_cuenta(db, data.model_dump())
+        c = LicenciaCuentaEquipo(estado="", activo=True, actualizado=datetime.utcnow())
+        for k, v in datos.items():
+            setattr(c, k, v if k == "producto_id" else (v or ""))
+        c.id_externo = "cuenta:" + c.email
+        db.add(c)
+        _persona(db, c.email, c.responsable)
+        db.commit()
+        log_action(user.username, "alta", "licencia_cuenta_equipo", c.id, {"email": c.email, "tipo": c.tipo}, ip=_ip(request))
+        return {"id": c.id}
+    finally:
+        db.close()
+
+
+@router.put("/cuentas-equipo/{cid}")
+def editar_cuenta(cid: str, data: CuentaUpdate, request: Request,
+                  user: UserOut = Depends(require_modulo("licencias", nivel="editar"))):
+    """Edicion, baja (activo=false) y reactivacion. Una cuenta propia de Atlas cambia su id_externo con el mail, asi la
+    proxima importacion de la planilla la reconoce."""
+    db = SessionLocal()
+    try:
+        c = db.get(LicenciaCuentaEquipo, cid)
+        if c is None:
+            raise HTTPException(404, "Cuenta no encontrada")
+        datos = _datos_cuenta(db, data.model_dump(exclude_unset=True), cid)
+        cambios = {}
+        if datos.get("activo", False) is None:
+            del datos["activo"]
+        for k, v in datos.items():
+            if k not in ("producto_id", "activo"):
+                v = v or ""
+            if getattr(c, k) != v:
+                cambios[k] = [getattr(c, k), v]
+                setattr(c, k, v)
+        if "email" in cambios and (c.id_externo or "").startswith("cuenta:"):
+            c.id_externo = "cuenta:" + c.email
+        if cambios:
+            c.actualizado = datetime.utcnow()
+            db.commit()
+            log_action(user.username, "modificacion", "licencia_cuenta_equipo", c.id, cambios, ip=_ip(request))
+        return {"id": c.id, "activo": bool(c.activo)}
     finally:
         db.close()
 

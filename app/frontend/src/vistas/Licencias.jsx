@@ -95,6 +95,7 @@ export default function Licencias({ puedeEditar, avisar, verFicha, assets }) {
   const [producto, setProducto] = useState(null);
   const [persona, setPersona] = useState(null);
   const [modal, setModal] = useState("");   // nuevo | importar | costo
+  const [cuenta, setCuenta] = useState(null);   // {} = nueva, {...} = editar
 
   const cargar = useCallback(async () => {
     setCargando(true);
@@ -139,7 +140,7 @@ export default function Licencias({ puedeEditar, avisar, verFicha, assets }) {
   }
 
   const PESTANAS = [["productos", "Productos"], ["personas", "Personas"], ["centros", "Centros de costo"],
-    ...(compartidas.length ? [["compartidas", "Compartidas"]] : []), ...(cuentas.length ? [["cuentas", "Cuentas de equipo"]] : []),
+    ...(compartidas.length ? [["compartidas", "Compartidas"]] : []), ["cuentas", "Cuentas de equipo"],
     ["costos", "Costos por mes"], ["renovaciones", "Renovaciones"]];
   const contador = { productos: prodFiltrados.length + " productos", personas: persFiltradas.length + " personas",
     centros: (datos.centros || []).length + " centros", compartidas: compartidas.length + " compartidas",
@@ -182,6 +183,7 @@ export default function Licencias({ puedeEditar, avisar, verFicha, assets }) {
         <span style={{ flex: 1 }} />
         {puedeEditar && <button className="ll-btn-primario" onClick={() => setModal("nuevo")}>+ Producto</button>}
         {puedeEditar && <button className="ll-btn-borde" onClick={() => setModal("importar")}>Importar miembros</button>}
+        {puedeEditar && pestana === "cuentas" && <button className="ll-btn-borde" onClick={() => setCuenta({})}>+ Cuenta</button>}
         {puedeEditar && pestana === "costos" && <button className="ll-btn-borde" onClick={() => setModal("costo")}>+ Costo del mes</button>}
         <button className="ll-btn-borde" onClick={exportar}>Exportar</button>
       </div>
@@ -251,8 +253,10 @@ export default function Licencias({ puedeEditar, avisar, verFicha, assets }) {
 
           {pestana === "cuentas" && <table className="ll-tabla" style={{ minWidth: 900 }}>
             <thead><tr><th>CUENTA</th><th>UNIDAD</th><th>LÍDER</th><th>RESPONSABLE</th><th>PRODUCTO</th><th>COSTO MENSUAL</th><th>ESTADO</th></tr></thead>
-            <tbody>{cuentas.map((c) => (
-              <tr key={c.id}><td className="nombre mono">{c.numero}<div className="tenue" style={{ fontSize: 11.5 }}>{c.email}</div></td>
+            <tbody>{cuentas.filter((c) => !q || [c.numero, c.unidad, c.lider, c.responsable, c.email, c.tipo, c.producto]
+              .some((v) => String(v || "").toLowerCase().includes(q))).map((c) => (
+              <tr key={c.id} className={puedeEditar ? "click" : undefined} onClick={puedeEditar ? () => setCuenta(c) : undefined}
+                title={puedeEditar ? "Editar la cuenta" : undefined}><td className="nombre mono">{c.numero}<div className="tenue" style={{ fontSize: 11.5 }}>{c.email}</div></td>
                 <td>{c.unidad}</td><td>{c.lider}</td><td>{c.responsable}</td><td>{c.producto || c.tipo || "—"}</td>
                 <td className="mono" style={{ fontSize: 12.5 }}>{montos(c.mensual)}</td><td>{c.activo ? (c.estado || "Activa") : <span className="tenue">Inactiva</span>}</td></tr>))}
             </tbody>
@@ -299,6 +303,7 @@ export default function Licencias({ puedeEditar, avisar, verFicha, assets }) {
       {persona && <FichaPersona p={personas.find((x) => x.persona === persona)} puedeEditar={puedeEditar} avisar={avisar}
         onCerrar={() => setPersona(null)} onCambio={cargar} verEquipo={(id) => { const a = (assets || []).find((y) => y.id === id); if (a) verFicha(a); }} />}
       {modal === "nuevo" && <NuevoProducto onCerrar={() => setModal("")} avisar={avisar} onCreado={(id) => { setModal(""); cargar(); setProducto(id); }} />}
+      {cuenta && <EditarCuenta cuenta={cuenta} onCerrar={() => setCuenta(null)} avisar={avisar} onListo={() => { setCuenta(null); cargar(); }} />}
       {modal === "importar" && <ImportarMiembros productos={activos} onCerrar={() => setModal("")} avisar={avisar} onListo={() => { setModal(""); cargar(); }} />}
       {modal === "costo" && <NuevoCosto productos={activos} onCerrar={() => setModal("")} avisar={avisar} onListo={() => { setModal(""); cargar(); }} />}
     </div>
@@ -628,6 +633,53 @@ function ImportarMiembros({ productos, onCerrar, onListo, avisar }) {
         JSON generado con <span className="mono">herramientas/licencias/exportar_usermanager.py</span> (lee la base del UserManager en solo lectura).
         Es idempotente y no pisa los costos cargados en Atlas.</div>}
       <input ref={archivo} type="file" accept={fuente === "usermanager" ? ".json,application/json" : fuente === "cuentas" ? ".txt,.tsv,.csv,text/plain,text/csv" : ".csv,text/csv"} style={{ display: "none" }} onChange={subir} />
+    </Modal>
+  );
+}
+
+const TIPOS_CUENTA = ["Standard", "Premium", "Max 20x"];
+// "MAX x20" / "premium" (como vienen en la planilla) -> el tipo del desplegable
+function tipoCuenta(t) {
+  const s = String(t || "").toLowerCase().replace(/\W/g, "");
+  if (!s) return "Standard";
+  if (s.startsWith("max") || s.includes("x20")) return "Max 20x";
+  return TIPOS_CUENTA.find((x) => x.toLowerCase() === s) || t;
+}
+
+// Alta / edición / baja de una cuenta de equipo de Claude (una cuenta por unidad = una licencia).
+function EditarCuenta({ cuenta, onCerrar, onListo, avisar }) {
+  const nueva = !cuenta.id;
+  const [d, setD] = useState({ numero: cuenta.numero || "", unidad: cuenta.unidad || "", lider: cuenta.lider || "",
+    responsable: cuenta.responsable || "", email: cuenta.email || "",
+    tipo: tipoCuenta(cuenta.tipo) });
+  const set = (k) => (e) => setD({ ...d, [k]: e.target.value });
+  async function enviar(cuerpo, aviso) {
+    try {
+      await pedir(URL + "/cuentas-equipo" + (nueva ? "" : "/" + cuenta.id), json(nueva ? "POST" : "PUT", cuerpo));
+      avisar && avisar(aviso); onListo();
+    } catch (e) { avisar && avisar(e.message); }
+  }
+  const tipos = TIPOS_CUENTA.includes(d.tipo) ? TIPOS_CUENTA : [...TIPOS_CUENTA, d.tipo];
+  return (
+    <Modal titulo={nueva ? "Nueva cuenta de equipo" : "Cuenta " + (cuenta.numero || cuenta.email)} onCerrar={onCerrar}
+      pie={<>
+        {!nueva && <button className="ll-btn-borde" style={{ marginRight: "auto" }}
+          onClick={() => enviar({ activo: !cuenta.activo }, cuenta.activo ? "Cuenta dada de baja" : "Cuenta reactivada")}>
+          {cuenta.activo ? "Dar de baja" : "Reactivar"}</button>}
+        <button className="ll-btn-borde" onClick={onCerrar}>Cancelar</button>
+        <button className="ll-btn-primario" disabled={!d.unidad.trim() || !d.email.trim()}
+          onClick={() => enviar(d, nueva ? "Cuenta creada" : "Cuenta guardada")}>Guardar</button></>}>
+      <div style={{ display: "grid", gridTemplateColumns: "110px 1fr", gap: 12 }}>
+        <label className="ll-campo"><span>#</span><input className="ll-input" value={d.numero} onChange={set("numero")} placeholder="#38" /></label>
+        <label className="ll-campo"><span>UNIDAD DE NEGOCIO / ÁREA</span><input className="ll-input" value={d.unidad} onChange={set("unidad")} /></label>
+        <label className="ll-campo" style={{ gridColumn: "1 / -1" }}><span>MAIL DE LA CUENTA</span>
+          <input className="ll-input" type="email" value={d.email} onChange={set("email")} placeholder="ia-area@llyasoc.com" /></label>
+        <label className="ll-campo" style={{ gridColumn: "1 / -1" }}><span>RESPONSABLE</span><input className="ll-input" value={d.responsable} onChange={set("responsable")} /></label>
+        <label className="ll-campo" style={{ gridColumn: "1 / -1" }}><span>LÍDER</span><input className="ll-input" value={d.lider} onChange={set("lider")} /></label>
+        <label className="ll-campo" style={{ gridColumn: "1 / -1" }}><span>TIPO DE LICENCIA</span>
+          <select className="ll-select" value={d.tipo} onChange={set("tipo")}>{tipos.map((t) => <option key={t}>{t}</option>)}</select></label>
+      </div>
+      {!nueva && !cuenta.activo && <div className="tenue" style={{ fontSize: 12, marginTop: 12 }}>Esta cuenta está dada de baja: no suma licencias ni costo.</div>}
     </Modal>
   );
 }
