@@ -584,9 +584,14 @@ function ImportarMiembros({ productos, onCerrar, onListo, avisar }) {
     if (!a) return;
     const fd = new FormData(); fd.append("archivo", a);
     if (fuente === "miembros" && productoId) fd.append("producto_id", productoId);
-    const ruta = { miembros: "/importar", adobe: "/importar-adobe", usermanager: "/importar-usermanager" }[fuente];
+    const ruta = { miembros: "/importar", adobe: "/importar-adobe", usermanager: "/importar-usermanager", cuentas: "/importar-cuentas-equipo" }[fuente];
     try {
       const d = await pedir(URL + ruta, { method: "POST", body: fd });
+      if (fuente === "cuentas") {
+        avisar && avisar(`Cuentas de equipo: ${d.cuentas} cargadas (${d.altas} nuevas${d.inactivas ? `, ${d.inactivas} inactivas` : ""})` +
+          (d.sin_producto && d.sin_producto.length ? ` · sin producto: ${d.sin_producto.join(", ")}` : ""));
+        onListo(); return;
+      }
       const n = d.asignaciones_nuevas ?? d.altas ?? 0;
       avisar && avisar(`Importado: ${n} asignaciones nuevas${d.liberadas ? `, ${d.liberadas} liberadas` : ""}${d.ya_estaban ? `, ${d.ya_estaban} ya estaban` : ""}`);
       onListo();
@@ -599,6 +604,7 @@ function ImportarMiembros({ productos, onCerrar, onListo, avisar }) {
         <select className="ll-select" value={fuente} onChange={(e) => setFuente(e.target.value)}>
           <option value="miembros">CSV de miembros (Claude, Adobe u otro) o genérico</option>
           <option value="adobe">Exportación de usuarios de la Admin Console de Adobe</option>
+          <option value="cuentas">Cuentas de equipo de Claude (planilla por unidad)</option>
           <option value="usermanager">Exportación del UserManager (JSON)</option>
         </select></label>
       {fuente === "miembros" && <>
@@ -614,10 +620,14 @@ function ImportarMiembros({ productos, onCerrar, onListo, avisar }) {
         <li><b>adminconsole.adobe.com</b> → <b>Usuarios</b> → <b>Usuarios</b>.</li>
         <li>Menú <b>“…”</b> → <b>Exportar lista de usuarios a CSV</b> y elegí ese archivo.</li>
         <li>Quien ya no figure con un producto queda como liberado; los costos no se tocan.</li></ol>}
+      {fuente === "cuentas" && <div className="tenue" style={{ fontSize: 12, marginTop: 12, lineHeight: 1.6 }}>
+        Planilla copiada de Excel a un .txt (tabulado) o CSV: #, unidad, líder, responsable, <b>mail de la cuenta</b> y tipo
+        (Standard / Premium / MAX x20). Es la lista completa: las cuentas que no vengan quedan inactivas. No hace falta cargar además
+        el CSV de miembros de esas cuentas (si ya estaba, no se cuenta dos veces).</div>}
       {fuente === "usermanager" && <div className="tenue" style={{ fontSize: 12, marginTop: 12, lineHeight: 1.6 }}>
         JSON generado con <span className="mono">herramientas/licencias/exportar_usermanager.py</span> (lee la base del UserManager en solo lectura).
         Es idempotente y no pisa los costos cargados en Atlas.</div>}
-      <input ref={archivo} type="file" accept={fuente === "usermanager" ? ".json,application/json" : ".csv,text/csv"} style={{ display: "none" }} onChange={subir} />
+      <input ref={archivo} type="file" accept={fuente === "usermanager" ? ".json,application/json" : fuente === "cuentas" ? ".txt,.tsv,.csv,text/plain,text/csv" : ".csv,text/csv"} style={{ display: "none" }} onChange={subir} />
     </Modal>
   );
 }

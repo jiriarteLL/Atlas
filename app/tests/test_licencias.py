@@ -528,3 +528,39 @@ def test_csv_adobe_teams_real_usa_el_catalogo_y_omite_sin_licencia(client, token
         assert nombres == {"Acrobat Premium para equipos", "Creative Cloud Pro", "Premiere Pro"}
     finally:
         db.close()
+
+
+# ---------------------------------------------------------------- cuentas de equipo de Claude (planilla propia)
+PLANILLA_CUENTAS = ("\tUnidad de Negocio / Áreas de soporte\tLider \tResponsable licencia Claude\tResponsable licencia CLAUDE\tTipo de Lic\r\n"
+                    "#01\tBancos\tL. Martinez\tAgustin Barelli\tia-bancos@ejemplo.com\tStandard\r\n"
+                    "#05\tTransformación Digital \tR. Meyer\tMario Esquerdo\tia-td@ejemplo.com\tPremium\r\n"
+                    "#12\tNahuel Scioro\t\tNahuel scioro\tnscioro@ejemplo.com \tPremium\r\n"
+                    "\t\t\t\t\t\r\n\tCuentas FUERA del dominio LLyA\t\t\t\t\r\n"
+                    "#01\tIndividual I+D\t\tAlan Viera\taviera@ejemplo.com\tMAX x20\r\n")
+
+
+def _subir_cuentas(client, token, texto):
+    return client.post("/api/licencias/importar-cuentas-equipo", headers=bearer(token),
+                       files={"archivo": ("cuentas.txt", texto.encode("cp1252"), "text/plain")})
+
+
+def test_cuentas_de_equipo_desde_planilla_tabulada(client, token):
+    seed.seed_licencias()
+    h = bearer(token)
+    # la misma cuenta ya cargada por el CSV de miembros no se cuenta dos veces
+    _subir_csv(client, token, "Name,Email,Seat Tier\nTD,ia-td@ejemplo.com,Premium\n")
+    r = _subir_cuentas(client, token, PLANILLA_CUENTAS)
+    assert r.status_code == 200, r.text
+    assert r.json() == {"cuentas": 4, "altas": 4, "inactivas": 0, "sin_producto": []}
+    cuentas = {c["email"]: c for c in client.get("/api/licencias/cuentas-equipo", headers=h).json()}
+    assert cuentas["ia-td@ejemplo.com"]["producto"] == "Claude Team Premium"
+    assert cuentas["ia-td@ejemplo.com"]["unidad"] == "Transformación Digital"
+    assert cuentas["ia-bancos@ejemplo.com"]["responsable"] == "Agustin Barelli" and cuentas["ia-bancos@ejemplo.com"]["numero"] == "#01"
+    assert cuentas["aviera@ejemplo.com"]["producto"] == "Claude Max 20x"
+    p, _, _ = _productos(client, token)
+    assert p["Claude Team Premium"]["asignadas"] == 2 and p["Claude Team Standard"]["asignadas"] == 1
+    assert p["Claude Max 20x"]["asignadas"] == 1
+    # la lista es completa: la que no viene queda inactiva; volver a subir no duplica
+    r = _subir_cuentas(client, token, PLANILLA_CUENTAS.replace("#01\tBancos\tL. Martinez\tAgustin Barelli\tia-bancos@ejemplo.com\tStandard\r\n", ""))
+    assert r.json()["inactivas"] == 1 and r.json()["altas"] == 0
+    assert _subir_cuentas(client, token, "a\tb\nx\ty\n").status_code == 400

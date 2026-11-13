@@ -530,8 +530,8 @@ def aplicar_usermanager(db, datos, ahora=None):
             if not a.centro_costo and _txt(x.get("imputacion"), 80):
                 a.centro_costo = norm_centro(x.get("imputacion"))
         res["compartidas"] += 1
-    # cuentas de equipo (Claude por unidad): el producto sale del plan ("Standard" -> el de Anthropic con plan Standard)
-    por_plan = {(p.plan or "").strip().lower(): p for p in prods.values() if (p.proveedor or "").lower() == "anthropic" and p.activo}
+    # cuentas de equipo (Claude por unidad): el producto sale del tipo ("Standard" -> "Claude Team Standard")
+    anthropic = _productos_anthropic(db)
     cuentas = {c.id_externo: c for c in db.query(LicenciaCuentaEquipo).all()}
     vistas_c = set()
     for x in datos.get("equipos_licencias") or []:
@@ -545,13 +545,99 @@ def aplicar_usermanager(db, datos, ahora=None):
         c.numero, c.unidad, c.lider = _txt(x.get("numero"), 20), _txt(x.get("unidad"), 120), _txt(x.get("lider"), 120)
         c.responsable, c.email, c.tipo = _txt(x.get("responsable"), 120), norm_email(x.get("email")), _txt(x.get("tipo"), 40)
         c.estado, c.activo, c.actualizado = _txt(x.get("estado"), 60), _activo(x.get("activo")), ahora
-        p = por_plan.get(c.tipo.strip().lower())
+        p = producto_de_tipo(anthropic, c.tipo)
         c.producto_id = p.id if p else None
         vistas_c.add(ext)
         res["cuentas_equipo"] += 1
     for ext, c in cuentas.items():
         if ext not in vistas_c and c.activo:
             c.activo, c.actualizado = False, ahora
+    return res
+
+
+# ---------------------------------------------------------------- cuentas de equipo de Claude (lista propia)
+# Planilla de cuentas por unidad de negocio (#, unidad, lider, responsable, mail de la cuenta, tipo), copiada de Excel
+# (tabulada) o CSV. Las cuentas de Atlas usan id_externo "cuenta:<mail>"; las del UserManager, el id de alla.
+_ALIAS_TIPO = {"maxx20": "max20x", "x20": "max20x", "max": "max20x", "max20": "max20x"}
+
+
+def _productos_anthropic(db):
+    return [p for p in db.query(LicenciaProducto).all() if (p.proveedor or "").lower() == "anthropic" and p.activo]
+
+
+def producto_de_tipo(productos, tipo):
+    """"Standard" / "Premium" / "MAX x20" -> producto de Anthropic por plan o por final del nombre (o None)."""
+    t = _col(tipo)
+    t = _ALIAS_TIPO.get(t, t)
+    if not t:
+        return None
+    for p in productos:
+        if _col(p.plan) == t:
+            return p
+    candidatos = [p for p in productos if _col(p.producto).endswith(t)]
+    return candidatos[0] if len(candidatos) == 1 else None
+
+
+def leer_cuentas_equipo(contenido):
+    """-> [{numero, unidad, lider, responsable, email, tipo}]. El mail sale de la columna que trae mails (la planilla
+    tiene dos columnas "Responsable licencia Claude": nombre y mail); las filas sin mail (titulos) se saltean."""
+    lineas = [x for x in _texto(contenido).splitlines() if x.strip()]
+    if not lineas:
+        return []
+    sep = max(("\t", ";", ","), key=lineas[0].count)
+    filas = list(csv.reader(io.StringIO("\n".join(lineas)), delimiter=sep))
+    cab = [_col(x) for x in filas[0]]
+    cuerpo = filas[1:]
+    c_mail = max(range(len(cab)), key=lambda i: sum(1 for f in cuerpo if i < len(f) and norm_email(f[i])))
+
+    def col(*claves, menos=()):
+        return next((i for i, n in enumerate(cab) if i not in menos and any(n.startswith(k) for k in claves)), None)
+    c_uni, c_lid = col("unidad", "area", "sector"), col("lider")
+    c_resp, c_tipo = col("responsable", menos=(c_mail,)), col("tipo", "seattier", "plan")
+    c_num = col("numero", "nro", "cuenta", menos=(c_mail,))
+    if c_num is None and cab and cab[0] == "":
+        c_num = 0
+
+    def val(f, i, largo=120):
+        return _txt(f[i], largo) if i is not None and i < len(f) else ""
+    salida = []
+    for f in cuerpo:
+        email = norm_email(val(f, c_mail, 200))
+        if email:
+            salida.append({"numero": val(f, c_num, 20), "unidad": val(f, c_uni), "lider": val(f, c_lid),
+                           "responsable": val(f, c_resp), "email": email, "tipo": val(f, c_tipo, 40)})
+    return salida
+
+
+def aplicar_cuentas_equipo(db, filas, ahora=None):
+    """Upsert por mail. La lista es completa: las cuentas propias de Atlas que ya no vienen quedan inactivas."""
+    ahora = ahora or datetime.utcnow()
+    anthropic = _productos_anthropic(db)
+    res = {"cuentas": 0, "altas": 0, "inactivas": 0, "sin_producto": []}
+    cuentas = {c.id_externo: c for c in db.query(LicenciaCuentaEquipo).filter(LicenciaCuentaEquipo.id_externo.like("cuenta:%")).all()}
+    vistas = set()
+    for x in filas:
+        ext = "cuenta:" + x["email"]
+        if ext in vistas:
+            continue
+        c = cuentas.get(ext)
+        if c is None:
+            c = cuentas[ext] = LicenciaCuentaEquipo(id_externo=ext)
+            db.add(c)
+            res["altas"] += 1
+        c.numero, c.unidad, c.lider, c.responsable = x["numero"], x["unidad"], x["lider"], x["responsable"]
+        c.email, c.tipo, c.estado, c.activo, c.actualizado = x["email"], x["tipo"], "", True, ahora
+        p = producto_de_tipo(anthropic, x["tipo"])
+        c.producto_id = p.id if p else None
+        if p is None:
+            res["sin_producto"].append(x["email"])
+        _persona(db, x["email"], x["responsable"], None, ahora)
+        vistas.add(ext)
+        res["cuentas"] += 1
+    for ext, c in cuentas.items():
+        if ext not in vistas and c.activo:
+            c.activo, c.actualizado = False, ahora
+            res["inactivas"] += 1
     return res
 
 
@@ -640,6 +726,9 @@ def _uso(db):
     for c in db.query(LicenciaCuentaEquipo).filter(LicenciaCuentaEquipo.activo.is_(True)).all():
         if c.producto_id:
             cuentas[c.producto_id].append(c)
+            a = ind[c.producto_id].get(c.email)
+            if a is not None and not a.secundario:
+                del ind[c.producto_id][c.email]     # la misma cuenta cargada por CSV de miembros: cuenta una vez
     return ind, pares, cuentas
 
 
@@ -1369,6 +1458,23 @@ async def importar_adobe(request: Request, archivo: UploadFile = File(...),
     finally:
         db.close()
     log_action(user.username, "importacion", "licencias", "adobe-csv", res, ip=_ip(request))
+    return res
+
+
+@router.post("/importar-cuentas-equipo")
+async def importar_cuentas_equipo(request: Request, archivo: UploadFile = File(...),
+                                  user: UserOut = Depends(require_modulo("licencias", nivel="editar"))):
+    """Planilla de cuentas de equipo de Claude (TXT tabulado copiado de Excel o CSV)."""
+    filas = leer_cuentas_equipo(await _leer_archivo(archivo))
+    if not filas:
+        raise HTTPException(400, "El archivo no trae cuentas con mail")
+    db = SessionLocal()
+    try:
+        res = aplicar_cuentas_equipo(db, filas)
+        db.commit()
+    finally:
+        db.close()
+    log_action(user.username, "importacion", "licencias", "cuentas-equipo", res, ip=_ip(request))
     return res
 
 
