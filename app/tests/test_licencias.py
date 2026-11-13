@@ -126,7 +126,7 @@ def test_csv_generico_y_exportar(client, token):
     r = _subir_csv(client, token, texto)
     assert r.status_code == 200, r.text
     assert r.json() == {"filas": 3, "productos_nuevos": 1, "asignaciones_nuevas": 2, "ya_estaban": 1, "externas_ignoradas": 0,
-                        "sin_producto": 0}
+                        "sin_producto": 0, "sin_asiento": 0}
     ex = client.get("/api/licencias/exportar.csv", headers=h)
     assert ex.status_code == 200 and "beto@ejemplo.com" in ex.text and ex.text.startswith("﻿") and "centro de costo" in ex.text
     assert _subir_csv(client, token, "nombre,telefono\nAna,1\n").status_code == 400
@@ -142,10 +142,13 @@ def test_csv_de_miembros_de_claude_con_producto_elegido_o_por_tier(client, token
     # con columna "Seat tier": "Premium" -> "Claude Team Premium"
     r = _subir_csv(client, token, "Name,Email,Seat tier\nCarla,carla@ejemplo.com,Premium\nDario,dario@ejemplo.com,Standard\n")
     assert r.json() == {"filas": 2, "productos_nuevos": 0, "asignaciones_nuevas": 2, "ya_estaban": 0, "externas_ignoradas": 0,
-                        "sin_producto": 0}
+                        "sin_producto": 0, "sin_asiento": 0}
     p, _, _ = _productos(client, token)
     assert p["Claude Team Standard"]["asignadas"] == 3 and p["Claude Team Premium"]["asignadas"] == 1
     assert _subir_csv(client, token, "Email\na@ejemplo.com\n").json()["sin_producto"] == 1
+    # "Unassigned" (owner sin asiento pago) no es una licencia ni crea un producto
+    r = _subir_csv(client, token, "Name,Email,Seat Tier\nJose,jose@ejemplo.com,Unassigned\n").json()
+    assert r["sin_asiento"] == 1 and r["productos_nuevos"] == 0 and r["asignaciones_nuevas"] == 0
     assert prem["proveedor"] == "Anthropic"
 
 

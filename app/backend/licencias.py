@@ -1252,6 +1252,7 @@ async def _leer_archivo(archivo):
 COLS_PRODUCTO_GEN = ("producto", "product", "licencia", "seattier", "seattype", "tipodeasiento", "tier", "plan", "seat")
 COLS_PROVEEDOR = ("proveedor", "vendor", "provider")
 COLS_NOMBRE_GEN = ("nombre", "name", "fullname", "nombreyapellido", "nombrecompleto")
+SIN_ASIENTO = ("unassigned", "none", "sinasignar", "sinasiento", "ninguno")   # miembro sin asiento pago: no es licencia
 
 
 def leer_csv(contenido):
@@ -1310,7 +1311,7 @@ async def importar(request: Request, archivo: UploadFile = File(...), producto_i
         raise HTTPException(400, "El archivo no trae una columna de mail (email / correo) con datos")
     db = SessionLocal()
     res = {"filas": len(filas), "productos_nuevos": 0, "asignaciones_nuevas": 0, "ya_estaban": 0, "externas_ignoradas": 0,
-           "sin_producto": 0}
+           "sin_producto": 0, "sin_asiento": 0}
     try:
         ahora = datetime.utcnow()
         fijo = db.get(LicenciaProducto, producto_id) if producto_id else None
@@ -1320,6 +1321,9 @@ async def importar(request: Request, archivo: UploadFile = File(...), producto_i
         for p in db.query(LicenciaProducto).all():
             prods.setdefault(((p.proveedor or "").lower(), (p.producto or "").lower()), p)
         for f in filas:
+            if _col(f["producto"]) in SIN_ASIENTO:
+                res["sin_asiento"] += 1
+                continue
             p = fijo or (_producto_para(prods, f) if f["producto"] else None)
             if p is None:
                 if not f["producto"]:
