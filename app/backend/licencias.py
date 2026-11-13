@@ -1242,6 +1242,10 @@ def ver_producto(pid: str, user: UserOut = Depends(require_modulo("licencias")))
                                 "centro_asignacion": a.centro_costo or "",
                                 "duplicada": a.estado == "activa" and a.id not in efectivas}
                                for a in asig]
+        out["cuentas"] = [{"id": c.id, "numero": c.numero, "unidad": c.unidad, "lider": c.lider, "responsable": c.responsable,
+                           "email": c.email, "tipo": c.tipo, "activo": bool(c.activo)}
+                          for c in db.query(LicenciaCuentaEquipo).filter(LicenciaCuentaEquipo.producto_id == pid)
+                          .order_by(LicenciaCuentaEquipo.activo.desc(), LicenciaCuentaEquipo.numero).all()]
         out["costos_periodo"] = [dict(x, periodo=per["periodo"]) for per in costos_por_periodo(db)
                                  for x in per["productos"] if x["producto_id"] == pid]
         return out

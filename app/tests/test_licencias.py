@@ -569,6 +569,8 @@ def test_cuentas_de_equipo_desde_planilla_tabulada(client, token):
     p, _, _ = _productos(client, token)
     assert p["Claude Team Premium"]["asignadas"] == 2 and p["Claude Team Standard"]["asignadas"] == 1
     assert p["Claude Max 20x"]["asignadas"] == 1
+    det = client.get("/api/licencias/productos/" + p["Claude Team Premium"]["id"], headers=h).json()
+    assert sorted(c["email"] for c in det["cuentas"]) == ["ia-td@ejemplo.com", "nscioro@ejemplo.com"]
     # la lista es completa: la que no viene queda inactiva; volver a subir no duplica
     r = _subir_cuentas(client, token, PLANILLA_CUENTAS.replace(FILA_BANCOS, ""))
     assert r.json()["inactivas"] == 1 and r.json()["altas"] == 0

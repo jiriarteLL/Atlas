@@ -91,7 +91,7 @@ export default function Licencias({ puedeEditar, avisar, verFicha, assets }) {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
   const [pestana, setPestana] = useState("productos");
-  const [filtros, setFiltros] = useState({ q: "", proveedor: "", alerta: "" });
+  const [filtros, setFiltros] = useState({ q: "", proveedor: "", alerta: "", producto: "" });
   const [producto, setProducto] = useState(null);
   const [persona, setPersona] = useState(null);
   const [modal, setModal] = useState("");   // nuevo | importar | costo
@@ -178,6 +178,11 @@ export default function Licencias({ puedeEditar, avisar, verFicha, assets }) {
           <option value="">Todos los proveedores</option>
           {proveedores.map((p) => <option key={p}>{p}</option>)}
         </select>
+        {pestana === "cuentas" && <select className="ll-select" style={{ width: "auto" }} value={filtros.producto} onChange={f("producto")} aria-label="Producto">
+          <option value="">Todos los productos ({cuentas.filter((c) => c.activo).length})</option>
+          {[...new Set(cuentas.map((c) => c.producto).filter(Boolean))].sort().map((x) =>
+            <option key={x} value={x}>{x} ({cuentas.filter((c) => c.activo && c.producto === x).length})</option>)}
+        </select>}
         {filtros.alerta && <button className="ll-btn-borde" onClick={() => setFiltros({ ...filtros, alerta: "" })}>Quitar filtro ✕</button>}
         <span className="ll-contador">{contador}</span>
         <span style={{ flex: 1 }} />
@@ -253,8 +258,8 @@ export default function Licencias({ puedeEditar, avisar, verFicha, assets }) {
 
           {pestana === "cuentas" && <table className="ll-tabla" style={{ minWidth: 900 }}>
             <thead><tr><th>CUENTA</th><th>UNIDAD</th><th>LÍDER</th><th>RESPONSABLE</th><th>PRODUCTO</th><th>COSTO MENSUAL</th><th>ESTADO</th></tr></thead>
-            <tbody>{cuentas.filter((c) => !q || [c.numero, c.unidad, c.lider, c.responsable, c.email, c.tipo, c.producto]
-              .some((v) => String(v || "").toLowerCase().includes(q))).map((c) => (
+            <tbody>{cuentas.filter((c) => (!filtros.producto || c.producto === filtros.producto) && (!q || [c.numero, c.unidad, c.lider, c.responsable, c.email, c.tipo, c.producto]
+              .some((v) => String(v || "").toLowerCase().includes(q)))).map((c) => (
               <tr key={c.id} className={puedeEditar ? "click" : undefined} onClick={puedeEditar ? () => setCuenta(c) : undefined}
                 title={puedeEditar ? "Editar la cuenta" : undefined}><td className="nombre mono">{c.numero}<div className="tenue" style={{ fontSize: 11.5 }}>{c.email}</div></td>
                 <td>{c.unidad}</td><td>{c.lider}</td><td>{c.responsable}</td><td>{c.producto || c.tipo || "—"}</td>
@@ -487,7 +492,7 @@ function FichaProducto({ id, puedeEditar, avisar, onCerrar, onCambio }) {
                     onGuardar={(v) => guardarReparto(a.id, { centro_costo: v || "" })} /></div></td>
                 {puedeEditar && <td style={{ textAlign: "right" }}><button className="ll-btn-borde ll-btn-chico" onClick={() => liberar(a.id)}>Liberar</button></td>}
               </tr>))}</tbody>
-          </table><DatalistCentros /></div> : <div className="tenue" style={{ fontSize: 13 }}>Nadie tiene este producto todavía.</div>}
+          </table><DatalistCentros /></div> : <div className="tenue" style={{ fontSize: 13 }}>{p.cuentas && p.cuentas.length ? "Sin personas asignadas: se usa por cuentas de equipo (abajo)." : "Nadie tiene este producto todavía."}</div>}
           {activas.length > 0 && <div className="tenue" style={{ fontSize: 11.5, marginTop: 6 }}>Una licencia puede usarla una segunda persona: el costo se reparte según el %
             (vacío = 50/50). El centro de costo de la asignación manda sobre el de cada persona. Ninguna importación pisa estos datos.</div>}
           {puedeEditar && <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
@@ -498,6 +503,18 @@ function FichaProducto({ id, puedeEditar, avisar, onCerrar, onCambio }) {
           {EXTERNO(p.origen) && <div className="tenue" style={{ fontSize: 11.5, marginTop: 8 }}>Viene de {ORIGEN[p.origen]}: lo que cambies acá se mantiene,
             pero si volvés a importar, la importación vuelve a cargar a quien siga figurando allá.</div>}
         </div>
+        {p.cuentas && p.cuentas.length > 0 && <div>
+          <Rotulo>CUENTAS DE EQUIPO ({p.cuentas.filter((c) => c.activo).length})</Rotulo>
+          <div className="ll-tabla-wrap"><table className="ll-tabla ll-tabla-compacta" style={{ minWidth: 0, width: "100%" }}>
+            <thead><tr><th>CUENTA</th><th>UNIDAD</th><th>RESPONSABLE</th></tr></thead>
+            <tbody>{p.cuentas.map((c) => (
+              <tr key={c.id} style={c.activo ? undefined : { opacity: 0.5 }}>
+                <td><div className="mono" style={{ fontSize: 12.5 }}>{c.numero}</div><div className="tenue" style={{ fontSize: 11.5, wordBreak: "break-all" }}>{c.email}</div></td>
+                <td>{c.unidad}{!c.activo && <span className="tenue" style={{ fontSize: 11.5, marginLeft: 6 }}>(baja)</span>}</td>
+                <td>{c.responsable}{c.lider && <div className="tenue" style={{ fontSize: 11.5 }}>Líder: {c.lider}</div>}</td></tr>))}
+            </tbody></table></div>
+          <div className="tenue" style={{ fontSize: 11.5, marginTop: 6 }}>Se editan en la pestaña Cuentas de equipo.</div>
+        </div>}
         {p.costos_periodo && p.costos_periodo.length > 0 && <div>
           <Rotulo>COSTO REAL POR MES</Rotulo>
           <Ficha filas={p.costos_periodo.map((x) => [x.periodo + (x.workspace ? " · " + x.workspace : ""), `${x.moneda} ${num(x.monto, 2)} · ${x.origen === "api" ? "API" : "manual"}`])} />
