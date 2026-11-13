@@ -49,7 +49,9 @@ ADOBE_PAGINAS_MAX = 200
 ADOBE_REINTENTOS_429 = 3
 ADOBE_ESPERA_MAX_S = 60
 MAX_ARCHIVO = 5 * 1024 * 1024
-ORIGENES_EXTERNOS = ("usermanager", "adobe", "adobe-csv")   # los define la fuente: no se asignan ni liberan a mano
+# los define una fuente: el CSV de miembros no les suma personas. En Atlas se editan igual (asignar, liberar, nombres);
+# la proxima importacion de esa fuente vuelve a crear lo que la fuente siga trayendo.
+ORIGENES_EXTERNOS = ("usermanager", "adobe", "adobe-csv")
 SIN_DATO = "sin dato"
 SIN_ASIGNAR = "sin asignar"
 _EMAIL = re.compile(r"^[^@\s,;]+@[^@\s,;]+\.[^@\s,;]+$")
@@ -255,7 +257,7 @@ def _sincronizar_asignaciones(db, origen, deben, ahora, res):
         LicenciaAsignacion.origen == origen, LicenciaAsignacion.estado == "activa").all()}
     for clave, nombre in deben.items():
         if clave in activas:
-            if nombre:
+            if nombre and not activas[clave].nombre:     # el nombre editado en Atlas manda
                 activas[clave].nombre = nombre
         else:
             db.add(LicenciaAsignacion(producto_id=clave[0], persona=clave[1], nombre=nombre, origen=origen, desde=ahora,
@@ -1011,8 +1013,9 @@ class AsignacionIn(_Base):
 
 
 class RepartoIn(_Base):
-    """Segundo usuario, % del principal y centro de costo de una asignacion (vacio = quitar)."""
-    secundario: Optional[str] = Field(None, max_length=200)
+    """Nombre del principal, segundo usuario, % del principal y centro de costo de una asignacion (vacio = quitar)."""
+    nombre: Optional[str] = Field(None, max_length=160)
+    secundario:Optional[str] = Field(None, max_length=200)
     secundario_nombre: Optional[str] = Field(None, max_length=160)
     porcentaje_principal: Optional[float] = Field(None, ge=0, le=100)
     centro_costo: Optional[str] = Field(None, max_length=80)
@@ -1279,9 +1282,6 @@ def editar_producto(pid: str, data: ProductoUpdate, request: Request,
         elif "cupo" in datos:
             cambios["cupo"] = [p.cupo, datos["cupo"]]
             p.cupo, p.cupo_manual = datos.pop("cupo"), True
-        if p.origen in ORIGENES_EXTERNOS:      # nombre, proveedor, tipo y plan los define la fuente
-            for k in ("producto", "proveedor", "tipo", "plan"):
-                datos.pop(k, None)
         for k, v in datos.items():
             ant = getattr(p, k)
             if k in ("precio_usd", "precio_ars"):
@@ -1309,10 +1309,7 @@ def alta_asignacion(data: AsignacionIn, request: Request, user: UserOut = Depend
         p = db.get(LicenciaProducto, data.producto_id)
         if p is None:
             raise HTTPException(404, "Producto no encontrado")
-        if p.origen in ORIGENES_EXTERNOS:
-            raise HTTPException(409, "Este producto lo define su fuente (UserManager / Adobe): se asigna allá y Atlas lo toma "
-                                     "en la próxima importación")
-        ya = db.query(LicenciaAsignacion).filter(LicenciaAsignacion.producto_id == p.id, LicenciaAsignacion.persona == email,
+        ya =db.query(LicenciaAsignacion).filter(LicenciaAsignacion.producto_id == p.id, LicenciaAsignacion.persona == email,
                                                  LicenciaAsignacion.estado == "activa").first()
         if ya:
             raise HTTPException(409, "Esa persona ya tiene este producto")
@@ -1344,7 +1341,7 @@ def _clave_secundario(v):
 @router.put("/asignaciones/{aid}")
 def editar_reparto(aid: str, data: RepartoIn, request: Request,
                    user: UserOut = Depends(require_modulo("licencias", nivel="editar"))):
-    """Segundo usuario, % y centro de costo de una asignacion. Vale tambien para las que vienen de una importacion
+    """Nombre del principal, segundo usuario, % y centro de costo de una asignacion. Vale tambien para las que vienen de una importacion
     (CSV de Adobe, UserManager): son datos de Atlas y ninguna importacion los pisa."""
     db = SessionLocal()
     try:
@@ -1360,8 +1357,9 @@ def editar_reparto(aid: str, data: RepartoIn, request: Request,
                 datos["secundario_nombre"], datos["porcentaje_principal"] = "", None
         if "centro_costo" in datos:
             datos["centro_costo"] = norm_centro(datos["centro_costo"])
-        if "secundario_nombre" in datos:
-            datos["secundario_nombre"] = datos["secundario_nombre"] or ""
+        for k in ("nombre", "secundario_nombre"):
+            if k in datos:
+                datos[k] = datos[k] or ""
         cambios = {}
         for k, v in datos.items():
             if getattr(a, k) != v:
@@ -1387,9 +1385,6 @@ def liberar(aid: str, request: Request, user: UserOut = Depends(require_modulo("
         a = db.get(LicenciaAsignacion, aid)
         if a is None:
             raise HTTPException(404, "Asignación no encontrada")
-        if a.origen in ORIGENES_EXTERNOS:
-            raise HTTPException(409, "Esta asignación la define su fuente (UserManager / Adobe): se libera allá y Atlas lo "
-                                     "toma en la próxima importación")
         if a.estado == "activa":
             a.estado, a.hasta = "liberada", datetime.utcnow()
             db.commit()

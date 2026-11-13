@@ -385,7 +385,7 @@ function FichaProducto({ id, puedeEditar, avisar, onCerrar, onCambio }) {
     const n = (v) => (v === "" ? null : Number(v));
     const cuerpo = { precio_usd: n(edicion.precio_usd), precio_ars: n(edicion.precio_ars), periodo: edicion.periodo,
       fecha_renovacion: edicion.fecha_renovacion || null, contrato: edicion.contrato || "", notas: edicion.notas || "" };
-    if (!EXTERNO(p.origen)) Object.assign(cuerpo, { proveedor: edicion.proveedor, producto: edicion.producto, plan: edicion.plan || "" });
+    Object.assign(cuerpo, { proveedor: edicion.proveedor, producto: edicion.producto, plan: edicion.plan || "" });
     if (edicion.cupo !== "") cuerpo.cupo = Number(edicion.cupo); else if (p.cupo_manual) cuerpo.cupo_automatico = true;
     try {
       await pedir(URL + "/productos/" + id, json("PUT", cuerpo));
@@ -427,12 +427,10 @@ function FichaProducto({ id, puedeEditar, avisar, onCerrar, onCambio }) {
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <Rotulo>PRODUCTO Y COSTOS</Rotulo>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            {!EXTERNO(p.origen) && <>
-              <label className="ll-campo"><span>PROVEEDOR</span>
+            <label className="ll-campo"><span>PROVEEDOR</span>
                 <select className="ll-select" value={edicion.proveedor} onChange={set("proveedor")}>{[...new Set([edicion.proveedor, ...PROVEEDORES])].map((x) => <option key={x}>{x}</option>)}</select></label>
-              <label className="ll-campo"><span>PRODUCTO</span><input className="ll-input" value={edicion.producto} onChange={set("producto")} /></label>
-              <label className="ll-campo"><span>PLAN</span><input className="ll-input" value={edicion.plan} onChange={set("plan")} /></label>
-            </>}
+            <label className="ll-campo"><span>PRODUCTO</span><input className="ll-input" value={edicion.producto} onChange={set("producto")} /></label>
+            <label className="ll-campo"><span>PLAN</span><input className="ll-input" value={edicion.plan} onChange={set("plan")} /></label>
             <label className="ll-campo"><span>CUPO CONTRATADO (LICENCIAS)</span><input className="ll-input mono" type="number" min="0" value={edicion.cupo} onChange={set("cupo")} /></label>
             <label className="ll-campo"><span>PRECIO POR LICENCIA · USD</span><input className="ll-input mono" type="number" min="0" step="0.01" value={edicion.precio_usd} onChange={set("precio_usd")} /></label>
             <label className="ll-campo"><span>PRECIO POR LICENCIA · ARS</span><input className="ll-input mono" type="number" min="0" step="0.01" value={edicion.precio_ars} onChange={set("precio_ars")} /></label>
@@ -468,7 +466,9 @@ function FichaProducto({ id, puedeEditar, avisar, onCerrar, onCambio }) {
             <thead><tr><th>PRINCIPAL</th><th>SEGUNDO USUARIO</th><th>% · CENTRO DE COSTO</th>{puedeEditar && <th />}</tr></thead>
             <tbody>{activas.map((a) => (
               <tr key={a.id} style={a.duplicada ? { opacity: 0.6 } : undefined}>
-                <td><div style={{ fontSize: 13 }}>{a.nombre || a.persona}{a.deshabilitada && <span style={{ color: "var(--ll-rosa)", fontSize: 11.5, marginLeft: 8 }}>{a.de_baja ? "de baja" : "deshabilitada"}</span>}</div>
+                <td><div style={{ fontSize: 13 }}>{puedeEditar
+                  ? <CeldaEditable valor={a.nombre || ""} tipo="text" ancho={170} placeholder="nombre" onGuardar={(v) => guardarReparto(a.id, { nombre: v || "" })} />
+                  : (a.nombre || a.persona)}{a.deshabilitada && <span style={{ color: "var(--ll-rosa)", fontSize: 11.5, marginLeft: 8 }}>{a.de_baja ? "de baja" : "deshabilitada"}</span>}</div>
                   <div className="tenue" style={{ fontSize: 11.5, wordBreak: "break-all" }}>{a.persona}</div>
                   {a.duplicada && <div style={{ fontSize: 11.5, color: "var(--ll-ambar)" }}>Usa la licencia de otra persona como segundo usuario: no suma</div>}</td>
                 <td><div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -485,17 +485,18 @@ function FichaProducto({ id, puedeEditar, avisar, onCerrar, onCambio }) {
                   <CeldaEditable valor={a.centro_asignacion || ""} tipo="text" ancho={150} lista="ll-centros-costo"
                     placeholder={a.centro_costo !== "sin dato" ? a.centro_costo : "el de la persona"} deshabilitada={!puedeEditar}
                     onGuardar={(v) => guardarReparto(a.id, { centro_costo: v || "" })} /></div></td>
-                {puedeEditar && <td style={{ textAlign: "right" }}>{!EXTERNO(a.origen) && <button className="ll-btn-borde ll-btn-chico" onClick={() => liberar(a.id)}>Liberar</button>}</td>}
+                {puedeEditar && <td style={{ textAlign: "right" }}><button className="ll-btn-borde ll-btn-chico" onClick={() => liberar(a.id)}>Liberar</button></td>}
               </tr>))}</tbody>
           </table><DatalistCentros /></div> : <div className="tenue" style={{ fontSize: 13 }}>Nadie tiene este producto todavía.</div>}
           {activas.length > 0 && <div className="tenue" style={{ fontSize: 11.5, marginTop: 6 }}>Una licencia puede usarla una segunda persona: el costo se reparte según el %
             (vacío = 50/50). El centro de costo de la asignación manda sobre el de cada persona. Ninguna importación pisa estos datos.</div>}
-          {puedeEditar && !EXTERNO(p.origen) && <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+          {puedeEditar && <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
             <input className="ll-input" style={{ flex: "2 1 180px" }} placeholder="mail de la persona" value={nueva.persona} onChange={(e) => setNueva({ ...nueva, persona: e.target.value })} />
             <input className="ll-input" style={{ flex: "1 1 140px" }} placeholder="nombre (opcional)" value={nueva.nombre} onChange={(e) => setNueva({ ...nueva, nombre: e.target.value })} />
             <button className="ll-btn-primario" disabled={!nueva.persona.trim()} onClick={asignar}>Asignar</button>
           </div>}
-          {EXTERNO(p.origen) && <div className="tenue" style={{ fontSize: 11.5, marginTop: 8 }}>Este producto lo define su fuente ({ORIGEN[p.origen]}): las personas se cambian allá.</div>}
+          {EXTERNO(p.origen) && <div className="tenue" style={{ fontSize: 11.5, marginTop: 8 }}>Viene de {ORIGEN[p.origen]}: lo que cambies acá se mantiene,
+            pero si volvés a importar, la importación vuelve a cargar a quien siga figurando allá.</div>}
         </div>
         {p.costos_periodo && p.costos_periodo.length > 0 && <div>
           <Rotulo>COSTO REAL POR MES</Rotulo>

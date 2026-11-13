@@ -351,8 +351,16 @@ def test_exportacion_adobe_enterprise(client, token):
     assert r.json()["liberadas"] == 1 and r.json()["altas"] == 0
     det = client.get("/api/licencias/productos/" + acro["id"], headers=bearer(token)).json()
     assert det["precio_usd"] == 200 and det["cupo"] == 5 and det["asignadas"] == 1
-    assert client.post("/api/licencias/asignaciones", headers=bearer(token),
-                       json={"producto_id": acro["id"], "persona": "x@ejemplo.com"}).status_code == 409
+    # todo se edita en Atlas aunque venga de Adobe: asignar, liberar, nombre del principal y nombre del producto
+    h = bearer(token)
+    aid = client.post("/api/licencias/asignaciones", headers=h, json={"producto_id": acro["id"], "persona": "x@ejemplo.com"}).json()["id"]
+    a = next(x for x in client.get("/api/licencias/productos/" + acro["id"], headers=h).json()["asignaciones"] if x["origen"] == "adobe-csv")
+    assert client.put("/api/licencias/asignaciones/" + a["id"], headers=h, json={"nombre": "Lisicki Litvin y Asesores"}).status_code == 200
+    assert client.post("/api/licencias/asignaciones/%s/liberar" % a["id"], headers=h).json()["estado"] == "liberada"
+    assert client.put("/api/licencias/productos/" + acro["id"], headers=h, json={"producto": "Acrobat Pro"}).status_code == 200
+    det = client.get("/api/licencias/productos/" + acro["id"], headers=h).json()
+    assert det["producto"] == "Acrobat Pro" and [x["persona"] for x in det["asignaciones"] if x["estado"] == "activa"] == ["x@ejemplo.com"]
+    assert any(x["id"] == aid for x in det["asignaciones"])
 
 
 def test_exportacion_adobe_teams_en_castellano(client, token):
